@@ -4,6 +4,7 @@ import type { AppType } from "../../server/app";
 import { ClientConfigSchema, type ClientConfig } from "../../contract/config";
 import {
   CommitDetailSchema,
+  FetchResultSchema,
   FilesResponseSchema,
   GraphResponseSchema,
   PatchResponseSchema,
@@ -31,6 +32,15 @@ export type { ForDiffMatch } from "../../contract/review";
 const client = hc<AppType>(
   typeof window !== "undefined" ? window.location.origin : "http://localhost",
 );
+
+/** Thrown by `gitApi.fetch` when the server reports a fetch already running
+ * for that repo (HTTP 409). */
+export class FetchBusyError extends Error {
+  constructor() {
+    super("実行中です");
+    this.name = "FetchBusyError";
+  }
+}
 
 export const gitApi = {
   async root(path: string) {
@@ -92,6 +102,17 @@ export const gitApi = {
     });
     if (!res.ok) throw new Error(`GET /api/git/commit/:hash failed: ${res.status}`);
     return v.parse(CommitDetailSchema, await res.json());
+  },
+
+  /** `git fetch --prune` for `repo`. Never throws on a non-zero exit or a
+   * timeout — those come back on the resolved `FetchResult` (`code`,
+   * `timedOut`). Throws `FetchBusyError` when a fetch is already running for
+   * `repo` (HTTP 409), or a generic `Error` for any other non-2xx. */
+  async fetch(repo: string) {
+    const res = await client.api.git.fetch.$post({ query: { repo } });
+    if (res.status === 409) throw new FetchBusyError();
+    if (!res.ok) throw new Error(`POST /api/git/fetch failed: ${res.status}`);
+    return v.parse(FetchResultSchema, await res.json());
   },
 
   async subrepos(repo: string) {

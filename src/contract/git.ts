@@ -200,6 +200,24 @@ export const CommitDetailSchema = v.object({
 export type CommitDetail = v.InferOutput<typeof CommitDetailSchema>;
 
 // ---------------------------------------------------------------------------
+// /api/git/fetch
+// ---------------------------------------------------------------------------
+
+export const FetchQuerySchema = v.object({
+  repo: v.pipe(v.string(), v.minLength(1)),
+});
+export type FetchQuery = v.InferOutput<typeof FetchQuerySchema>;
+
+export const FetchResultSchema = v.object({
+  code: v.number(),
+  stdout: v.string(),
+  stderr: v.string(),
+  durationMs: v.number(),
+  timedOut: v.boolean(),
+});
+export type FetchResult = v.InferOutput<typeof FetchResultSchema>;
+
+// ---------------------------------------------------------------------------
 // /api/git/subrepos
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { ClientConfig } from "../contract/config";
 import type { Health } from "../contract/health";
+import type { FetchRunner } from "./git/fetch";
 import { gitRoutes } from "./routes/git";
 import { herdrRoutes, type HerdrRoutesDeps } from "./routes/herdr";
 import { hwRoutes, type HwRoutesDeps } from "./routes/hw";
@@ -14,7 +15,7 @@ import {
 export type AppDeps = {
   version: string;
   herdrStatus: () => { connected: boolean; protocol: number | null };
-  git?: { allowedRoots?: string[] };
+  git?: { allowedRoots?: string[]; fetchRunner?: FetchRunner };
   clientConfig: () => ClientConfig;
   review: ReviewRoutesDeps;
   repo: RepoRoutesDeps;

@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { VirtualizerOptions } from "@tanstack/react-virtual";
+import { RefreshCw } from "lucide-react";
 import type { Ref } from "@contract/git";
+import { FetchBusyError, gitApi } from "@/lib/api";
 import { useGraph } from "./hooks/useGraph";
 import { initialState, reduce } from "./state";
 import GraphView from "./GraphView";
+
+/** How long the fetch result line stays visible before auto-dismissing. */
+const FETCH_MESSAGE_TIMEOUT_MS = 5000;
 
 export interface GraphPanelProps {
   repo: string;
@@ -57,6 +62,67 @@ export function GraphPanel({
   const [anchorHash, setAnchorHash] = useState<string | null>(null);
 
   const graphQuery = useGraph(repo, true, 500, repoChangedTick, pollMs);
+
+  // -----------------------------------------------------------------------
+  // fetch (git fetch --prune) — plan.md §4: read-only writes to
+  // refs/remotes/* only, no pull/merge/checkout. Never mutates the worktree.
+  // -----------------------------------------------------------------------
+  const [fetchBusy, setFetchBusy] = useState(false);
+  const [fetchMessage, setFetchMessage] = useState<string | null>(null);
+  const fetchMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (fetchMessageTimer.current !== null) clearTimeout(fetchMessageTimer.current);
+    },
+    [],
+  );
+
+  const showFetchMessage = useCallback((message: string) => {
+    setFetchMessage(message);
+    if (fetchMessageTimer.current !== null) clearTimeout(fetchMessageTimer.current);
+    fetchMessageTimer.current = setTimeout(() => {
+      setFetchMessage(null);
+      fetchMessageTimer.current = null;
+    }, FETCH_MESSAGE_TIMEOUT_MS);
+  }, []);
+
+  const handleFetch = useCallback(async () => {
+    if (fetchBusy) return;
+    setFetchBusy(true);
+    try {
+      const result = await gitApi.fetch(repo);
+      if (result.timedOut) {
+        showFetchMessage("タイムアウト");
+      } else if (result.code === 0) {
+        const seconds = (result.durationMs / 1000).toFixed(1);
+        const summary = result.stderr.trim().split("\n")[0];
+        showFetchMessage(
+          summary ? `fetch 完了 (${seconds}s) — ${summary}` : `fetch 完了 (${seconds}s)`,
+        );
+        void graphQuery.refetch();
+      } else {
+        const firstLine = result.stderr.trim().split("\n")[0];
+        showFetchMessage(firstLine || `fetch に失敗しました (exit ${result.code})`);
+      }
+    } catch (err) {
+      if (err instanceof FetchBusyError) {
+        showFetchMessage("実行中です");
+      } else {
+        showFetchMessage(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setFetchBusy(false);
+    }
+  }, [fetchBusy, repo, graphQuery, showFetchMessage]);
+
+  function handleGraphKeyDown(event: React.KeyboardEvent) {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === "f") {
+      event.preventDefault();
+      void handleFetch();
+    }
+  }
 
   const graphData = graphQuery.data;
   // `?? []` would otherwise produce a fresh array reference on every render
@@ -141,7 +207,26 @@ export function GraphPanel({
     <div
       className="flex h-full flex-col"
       style={{ fontFamily: '"JetBrainsMono Nerd Font", ui-monospace, monospace' }}
+      tabIndex={-1}
+      onKeyDown={handleGraphKeyDown}
     >
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-2 py-1 text-xs">
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="origin を fetch"
+          disabled={fetchBusy}
+          onClick={() => void handleFetch()}
+        >
+          <RefreshCw className={`size-3.5 ${fetchBusy ? "animate-spin" : ""}`} aria-hidden="true" />
+          fetch
+        </button>
+        {fetchMessage && (
+          <span className="truncate text-muted-foreground" role="status">
+            {fetchMessage}
+          </span>
+        )}
+      </div>
       {graphQuery.isError ? (
         <div className="p-2 text-sm text-destructive" role="alert">
           {graphQuery.error instanceof Error ? graphQuery.error.message : String(graphQuery.error)}

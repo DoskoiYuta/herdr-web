@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { createApp } from "./app";
+import { createFetchRunner } from "./git/fetch";
 import { serveEmbedded } from "./static";
 import type { WebAssets } from "./web-assets";
 import {
@@ -80,10 +81,12 @@ attachWorktreeMissingToReview(runtime, review);
 // F5: pick back up any notification a debounce timer lost when the process last exited.
 await review.notifyScheduler.drainPending();
 
+const fetchRunner = createFetchRunner();
+
 const api = createApp({
   version: "0.1.0",
   herdrStatus: runtime.herdrStatus,
-  git: { allowedRoots: config.allowedRoots },
+  git: { allowedRoots: config.allowedRoots, fetchRunner },
   clientConfig: () => ({
     terminal: config.terminal,
     graphInitialCommits: config.graphInitialCommits,

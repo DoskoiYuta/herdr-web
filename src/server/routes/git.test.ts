@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "bun:test";
 import { createTestApp } from "../testing/app-deps";
 import { gitBlobHash } from "../git/blobHash";
+import { FetchBusyError, type FetchResult, type FetchRunner } from "../git/fetch";
 
 const execFileP = promisify(execFile);
 const dirs: string[] = [];
@@ -195,6 +196,113 @@ describe("GET /api/git/commit/:hash", () => {
     expect(body.files).toHaveLength(1);
     expect(body.files[0].status).toBe("R");
     expect(body.files[0].oldPath).toBe("old.txt");
+  });
+});
+
+describe("POST /api/git/fetch", () => {
+  async function makeBare(sourceDir: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "herdr-web-git-routes-fetch-bare-"));
+    await rm(dir, { recursive: true, force: true });
+    await execFileP("git", ["clone", "-q", "--bare", sourceDir, dir]);
+    dirs.push(dir);
+    return dir;
+  }
+
+  async function cloneWork(bareDir: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "herdr-web-git-routes-fetch-work-"));
+    await rm(dir, { recursive: true, force: true });
+    await execFileP("git", ["clone", "-q", bareDir, dir]);
+    dirs.push(dir);
+    await execFileP("git", ["config", "user.name", "Test"], { cwd: dir });
+    await execFileP("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+    return realpathAsync(dir);
+  }
+
+  async function pushNewCommit(bareDir: string, sourceDir: string): Promise<void> {
+    await commit(sourceDir, "b.txt", "b\n", "c2");
+    await execFileP("git", ["push", "-q", bareDir, "HEAD:main"], { cwd: sourceDir });
+  }
+
+  test("fetches from a local bare origin and updates refs/remotes/origin/*", async () => {
+    const source = await makeRepo();
+    await commit(source, "a.txt", "a\n", "init");
+    const bare = await makeBare(source);
+    const work = await cloneWork(bare);
+    await pushNewCommit(bare, source);
+    const app = makeApp([work]);
+
+    const res = await app.request(`/api/git/fetch?repo=${encodeURIComponent(work)}`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.code).toBe(0);
+    expect(body.timedOut).toBe(false);
+    expect(typeof body.durationMs).toBe("number");
+
+    const { stdout } = await execFileP("git", ["rev-parse", "origin/main"], { cwd: work });
+    const { stdout: bareHead } = await execFileP("git", ["rev-parse", "main"], { cwd: bare });
+    expect(stdout.trim()).toBe(bareHead.trim());
+  });
+
+  test("repo outside allowed roots -> 403", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([]);
+
+    const res = await app.request(`/api/git/fetch?repo=${encodeURIComponent(dir)}`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("missing repo query -> 400", async () => {
+    const app = makeApp([]);
+    const res = await app.request("/api/git/fetch", { method: "POST" });
+    expect(res.status).toBe(400);
+  });
+
+  test("a busy fetch runner -> 409 with { error: 'busy' }", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const fetchRunner: FetchRunner = {
+      fetch: async (root: string) => {
+        throw new FetchBusyError(root);
+      },
+      isBusy: () => true,
+    };
+    const { app } = createTestApp({ allowedRoots: [dir], fetchRunner });
+
+    const res = await app.request(`/api/git/fetch?repo=${encodeURIComponent(dir)}`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = await json(res);
+    expect(body).toEqual({ error: "busy" });
+  });
+
+  test("a non-zero exit from git is returned, not thrown, and is a 200", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const result: FetchResult = {
+      code: 128,
+      stdout: "",
+      stderr: "fatal: no configured push destination.\n",
+      durationMs: 12,
+      timedOut: false,
+    };
+    const fetchRunner: FetchRunner = {
+      fetch: async () => result,
+      isBusy: () => false,
+    };
+    const { app } = createTestApp({ allowedRoots: [dir], fetchRunner });
+
+    const res = await app.request(`/api/git/fetch?repo=${encodeURIComponent(dir)}`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body).toEqual(result);
   });
 });
 

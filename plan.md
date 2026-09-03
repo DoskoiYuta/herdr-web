@@ -76,7 +76,7 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 - worktree の作成・削除（ワークスペースの作成・改名・削除はサイドバーから可能。§2, §7 F8 参照）
 - herdr の内部 render socket への直接接続
 - 認証・公開運用（アクセス制御は Tailscale の ACL に委ねる）
-- git の書き込み操作（stage / commit / checkout / fetch / pull）
+- git の書き込み操作（stage / commit / checkout / pull）。ただし `git fetch --prune`（リモート追跡ブランチ `refs/remotes/*` の更新のみ、worktree は変更しない）は Graph から実行できる（§7 F4 参照）
 - レビューの MCP サーバー化
 
 ## 5. 技術スタック
@@ -251,6 +251,7 @@ src/cli                      → contract のみ
 - F4-2. 既定で直近 N コミット（設定可）、「さらに読み込む」で倍増。
 - F4-3. コミットを選ぶとそのコミットの diff を F3 に表示する。2 つ選ぶと範囲 diff。
 - F4-4. 全ブランチ / 現在ブランチのみ。
+- F4-5. fetch ボタン（キー `f`）で `git fetch --prune` を実行し、origin の最新状態（リモート追跡ブランチ）をグラフに反映する。worktree は変更しない。実行中はボタンを disable し、完了後に結果（所要時間、失敗時は stderr 先頭行、ビジー、タイムアウト）を数秒間表示する。
 
 ### F5. レビュー
 

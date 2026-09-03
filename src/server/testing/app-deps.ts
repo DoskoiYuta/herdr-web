@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { ConfigSchema } from "../../contract/config";
 import { openDb } from "../db/client";
 import { applyMigrations } from "../db/migrate";
+import type { FetchRunner } from "../git/fetch";
 import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
 import { createHerdrState } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
@@ -15,6 +16,7 @@ export type TestAppOptions = {
   fake?: FakeHerdr;
   resolver?: WorktreeResolver;
   events?: ReviewEvent[];
+  fetchRunner?: FetchRunner;
 };
 
 const emptySnapshot = {
@@ -48,7 +50,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
   const deps: AppDeps = {
     version: "test",
     herdrStatus: () => fake.status(),
-    git: { allowedRoots: opts.allowedRoots ?? [] },
+    git: { allowedRoots: opts.allowedRoots ?? [], fetchRunner: opts.fetchRunner },
     clientConfig: () => {
       const c = v.parse(ConfigSchema, {});
       return { terminal: c.terminal, graphInitialCommits: c.graphInitialCommits };
