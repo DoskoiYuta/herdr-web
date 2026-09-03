@@ -76,10 +76,21 @@ function withWorkspaces(state: HerdrState, list: readonly WorkspaceInfo[]): Herd
   return { ...state, workspaces };
 }
 
+/** herdr は workspace を閉じても配下の tab/pane の closed イベントを出さないので、ここでまとめて落とす。 */
 function withoutWorkspace(state: HerdrState, workspaceId: string): HerdrState {
   const workspaces = new Map(state.workspaces);
   workspaces.delete(workspaceId);
-  return { ...state, workspaces };
+  const tabs = new Map([...state.tabs].filter(([, t]) => t.workspace_id !== workspaceId));
+  const panes = new Map([...state.panes].filter(([, p]) => p.workspace_id !== workspaceId));
+  return {
+    ...state,
+    workspaces,
+    tabs,
+    panes,
+    focusedWorkspaceId: state.focusedWorkspaceId === workspaceId ? null : state.focusedWorkspaceId,
+    focusedPaneId:
+      state.focusedPaneId && !panes.has(state.focusedPaneId) ? null : state.focusedPaneId,
+  };
 }
 
 function renameWorkspace(state: HerdrState, workspaceId: string, label: string): HerdrState {
@@ -100,10 +111,18 @@ function withTabs(state: HerdrState, list: readonly TabInfo[]): HerdrState {
   return { ...state, tabs };
 }
 
+/** tab を閉じたときも配下の pane を落とす（pane_closed が来ないケースに備える）。 */
 function withoutTab(state: HerdrState, tabId: string): HerdrState {
   const tabs = new Map(state.tabs);
   tabs.delete(tabId);
-  return { ...state, tabs };
+  const panes = new Map([...state.panes].filter(([, p]) => p.tab_id !== tabId));
+  return {
+    ...state,
+    tabs,
+    panes,
+    focusedPaneId:
+      state.focusedPaneId && !panes.has(state.focusedPaneId) ? null : state.focusedPaneId,
+  };
 }
 
 function renameTab(state: HerdrState, tabId: string, label: string): HerdrState {
