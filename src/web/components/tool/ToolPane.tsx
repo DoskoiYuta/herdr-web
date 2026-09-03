@@ -27,10 +27,16 @@ import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
  * this interval while a non-root sub-repo is selected. */
 const SUB_REPO_POLL_MS = 3000;
 
+// Radix Select は value="" を許さないので、ルート（id ""）だけ番兵値に写す
+const ROOT_SELECT_VALUE = "__root__";
+const toSelectValue = (id: string) => (id === "" ? ROOT_SELECT_VALUE : id);
+const fromSelectValue = (v: string) => (v === ROOT_SELECT_VALUE ? "" : v);
+
 const SUB_REPO_KIND_LABEL: Record<SubRepo["kind"], string> = {
   root: "",
   submodule: "submodule",
   nested: ".repos",
+  vcs: "vcstool",
 };
 
 export type CommitRange = { from: string; to: string } | null;
@@ -281,13 +287,16 @@ export function ToolPane({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {subRepos.length > 1 && (
-            <Select value={subRepoId} onValueChange={setSubRepoId}>
+            <Select
+              value={toSelectValue(subRepoId)}
+              onValueChange={(v) => setSubRepoId(fromSelectValue(v))}
+            >
               <SelectTrigger size="sm" className="max-w-40" aria-label="サブリポジトリを選択">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {subRepos.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
+                  <SelectItem key={r.id} value={toSelectValue(r.id)}>
                     <span className="truncate">{r.name}</span>
                     {SUB_REPO_KIND_LABEL[r.kind] && (
                       <span className="text-[10px] text-muted-foreground">

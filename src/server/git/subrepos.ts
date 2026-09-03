@@ -16,7 +16,7 @@ import { readdir, realpath as realpathAsync } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { runGit } from "./run";
 
-export type SubRepoKind = "root" | "submodule" | "nested";
+export type SubRepoKind = "root" | "submodule" | "nested" | "vcs";
 
 export interface SubRepo {
   /** Path relative to `root`, using `/` separators; `""` for the root itself. */
@@ -79,6 +79,35 @@ async function listNestedRepoPaths(root: string): Promise<string[]> {
   return nested;
 }
 
+/**
+ * vcstool のマニフェスト（`<root>/*.repos`, YAML: `repositories: { <path>: { type, url, version } }`）に
+ * 列挙されたパスのうち、実際に git worktree として存在するものを返す。
+ */
+async function listVcstoolRepoPaths(root: string): Promise<string[]> {
+  let files: string[];
+  try {
+    files = (await readdir(root)).filter((f) => f.endsWith(".repos")).sort();
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const file of files) {
+    let doc: unknown;
+    try {
+      doc = Bun.YAML.parse(await Bun.file(join(root, file)).text());
+    } catch {
+      continue;
+    }
+    const repos = (doc as { repositories?: unknown } | null)?.repositories;
+    if (!repos || typeof repos !== "object") continue;
+    for (const rel of Object.keys(repos as Record<string, unknown>).sort()) {
+      if (rel.includes("\0") || rel.startsWith("/") || rel.split("/").includes("..")) continue;
+      if (await isWorktreeRoot(join(root, rel))) out.push(rel);
+    }
+  }
+  return out;
+}
+
 interface CacheEntry {
   at: number;
   promise: Promise<SubRepo[]>;
@@ -91,9 +120,10 @@ async function computeSubRepos(root: string): Promise<SubRepo[]> {
   const rootReal = await realpathAsync(root);
   const result: SubRepo[] = [{ id: "", name: basename(rootReal), root: rootReal, kind: "root" }];
 
-  const [submodulePaths, nestedPaths] = await Promise.all([
+  const [submodulePaths, nestedPaths, vcsPaths] = await Promise.all([
     listInitializedSubmodulePaths(root).catch(() => []),
     listNestedRepoPaths(root),
+    listVcstoolRepoPaths(root),
   ]);
 
   const seen = new Set<string>([""]);
@@ -127,10 +157,23 @@ async function computeSubRepos(root: string): Promise<SubRepo[]> {
     result.push({ id: path, name: basename(path), root: real, kind: "nested" });
   }
 
+  for (const path of vcsPaths) {
+    if (seen.has(path)) continue;
+    let real: string;
+    try {
+      real = await realpathAsync(join(root, path));
+    } catch {
+      continue;
+    }
+    if (!withinRoot(real)) continue;
+    seen.add(path);
+    result.push({ id: path, name: path, root: real, kind: "vcs" });
+  }
+
   return result;
 }
 
-/** Lists `root` plus its initialized submodules and `.repos/*` nested repos. Cached per `root` for `TTL_MS`. */
+/** Lists `root` plus its initialized submodules, `.repos/*` nested repos and vcstool `*.repos` entries. Cached per `root` for `TTL_MS`. */
 export function listSubRepos(root: string): Promise<SubRepo[]> {
   const cached = cache.get(root);
   const now = Date.now();
