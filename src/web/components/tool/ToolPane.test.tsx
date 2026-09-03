@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ToolPane } from "./ToolPane";
 
@@ -7,6 +9,13 @@ import { ToolPane } from "./ToolPane";
 // `mousedown`, so switching tabs in jsdom needs this helper.
 function selectTab(name: string) {
   fireEvent.mouseDown(screen.getByRole("tab", { name }));
+}
+
+// ToolPane's unresolved-review badge uses useReviewList (a TanStack Query
+// hook), so every render needs a QueryClientProvider ancestor.
+function render(ui: ReactElement) {
+  const client = new QueryClient();
+  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
 vi.mock("@/components/diff/DiffPanel", () => ({
@@ -43,6 +52,9 @@ vi.mock("@/lib/api", () => ({
       head: "abc123",
       rootCommit: "abc123",
     })),
+  },
+  reviewApi: {
+    list: vi.fn(async () => []),
   },
 }));
 

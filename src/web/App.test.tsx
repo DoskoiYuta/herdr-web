@@ -32,6 +32,9 @@ vi.mock("@/lib/api", () => ({
       rootCommit: "abc123",
     })),
   },
+  reviewApi: {
+    list: vi.fn(async () => []),
+  },
 }));
 
 type EventsHandlers = {

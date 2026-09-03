@@ -18,11 +18,15 @@
 
 import type {
   CodeView as CodeViewInstance,
+  CodeViewLineSelection,
+  DiffLineAnnotation,
   FileDiffLoadedFiles,
   FileDiffMetadata,
 } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewDiffItem, CodeViewHandle, CodeViewReactOptions } from "@pierre/diffs/react";
+import type { ReactNode } from "react";
+import type { ReviewAnnotationMeta } from "./reviewAnnotations.ts";
 import {
   forwardRef,
   useCallback,
@@ -42,10 +46,12 @@ export const DIFF_FONT_FAMILY = '"JetBrainsMono Nerd Font", ui-monospace, monosp
 
 export interface DiffViewHandle {
   scrollToItem(id: string): void;
+  /** Scroll to a specific real per-side line number within an item (F5-8: Review タブからのジャンプ用). */
+  scrollToLine(id: string, lineNumber: number, side: "deletions" | "additions"): void;
 }
 
 export interface DiffViewProps {
-  items: readonly CodeViewDiffItem[];
+  items: readonly CodeViewDiffItem<ReviewAnnotationMeta>[];
   settings: Settings;
   /** worktree root passed through to gitApi.files() as `&repo=`. */
   repo: string;
@@ -57,6 +63,14 @@ export interface DiffViewProps {
    * whether an incoming update should auto-apply (scrolled to top) or wait
    * behind a banner (scrolled away from top). */
   onScrollTopChange?(scrollTop: number): void;
+  /** F3-6: current line/range selection (comment composer target). */
+  selectedLines?: CodeViewLineSelection | null;
+  onSelectedLinesChange?(selection: CodeViewLineSelection | null): void;
+  /** Renders the composer / inline review thread for one DiffLineAnnotation (F3-6, F5-8). */
+  renderAnnotation?(
+    annotation: DiffLineAnnotation<ReviewAnnotationMeta>,
+    item: CodeViewDiffItem<ReviewAnnotationMeta>,
+  ): ReactNode;
 }
 
 function useIsDark(): boolean {
@@ -74,10 +88,20 @@ function useIsDark(): boolean {
 }
 
 const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
-  { items, settings, repo, onToast, onTopItemChange, onScrollTopChange },
+  {
+    items,
+    settings,
+    repo,
+    onToast,
+    onTopItemChange,
+    onScrollTopChange,
+    selectedLines,
+    onSelectedLinesChange,
+    renderAnnotation,
+  },
   ref,
 ) {
-  const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
+  const codeViewRef = useRef<CodeViewHandle<ReviewAnnotationMeta>>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef(items);
   const onToastRef = useRef(onToast);
@@ -105,6 +129,9 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     () => ({
       scrollToItem(id: string) {
         codeViewRef.current?.scrollTo({ type: "item", id, align: "start" });
+      },
+      scrollToLine(id: string, lineNumber: number, side: "deletions" | "additions") {
+        codeViewRef.current?.scrollTo({ type: "line", id, lineNumber, side, align: "center" });
       },
     }),
     [],
@@ -160,7 +187,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     node.style.setProperty("--diffs-font-family", DIFF_FONT_FAMILY);
   }, [metrics.fontSize, metrics.lineHeight]);
 
-  const options: CodeViewReactOptions = useMemo(
+  const options: CodeViewReactOptions<ReviewAnnotationMeta> = useMemo(
     () => ({
       theme: { dark: "pierre-dark", light: "pierre-light" },
       themeType: isDark ? "dark" : "light",
@@ -218,21 +245,24 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
 
   // CodeView's onScroll passes the underlying CodeView instance directly —
   // no need to route through getInstance().
-  const handleScroll = useCallback((scrollTop: number, viewer: CodeViewInstance<undefined>) => {
-    onScrollTopChangeRef.current?.(scrollTop);
-    let candidateId: string | null = null;
-    for (const item of itemsRef.current) {
-      const top = viewer.getTopForItem(item.id);
-      if (top === undefined) continue;
-      if (top <= scrollTop) {
-        candidateId = item.id;
-      } else {
-        // items are laid out in the same order as itemsRef.current
-        break;
+  const handleScroll = useCallback(
+    (scrollTop: number, viewer: CodeViewInstance<ReviewAnnotationMeta>) => {
+      onScrollTopChangeRef.current?.(scrollTop);
+      let candidateId: string | null = null;
+      for (const item of itemsRef.current) {
+        const top = viewer.getTopForItem(item.id);
+        if (top === undefined) continue;
+        if (top <= scrollTop) {
+          candidateId = item.id;
+        } else {
+          // items are laid out in the same order as itemsRef.current
+          break;
+        }
       }
-    }
-    if (candidateId) onTopItemChangeRef.current(candidateId);
-  }, []);
+      if (candidateId) onTopItemChangeRef.current(candidateId);
+    },
+    [],
+  );
 
   return (
     <CodeView
@@ -242,6 +272,9 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
       items={items}
       options={options}
       onScroll={handleScroll}
+      selectedLines={selectedLines}
+      onSelectedLinesChange={onSelectedLinesChange}
+      renderAnnotation={renderAnnotation}
     />
   );
 });

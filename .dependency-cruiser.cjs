@@ -25,9 +25,11 @@ module.exports = {
     },
     {
       name: "review-domain-pure",
-      comment: "review/domain は contract 以外を import しない",
+      comment:
+        "review/domain は contract 以外を import しない（anchor-parity.test.ts は web の anchor.ts と " +
+        "サーバー実装の一致を検証するため例外）",
       severity: "error",
-      from: { path: "^src/server/review/domain" },
+      from: { path: "^src/server/review/domain", pathNot: "anchor-parity\\.test\\.ts$" },
       to: { path: "^src/", pathNot: "^src/(contract|server/review/domain)" },
     },
     {

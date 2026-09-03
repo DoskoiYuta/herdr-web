@@ -6,10 +6,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parsePatchFiles } from "@pierre/diffs";
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import type { PatchResponse } from "@contract/git";
+import type { ReviewTarget, Side } from "@contract/review";
+import { buildAnchor } from "@/lib/anchor";
+import { gitApi, reviewApi, type ForDiffMatch } from "@/lib/api";
+import type { ReviewEvent } from "@/lib/herdrStore";
+import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
 import Banners from "./Banners.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
@@ -17,6 +22,12 @@ import FileTree from "./FileTree.tsx";
 import { usePatch } from "./hooks/usePatch.ts";
 import { reconcile, summarize } from "./reconcile.ts";
 import type { FileMap } from "./reconcile.ts";
+import {
+  buildAnnotations,
+  fromAnnotationSide,
+  type ReviewAnnotationMeta,
+} from "./reviewAnnotations.ts";
+import { lineNumberToIndex, sideLines } from "./sideLines.ts";
 import {
   DEFAULT_SETTINGS,
   initialBannerState,
@@ -30,6 +41,8 @@ import type { BannerState, Settings } from "./state.ts";
 import StatusLine from "./StatusLine.tsx";
 import { buildTree, fileStats, fileStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
+
+const FOR_DIFF_DEBOUNCE_MS = 200;
 
 const SETTINGS_KEY = "herdr-web:diff-settings";
 /** A scrollTop at or below this is "at the top" for auto-apply purposes. */
@@ -85,15 +98,36 @@ export function comparisonLabel(from: string | undefined, to: string | undefined
   return `${shorten(toLabel)} vs ${shorten(fromLabel)}`;
 }
 
+/** Where the Review タブ asked DiffPanel to jump (plan.md F5-8). */
+export interface DiffInitialLocation {
+  path: string;
+  line: number;
+  side: Side;
+}
+
 export interface DiffPanelProps {
   repo: string;
+  /** リポジトリキー（git-common-dir 絶対パス）。レビュー API の `repo`。null/未指定なら herdr 未接続などでまだ解決できていない。 */
+  repoKey?: string | null;
   from?: string;
   to?: string;
   /** Bumped by the parent whenever this repo's git state is known to have changed. */
   repoChangedTick: number;
+  /** F5-9: review / review-notify WS イベントを購読し、インライン表示を追従させる。 */
+  subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
+  /** Review タブからのジャンプ先（F5-8）。一度消費したら親が null に戻す想定。 */
+  initialLocation?: DiffInitialLocation | null;
 }
 
-export function DiffPanel({ repo, from, to, repoChangedTick }: DiffPanelProps) {
+export function DiffPanel({
+  repo,
+  repoKey = null,
+  from,
+  to,
+  repoChangedTick,
+  subscribeReviewEvents,
+  initialLocation = null,
+}: DiffPanelProps) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   useEffect(() => saveSettings(settings), [settings]);
 
@@ -289,6 +323,238 @@ export function DiffPanel({ repo, from, to, repoChangedTick }: DiffPanelProps) {
     return buildTree(entries);
   }, [items, untrackedByName]);
 
+  // -------------------------------------------------------------------
+  // F3-6 / F5: line-selection comment composer + inline review annotations.
+  // -------------------------------------------------------------------
+  const target: ReviewTarget = useMemo(() => {
+    const toResolved = to ?? "WORKTREE";
+    return toResolved === "WORKTREE" || toResolved === "INDEX"
+      ? { kind: "worktree", root: repo }
+      : { kind: "commit", hash: toResolved };
+  }, [repo, to]);
+
+  // createdAtHead (plan §F5-1) — fetched once per repo/tick, best-effort.
+  const headRef = useRef<string | null>(null);
+  useEffect(() => {
+    headRef.current = null;
+    if (!repo) return;
+    let cancelled = false;
+    void gitApi
+      .root(repo)
+      .then((info) => {
+        if (!cancelled) headRef.current = info.head;
+      })
+      .catch(() => {
+        // best-effort: a create without a resolved head still gets "" (server can reject if it must be non-empty)
+      });
+    return () => {
+      cancelled = true;
+    };
+    // repoChangedTick isn't read in the body but intentionally forces a
+    // re-fetch when the repo's git state moves (same tick pattern usePatch.ts uses).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, repoChangedTick]);
+
+  const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
+  const [matchesByPath, setMatchesByPath] = useState<Map<string, ForDiffMatch[]>>(new Map());
+
+  const forDiffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshMatches = useCallback(() => {
+    if (forDiffTimerRef.current) clearTimeout(forDiffTimerRef.current);
+    forDiffTimerRef.current = setTimeout(() => {
+      if (!repoKey) return;
+      const fromResolved = from ?? "HEAD";
+      const toResolved = to ?? "WORKTREE";
+      for (const file of parsedFiles) {
+        void reviewApi
+          .forDiff({
+            repo: repoKey,
+            worktreeRoot: repo,
+            from: fromResolved,
+            to: toResolved,
+            path: file.name,
+            sideLines: sideLines(file),
+          })
+          .then((matches) => {
+            setMatchesByPath((prev) => {
+              const next = new Map(prev);
+              next.set(file.name, matches);
+              return next;
+            });
+          })
+          .catch(() => {
+            // インライン表示は best-effort。失敗しても diff 自体は読める。
+          });
+      }
+    }, FOR_DIFF_DEBOUNCE_MS);
+  }, [repoKey, repo, from, to, parsedFiles]);
+
+  useEffect(() => {
+    refreshMatches();
+    return () => {
+      if (forDiffTimerRef.current) clearTimeout(forDiffTimerRef.current);
+    };
+  }, [refreshMatches]);
+
+  // F5-9: review / review-notify WS イベントで再フェッチする。ペイロードは
+  // contract/events.ts では `v.unknown()`（review モジュールの型を web から
+  // import できないため opaque）なので、repo で絞り込まずデバウンス経由で
+  // 常に再フェッチする（コストは低い: forDiff はファイル単位で軽量）。
+  useEffect(() => {
+    if (!subscribeReviewEvents) return;
+    return subscribeReviewEvents(() => refreshMatches());
+  }, [subscribeReviewEvents, refreshMatches]);
+
+  const composerTarget = useMemo(() => {
+    if (!selection) return null;
+    const side: Side = selection.range.side ? fromAnnotationSide(selection.range.side) : "new";
+    return { id: selection.id, side, lineNumber: selection.range.start };
+  }, [selection]);
+
+  const cancelComposer = useCallback(() => setSelection(null), []);
+
+  const submitComposer = useCallback(
+    async (body: string) => {
+      if (!composerTarget || !repoKey) {
+        showToast("レビューを作成できません（リポジトリを解決できていません）");
+        return;
+      }
+      const item = items.find((i) => i.id === composerTarget.id);
+      if (!item) return;
+      const fileDiff = item.fileDiff;
+      const lines = sideLines(fileDiff)[composerTarget.side];
+      const index0 = lineNumberToIndex(fileDiff, composerTarget.side, composerTarget.lineNumber);
+      if (index0 === null) {
+        showToast("行を特定できませんでした");
+        return;
+      }
+      try {
+        const anchor = await buildAnchor(lines, index0, composerTarget.side);
+        await reviewApi.create({
+          repo: repoKey,
+          worktreeRoot: repo,
+          target,
+          path: fileDiff.name,
+          anchor,
+          createdAtHead: headRef.current ?? "",
+          viewedAs: { from: from ?? "HEAD", to: to ?? "WORKTREE" },
+          body,
+        });
+        setSelection(null);
+        refreshMatches();
+      } catch {
+        showToast("コメントの投稿に失敗しました");
+      }
+    },
+    [composerTarget, repoKey, items, repo, target, from, to, refreshMatches, showToast],
+  );
+
+  const handleReply = useCallback(
+    async (id: string, body: string) => {
+      try {
+        await reviewApi.reply(id, { body, author: "user" });
+        refreshMatches();
+      } catch {
+        showToast("返信に失敗しました");
+      }
+    },
+    [refreshMatches, showToast],
+  );
+
+  const handleResolve = useCallback(
+    async (id: string) => {
+      try {
+        await reviewApi.resolve(id);
+        refreshMatches();
+      } catch {
+        showToast("解決に失敗しました");
+      }
+    },
+    [refreshMatches, showToast],
+  );
+
+  const handleReanchor = useCallback(
+    async (id: string) => {
+      try {
+        await reviewApi.reanchor(id);
+        refreshMatches();
+      } catch {
+        showToast("再アンカーに失敗しました");
+      }
+    },
+    [refreshMatches, showToast],
+  );
+
+  const handleResend = useCallback(
+    async (id: string) => {
+      try {
+        await reviewApi.notify(id);
+        refreshMatches();
+      } catch {
+        showToast("再送に失敗しました");
+      }
+    },
+    [refreshMatches, showToast],
+  );
+
+  const itemsWithAnnotations = useMemo<CodeViewDiffItem<ReviewAnnotationMeta>[]>(() => {
+    return items.map((item) => {
+      const matches = matchesByPath.get(item.fileDiff.name) ?? [];
+      const composer =
+        composerTarget && composerTarget.id === item.id
+          ? { side: composerTarget.side, lineNumber: composerTarget.lineNumber }
+          : null;
+      return { ...item, annotations: buildAnnotations(item.fileDiff, matches, composer) };
+    });
+  }, [items, matchesByPath, composerTarget]);
+
+  const renderAnnotation = useCallback(
+    (annotation: { metadata?: ReviewAnnotationMeta }) => {
+      const meta = annotation.metadata;
+      if (!meta) return null;
+      if (meta.kind === "composer") {
+        return <ComposerAnnotation onCancel={cancelComposer} onSubmit={submitComposer} />;
+      }
+      return (
+        <ReviewsAnnotation
+          matches={meta.matches}
+          onReply={handleReply}
+          onResolve={handleResolve}
+          onReanchor={handleReanchor}
+          onResend={handleResend}
+        />
+      );
+    },
+    [cancelComposer, submitComposer, handleReply, handleResolve, handleReanchor, handleResend],
+  );
+
+  // F5-8: Review タブから該当ファイル/行へジャンプする。selectedId は
+  // 「prop/derived value の変化に反応して state を調整する」React 公式パターン
+  // で render 中に合わせ込み（selectFile 等と同じ発想）、DiffView への命令的
+  // scroll だけを effect に残す — effect 内で直接 setState すると
+  // react(set-state-in-effect) に引っかかるため。
+  const [prevInitialLocation, setPrevInitialLocation] = useState(initialLocation);
+  if (initialLocation !== prevInitialLocation) {
+    setPrevInitialLocation(initialLocation);
+    if (initialLocation) {
+      const item = items.find((i) => i.fileDiff.name === initialLocation.path);
+      if (item && item.id !== selectedId) setSelectedId(item.id);
+    }
+  }
+
+  useEffect(() => {
+    if (!initialLocation) return;
+    const item = items.find((i) => i.fileDiff.name === initialLocation.path);
+    if (!item) return;
+    diffViewRef.current?.scrollToItem(item.id);
+    diffViewRef.current?.scrollToLine(
+      item.id,
+      initialLocation.line,
+      initialLocation.side === "old" ? "deletions" : "additions",
+    );
+  }, [initialLocation, items]);
+
   return (
     <div id="diff-panel" className="flex h-full min-h-0 flex-col">
       <Toolbar
@@ -343,12 +609,15 @@ export function DiffPanel({ repo, from, to, repoChangedTick }: DiffPanelProps) {
           <div className="min-h-0 flex-1">
             <DiffView
               ref={diffViewRef}
-              items={items}
+              items={itemsWithAnnotations}
               settings={settings}
               repo={repo}
               onToast={showToast}
               onTopItemChange={handleTopItemChange}
               onScrollTopChange={handleScrollTopChange}
+              selectedLines={selection}
+              onSelectedLinesChange={setSelection}
+              renderAnnotation={renderAnnotation}
             />
           </div>
         </div>

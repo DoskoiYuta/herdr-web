@@ -1,11 +1,15 @@
 import { Check, Copy } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
-import { DiffPanel } from "@/components/diff/DiffPanel";
+import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
+import { useReviewList } from "@/components/review/hooks/useReviewList";
+import { ReviewPanel, type ReviewNavigation } from "@/components/review/ReviewPanel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gitApi } from "@/lib/api";
+import type { ReviewEvent } from "@/lib/herdrStore";
 
 export type CommitRange = { from: string; to: string } | null;
 
@@ -18,11 +22,15 @@ export type ToolPaneFocusInfo = {
 
 export interface ToolPaneProps {
   worktreeRoot: string | null;
+  /** リポジトリキー（git-common-dir 絶対パス）。レビュー API に渡す `repo`。 */
+  repoKey?: string | null;
   pinned: boolean;
   onPinToggle: () => void;
   repoChangedTick: number;
   onOpenPath: (root: string) => void;
   focusInfo?: ToolPaneFocusInfo | null;
+  /** F5-9: review / review-notify WS イベントの購読（herdrStore から渡す）。 */
+  subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
 }
 
 function ResumeCopyButton({ sessionId }: { sessionId: string }) {
@@ -119,13 +127,17 @@ function OpenPathForm({ onOpenPath }: { onOpenPath: (root: string) => void }) {
 
 export function ToolPane({
   worktreeRoot,
+  repoKey = null,
   pinned,
   onPinToggle,
   repoChangedTick,
   onOpenPath,
   focusInfo,
+  subscribeReviewEvents,
 }: ToolPaneProps) {
   const [comparison, setComparison] = useState<CommitRange>(null);
+  const [activeTab, setActiveTab] = useState("diff");
+  const [initialLocation, setInitialLocation] = useState<DiffInitialLocation | null>(null);
 
   const handleSelectCommit = useCallback((range: CommitRange) => {
     setComparison(range);
@@ -134,6 +146,28 @@ export function ToolPane({
   const resetToWorktree = useCallback(() => {
     setComparison(null);
   }, []);
+
+  const handleReviewNavigate = useCallback((nav: ReviewNavigation) => {
+    setComparison(nav.comparison);
+    setInitialLocation(nav.location);
+    setActiveTab("diff");
+  }, []);
+
+  // Review タブのバッジ用未解決件数（F5-8）。worktree に付いた未コミットのレビュー
+  // + HEAD から到達可能な commit 付きレビューのうち open/replied。
+  const [reviewTick, setReviewTick] = useState(0);
+  const badgeQuery = useReviewList(
+    repoKey && worktreeRoot ? { repo: repoKey, worktree: worktreeRoot, all: true } : null,
+    reviewTick,
+  );
+  const unresolvedCount = (badgeQuery.data ?? []).filter(
+    (r) => r.status === "open" || r.status === "replied",
+  ).length;
+
+  useEffect(() => {
+    if (!subscribeReviewEvents) return;
+    return subscribeReviewEvents(() => setReviewTick((t) => t + 1));
+  }, [subscribeReviewEvents]);
 
   if (!worktreeRoot) {
     return (
@@ -164,11 +198,18 @@ export function ToolPane({
 
       {focusInfo && <FocusInfoBar focusInfo={focusInfo} />}
 
-      <Tabs defaultValue="diff" className="min-h-0 flex-1">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1">
         <TabsList className="mx-2 mt-2 w-fit">
           <TabsTrigger value="diff">Diff</TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
-          <TabsTrigger value="review">Review</TabsTrigger>
+          <TabsTrigger value="review" className="gap-1">
+            Review
+            {unresolvedCount > 0 && (
+              <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">
+                {unresolvedCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
@@ -184,9 +225,12 @@ export function ToolPane({
           )}
           <DiffPanel
             repo={worktreeRoot}
+            repoKey={repoKey}
             from={comparison?.from}
             to={comparison?.to}
             repoChangedTick={repoChangedTick}
+            subscribeReviewEvents={subscribeReviewEvents}
+            initialLocation={initialLocation}
           />
         </TabsContent>
 
@@ -198,11 +242,13 @@ export function ToolPane({
           />
         </TabsContent>
 
-        <TabsContent
-          value="review"
-          className="min-h-0 flex-1 overflow-hidden p-2 text-sm text-muted-foreground"
-        >
-          レビューは未実装です。
+        <TabsContent value="review" className="min-h-0 flex-1 overflow-hidden">
+          <ReviewPanel
+            repoKey={repoKey}
+            worktreeRoot={worktreeRoot}
+            subscribeReviewEvents={subscribeReviewEvents}
+            onNavigate={handleReviewNavigate}
+          />
         </TabsContent>
       </Tabs>
     </div>

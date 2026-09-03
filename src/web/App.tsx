@@ -153,6 +153,7 @@ export function App() {
             repoChangedTick={repoChangedTick}
             onOpenPath={handleOpenPath}
             focusInfo={worktreeRoot ? focusInfo : null}
+            subscribeReviewEvents={store.subscribeReviewEvents}
           />
         )}
       </aside>
