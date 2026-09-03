@@ -35,7 +35,6 @@ const fromSelectValue = (v: string) => (v === ROOT_SELECT_VALUE ? "" : v);
 const SUB_REPO_KIND_LABEL: Record<SubRepo["kind"], string> = {
   root: "",
   submodule: "submodule",
-  nested: ".repos",
   vcs: "vcstool",
 };
 

@@ -208,7 +208,7 @@ export const SubReposQuerySchema = v.object({
 });
 export type SubReposQuery = v.InferOutput<typeof SubReposQuerySchema>;
 
-export const SubRepoKindSchema = v.picklist(["root", "submodule", "nested", "vcs"]);
+export const SubRepoKindSchema = v.picklist(["root", "submodule", "vcs"]);
 export type SubRepoKind = v.InferOutput<typeof SubRepoKindSchema>;
 
 export const SubRepoSchema = v.object({

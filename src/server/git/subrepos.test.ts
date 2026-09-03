@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { realpath as realpathAsync } from "node:fs/promises";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 describe("listSubRepos", () => {
-  test("just the root when there are no submodules or .repos children", async () => {
+  test("just the root when there are no submodules or vcstool entries", async () => {
     const dir = await makeRepo();
     await commit(dir, "a.txt", "a\n");
 
@@ -72,29 +72,5 @@ describe("listSubRepos", () => {
     const submodule = repos.find((r) => r.id === "vendor/lib");
     expect(submodule?.root).toBe(await realpathAsync(join(dir, "vendor/lib")));
     expect(submodule?.name).toBe("lib");
-  });
-
-  test("lists .repos/<child> directories that are their own git worktree roots", async () => {
-    const dir = await makeRepo();
-    await commit(dir, "a.txt", "a\n");
-
-    await mkdir(join(dir, ".repos"), { recursive: true });
-    const nested = join(dir, ".repos", "nested-a");
-    await mkdir(nested, { recursive: true });
-    await execFileP("git", ["init", "-q", "-b", "main"], { cwd: nested });
-    await execFileP("git", ["config", "user.name", "Test"], { cwd: nested });
-    await execFileP("git", ["config", "user.email", "test@example.com"], { cwd: nested });
-    await commit(nested, "b.txt", "b\n");
-
-    // A plain (non-repo) directory under .repos/ should be skipped.
-    await mkdir(join(dir, ".repos", "not-a-repo"), { recursive: true });
-
-    const repos = await listSubRepos(dir);
-    expect(repos.map((r) => ({ id: r.id, kind: r.kind, name: r.name }))).toEqual([
-      { id: "", kind: "root", name: expect.any(String) },
-      { id: ".repos/nested-a", kind: "nested", name: "nested-a" },
-    ]);
-    const child = repos.find((r) => r.id === ".repos/nested-a");
-    expect(child?.root).toBe(await realpathAsync(nested));
   });
 });
