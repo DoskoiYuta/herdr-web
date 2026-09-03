@@ -22,6 +22,9 @@ export const reviews = sqliteTable(
     viewedFrom: text("viewed_from").notNull(),
     viewedTo: text("viewed_to").notNull(),
     status: text("status").notNull(), // "open" | "replied" | "resolved" | "outdated"
+    notifyState: text("notify_state").notNull().default("none"),
+    notifyPane: text("notify_pane"),
+    notifyAt: text("notify_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

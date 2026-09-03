@@ -105,8 +105,7 @@ describe("reviewRoutes", () => {
     expect(body.status).toBe("open");
 
     timer.advance(10_000);
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
     expect(notifier.calls).toHaveLength(1);
   });
 
@@ -258,6 +257,19 @@ describe("reviewRoutes", () => {
     expect(matches[0].review.id).toBe("generated-id");
   });
 
+  // F9: an unresolvable `since` rev surfaces as 400, not a silent empty list.
+  test("GET / with worktree and an invalid `since` rev returns 400", async () => {
+    const { app, gitHistory } = buildApp();
+    gitHistory.heads.set("/repo", "head1");
+    gitHistory.ranges.set("/repo:not-a-rev~1..head1", null);
+    gitHistory.ranges.set("/repo:not-a-rev..head1", null);
+
+    const res = await app.request("/?repo=/repo/.git&worktree=/repo&since=not-a-rev");
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.type).toBe("invalid_rev");
+  });
+
   test("POST /:id/reanchor applies a manual reanchor", async () => {
     const { app } = buildApp();
     await app.request("/", {
@@ -310,5 +322,34 @@ describe("repoRoutes", () => {
 
     const review = await repository.get("generated-id");
     expect(review?.worktreeRoot).toBe("/new/repo");
+  });
+
+  // F8: moving onto an already-registered repo key must be rejected, not silently merged.
+  test("POST /move onto an existing repo key returns 409", async () => {
+    const { app, repoApp } = buildApp();
+    await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(CREATE_BODY),
+    });
+    await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...CREATE_BODY,
+        repo: "/other/.git",
+        worktreeRoot: "/other",
+        target: { kind: "worktree", root: "/other" },
+      }),
+    });
+
+    const res = await repoApp.request("/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from: "/repo/.git", to: "/other/.git" }),
+    });
+    expect(res.status).toBe(409);
+    const body = await json(res);
+    expect(body.type).toBe("already_exists");
   });
 });

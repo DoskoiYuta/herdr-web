@@ -158,4 +158,23 @@ describe("createHerdrState", () => {
     await Promise.resolve();
     expect(store.get().panes.size).toBe(snapshot.panes.length - 1);
   });
+
+  // Minor fix: on disconnect, the store must drop its snapshot immediately —
+  // otherwise a notifier reading `state.get().panes` could target a pane that
+  // no longer exists (a "ghost pane") until the next reconnect's snapshot.
+  test("on disconnect, resets the store to empty and notifies reset", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const store = createHerdrState(gw);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.get().panes.size).toBe(snapshot.panes.length);
+
+    const changes: import("./state").StateChange[] = [];
+    store.onChange((c) => changes.push(c));
+    gw.setStatus({ connected: false, protocol: null });
+
+    expect(store.get().panes.size).toBe(0);
+    expect(store.get().focusedPaneId).toBeNull();
+    expect(changes).toContainEqual({ kind: "reset" });
+  });
 });

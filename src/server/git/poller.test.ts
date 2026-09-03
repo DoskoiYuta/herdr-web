@@ -90,6 +90,42 @@ describe("createWorktreePoller", () => {
     poller.stop();
     expect(statuses.some((s) => s !== null)).toBe(true);
   });
+
+  // F6: a "not a git repository" failure must be classified as "missing" so
+  // bootstrap.ts can outdate that worktree's reviews, and any other failure
+  // must be classified as "other" so it's just logged, not treated as removal.
+  test("classifies a not-a-git-repo error as kind=missing", async () => {
+    const notARepo = await mkdtemp(join(tmpdir(), "herdr-web-poller-kind-"));
+    dirs.push(notARepo);
+    const kinds: (string | undefined)[] = [];
+    const poller = createWorktreePoller({
+      root: notARepo,
+      intervalMs: 20,
+      onStatus: (s) => {
+        if (s.error) kinds.push(s.kind);
+      },
+    });
+    await poller.start();
+    poller.stop();
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds.every((k) => k === "missing")).toBe(true);
+  });
+
+  test("classifies a deleted worktree root (ENOENT) as kind=missing", async () => {
+    const dir = join(tmpdir(), `herdr-web-poller-gone-${Date.now()}`);
+    const kinds: (string | undefined)[] = [];
+    const poller = createWorktreePoller({
+      root: dir,
+      intervalMs: 20,
+      onStatus: (s) => {
+        if (s.error) kinds.push(s.kind);
+      },
+    });
+    await poller.start();
+    poller.stop();
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds.every((k) => k === "missing")).toBe(true);
+  });
 });
 
 describe("createPollerRegistry", () => {

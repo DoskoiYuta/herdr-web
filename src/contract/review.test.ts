@@ -23,6 +23,7 @@ function sampleReview(): Record<string, unknown> {
     thread: [
       { seq: 0, author: "user", body: "why?", at: new Date().toISOString(), agentSession: null },
     ],
+    notify: { state: "none", pane: null, at: null },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -42,6 +43,29 @@ describe("ReviewSchema", () => {
   test("rejects an unknown target kind", () => {
     const r = sampleReview();
     r.target = { kind: "branch", name: "main" };
+    expect(v.safeParse(ReviewSchema, r).success).toBe(false);
+  });
+
+  // F5: notify.state must persist the full result set, including the two
+  // states that only exist server-side (pending before the first send, and
+  // unknown after an exception/timeout during notification).
+  test("accepts every notify.state value", () => {
+    for (const state of ["pending", "sent", "agent_blocked", "no_target", "unknown", "none"]) {
+      const r = sampleReview();
+      r.notify = { state, pane: state === "sent" ? "p1" : null, at: null };
+      expect(v.safeParse(ReviewSchema, r).success).toBe(true);
+    }
+  });
+
+  test("rejects an unknown notify.state value", () => {
+    const r = sampleReview();
+    r.notify = { state: "bogus", pane: null, at: null };
+    expect(v.safeParse(ReviewSchema, r).success).toBe(false);
+  });
+
+  test("rejects a review missing notify entirely", () => {
+    const r = sampleReview();
+    delete r.notify;
     expect(v.safeParse(ReviewSchema, r).success).toBe(false);
   });
 });

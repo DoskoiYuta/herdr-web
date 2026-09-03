@@ -45,6 +45,7 @@ export function createReview(input: CreateReviewInput, clock: Clock): Review {
     viewedAs: input.viewedAs,
     status: "open",
     thread: [entry],
+    notify: { state: "pending", pane: null, at: null },
     createdAt: now,
     updatedAt: now,
   };
@@ -159,4 +160,16 @@ export function retargetCommit(
     return err(domainError("not_commit_bound", "review is not commit-bound"));
   }
   return ok({ ...review, target: { kind: "commit", hash }, updatedAt: clock.now().toISOString() });
+}
+
+/** worktree 付きレビューが git mv でリネームされたファイルを追いかける (F10)。status は変えない。 */
+export function moveToPath(
+  review: Review,
+  newPath: string,
+  clock: Clock,
+): Result<Review, DomainError> {
+  if (review.target.kind !== "worktree") {
+    return err(domainError("not_outdatable", "only worktree-bound reviews can follow a rename"));
+  }
+  return ok({ ...review, path: newPath, updatedAt: clock.now().toISOString() });
 }

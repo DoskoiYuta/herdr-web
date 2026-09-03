@@ -1,5 +1,6 @@
 import type { RepoRecord, Review } from "../../../contract/review";
 import type { Clock } from "../domain/clock";
+import { RepoMoveTargetExistsError } from "../ports";
 import type {
   AgentNotifier,
   GitHistory,
@@ -116,6 +117,9 @@ export class FakeReviewRepository implements ReviewRepository {
   }
 
   async moveRepo(from: string, to: string): Promise<{ repos: number; reviews: number }> {
+    if (to !== from && this.repos.has(to)) {
+      throw new RepoMoveTargetExistsError(to);
+    }
     const rewrite = (value: string): string | null => {
       if (value === from) return to;
       if (value.startsWith(`${from}/`)) return to + value.slice(from.length);
@@ -161,7 +165,9 @@ export class FakeGitHistory implements GitHistory {
   heads = new Map<string, string>();
   /** ancestor -> Set<descendant> の到達可能グラフを手で組み立てる */
   ancestryOf = new Map<string, Set<string>>();
-  ranges = new Map<string, string[]>();
+  /** null を明示的に入れると revRange が「無効な rev」(F9) を返す */
+  ranges = new Map<string, string[] | null>();
+  renames = new Map<string, string | null>();
 
   async headOf(root: string): Promise<string | null> {
     return this.heads.get(root) ?? null;
@@ -172,8 +178,13 @@ export class FakeGitHistory implements GitHistory {
     return this.ancestryOf.get(ancestor)?.has(descendant) ?? false;
   }
 
-  async revRange(root: string, from: string, to: string): Promise<string[]> {
-    return this.ranges.get(`${root}:${from}..${to}`) ?? [];
+  async revRange(root: string, from: string, to: string): Promise<string[] | null> {
+    const key = `${root}:${from}..${to}`;
+    return this.ranges.has(key) ? this.ranges.get(key)! : [];
+  }
+
+  async renamedPath(root: string, sinceHead: string, path: string): Promise<string | null> {
+    return this.renames.get(`${root}:${sinceHead}:${path}`) ?? null;
   }
 }
 

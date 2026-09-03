@@ -30,6 +30,24 @@ export type Anchor = v.InferOutput<typeof AnchorSchema>;
 export const ReviewStatusSchema = v.picklist(["open", "replied", "resolved", "outdated"]);
 export type ReviewStatus = v.InferOutput<typeof ReviewStatusSchema>;
 
+/** 通知の結果状態。`pending` は作成直後（未送信）、`none` は移行前の既定値。 */
+export const NotifyStateSchema = v.picklist([
+  "pending",
+  "sent",
+  "agent_blocked",
+  "no_target",
+  "unknown",
+  "none",
+]);
+export type NotifyState = v.InferOutput<typeof NotifyStateSchema>;
+
+export const NotifySchema = v.object({
+  state: NotifyStateSchema,
+  pane: v.nullable(v.string()),
+  at: v.nullable(v.string()),
+});
+export type Notify = v.InferOutput<typeof NotifySchema>;
+
 export const EntryAuthorSchema = v.picklist(["user", "agent"]);
 export type EntryAuthor = v.InferOutput<typeof EntryAuthorSchema>;
 
@@ -61,6 +79,8 @@ export const ReviewSchema = v.object({
   status: ReviewStatusSchema,
   /** thread[0] が最初のコメント（author: "user"） */
   thread: v.array(EntrySchema),
+  /** 通知の状態（永続化、drain 用）。§F5-6 */
+  notify: NotifySchema,
   createdAt: v.string(),
   updatedAt: v.string(),
 });

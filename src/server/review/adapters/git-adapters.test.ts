@@ -53,6 +53,7 @@ function reviewWith(anchor: Review["anchor"], root: string, createdAtHead: strin
     viewedAs: { from: "HEAD", to: "WORKTREE" },
     status: "open",
     thread: [],
+    notify: { state: "none", pane: null, at: null },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -80,6 +81,32 @@ describe("createGitHistory", () => {
     dirs.push(dir);
     await git(dir, "init", "-q");
     expect(await createGitHistory().headOf(dir)).toBeNull();
+  });
+
+  // F6: a deleted worktree root must resolve headOf to null, not reject.
+  test("headOf on a missing directory resolves null instead of rejecting", async () => {
+    const dir = join(tmpdir(), `hw-missing-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await expect(createGitHistory().headOf(dir)).resolves.toBeNull();
+  });
+
+  // F9: an invalid `since` rev must be reported distinctly from "empty range".
+  test("revRange returns null for an unresolvable `from` rev (F9 invalid_rev)", async () => {
+    const root = await makeRepo();
+    const h = createGitHistory();
+    const head = (await h.headOf(root))!;
+    expect(await h.revRange(root, "not-a-real-rev", head)).toBeNull();
+    expect(await h.revRange(root, head, head)).toEqual([]);
+  });
+
+  // F10: follow a `git mv` rename so a side=new anchor isn't outdated needlessly.
+  test("renamedPath finds the new name of a file renamed since sinceHead", async () => {
+    const root = await makeRepo();
+    const h = createGitHistory();
+    const since = (await h.headOf(root))!;
+    await exec("git", ["mv", "a.txt", "b.txt"], { cwd: root });
+    await git(root, "commit", "-qam", "rename a to b");
+    expect(await h.renamedPath(root, since, "a.txt")).toBe("b.txt");
+    expect(await h.renamedPath(root, since, "nonexistent.txt")).toBeNull();
   });
 });
 

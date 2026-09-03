@@ -18,15 +18,29 @@ export interface ReviewRepository {
   upsertRepo(repo: RepoRecord): Promise<void>;
   getRepo(key: string): Promise<RepoRecord | null>;
   listRepos(): Promise<RepoRecord[]>;
-  /** repos.key / reviews.repo / reviews.worktree_root / worktree target を前方一致で書き換える */
+  /**
+   * repos.key / reviews.repo / reviews.worktree_root / worktree target を前方一致で書き換える。
+   * `to` が既に別リポジトリのキーとして登録済みなら `RepoMoveTargetExistsError` を投げる（F8）。
+   */
   moveRepo(from: string, to: string): Promise<{ repos: number; reviews: number }>;
+}
+
+/** F8: `moveRepo` の `to` が既に別リポジトリのキーとして登録されている場合に投げる */
+export class RepoMoveTargetExistsError extends Error {
+  readonly to: string;
+  constructor(to: string) {
+    super(`repo move target already exists: ${to}`);
+    this.to = to;
+  }
 }
 
 export interface GitHistory {
   headOf(root: string): Promise<string | null>;
   isAncestor(root: string, ancestor: string, descendant: string): Promise<boolean>;
-  /** from..to にあるコミット一覧 */
-  revRange(root: string, from: string, to: string): Promise<string[]>;
+  /** from..to にあるコミット一覧。`from` が無効な rev なら null（F9: invalid_rev） */
+  revRange(root: string, from: string, to: string): Promise<string[] | null>;
+  /** sinceHead..HEAD で `path` がリネームされていれば新しいパスを返す（F10） */
+  renamedPath(root: string, sinceHead: string, path: string): Promise<string | null>;
 }
 
 export interface IntroducingCommitFinder {
@@ -39,12 +53,14 @@ export interface WorktreeFileReader {
   readLines(root: string, path: string): Promise<string[] | null>;
 }
 
+export type NotifyResult = "sent" | "agent_blocked" | "no_target" | "unknown";
+
 export interface AgentNotifier {
   notify(input: {
     worktreeRoot: string;
     commit: string | null;
     reviewIds: string[];
-  }): Promise<{ result: "sent" | "agent_blocked" | "no_target"; pane: string | null }>;
+  }): Promise<{ result: NotifyResult; pane: string | null }>;
 }
 
 export type ReviewEvent =
@@ -56,7 +72,7 @@ export type ReviewEvent =
   | {
       type: "review-notify";
       reviewId: string;
-      result: "sent" | "agent_blocked" | "no_target";
+      result: NotifyResult;
       pane: string | null;
     };
 

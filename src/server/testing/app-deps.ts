@@ -43,7 +43,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     db,
     herdr: { state, gateway: fake, resolver },
     onEvent: (e) => events.push(e),
-    logger: { warn() {}, error() {} },
+    logger: { info() {}, warn() {}, error() {} },
   });
   const deps: AppDeps = {
     version: "test",

@@ -39,11 +39,19 @@ export interface ChangedInfo {
   head: string | null;
 }
 
+/** F6: classifies a poller failure so callers can tell "the worktree root is gone" from anything else. */
+export type PollerErrorKind = "missing" | "other";
+
+function classifyPollerError(message: string): PollerErrorKind {
+  if (/ENOENT/i.test(message) || /not a git repository/i.test(message)) return "missing";
+  return "other";
+}
+
 export interface CreateWorktreePollerOptions {
   root: string;
   intervalMs?: number;
   onChanged?: (info: ChangedInfo) => void;
-  onStatus?: (info: { error: string | null }) => void;
+  onStatus?: (info: { error: string | null; kind?: PollerErrorKind }) => void;
 }
 
 export interface WorktreePoller {
@@ -93,7 +101,7 @@ export function createWorktreePoller({
       const message = String(err instanceof Error ? err.message : err).split("\n")[0] ?? "";
       if (message !== error) {
         error = message;
-        onStatus?.({ error: message });
+        onStatus?.({ error: message, kind: classifyPollerError(message) });
       }
     } finally {
       inFlight = false;
@@ -128,7 +136,7 @@ export function createWorktreePoller({
 export interface PollerRegistryOptions {
   intervalMs?: number;
   onChanged?: (info: ChangedInfo) => void;
-  onStatus?: (info: { root: string; error: string | null }) => void;
+  onStatus?: (info: { root: string; error: string | null; kind?: PollerErrorKind }) => void;
 }
 
 export interface PollerRegistry {
@@ -165,7 +173,7 @@ export function createPollerRegistry({
         root,
         intervalMs,
         onChanged: (info) => onChanged?.(info),
-        onStatus: (info) => onStatus?.({ root, error: info.error }),
+        onStatus: (info) => onStatus?.({ root, error: info.error, kind: info.kind }),
       });
       entries.set(root, { poller, refCount: 1 });
       void poller.start();

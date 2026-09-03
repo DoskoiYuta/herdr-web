@@ -1,4 +1,4 @@
-import { errAsync, ResultAsync } from "neverthrow";
+import { err, ok, ResultAsync, type Result } from "neverthrow";
 import type { Review } from "../../../contract/review";
 import {
   markOutdated,
@@ -16,6 +16,7 @@ import type {
   WorktreeFileReader,
 } from "../ports";
 import { notFound, type UsecaseError } from "./errors";
+import { createLocks, type Locks } from "./locks";
 
 export type ReanchorReviewDeps = {
   repository: ReviewRepository;
@@ -24,91 +25,94 @@ export type ReanchorReviewDeps = {
   gitHistory: GitHistory;
   clock: Clock;
   events: ReviewEvents;
+  /** F4: serializes against reply/resolve/reanchorAfterChange on the same review id */
+  locks?: Locks;
 };
 
 export type ReanchorReviewInput = { id: string; head?: string };
 
 /** POST /api/review/:id/reanchor 用の、単一レビューだけを対象にした手動再アンカー */
 export function reanchorReviewUsecase(deps: ReanchorReviewDeps) {
+  const locks = deps.locks ?? createLocks();
+
   return function reanchorReviewFn(input: ReanchorReviewInput): ResultAsync<Review, UsecaseError> {
-    return ResultAsync.fromSafePromise(deps.repository.get(input.id)).andThen((review) => {
-      if (!review) return errAsync(notFound(`review ${input.id} not found`));
+    return ResultAsync.fromSafePromise(
+      locks.withLock(`review:${input.id}`, async (): Promise<Result<Review, UsecaseError>> => {
+        const review = await deps.repository.get(input.id);
+        if (!review) return err(notFound(`review ${input.id} not found`));
 
-      return ResultAsync.fromSafePromise(
-        (async () => {
-          if (review.target.kind === "worktree") {
-            const head =
-              input.head ??
-              (await deps.gitHistory.headOf(review.worktreeRoot)) ??
-              review.createdAtHead;
-            const lines = await deps.fileReader.readLines(review.worktreeRoot, review.path);
-            let next: Review | null = null;
+        if (review.target.kind === "worktree") {
+          const head =
+            input.head ??
+            (await deps.gitHistory.headOf(review.worktreeRoot)) ??
+            review.createdAtHead;
+          const lines = await deps.fileReader.readLines(review.worktreeRoot, review.path);
+          let next: Review | null = null;
 
-            if (anchorGone(review, lines)) {
-              const r = markOutdated(review, deps.clock);
-              if (r.isOk()) next = r.value;
-            } else {
-              let current = review;
-              if (current.status === "outdated") {
-                // 行が戻っている（または削除が再び有効）なら user の再アンカー成功として open に戻す
-                const r = reopenFromOutdated(current, deps.clock);
-                if (r.isOk()) {
-                  current = r.value;
-                  next = current;
-                }
-              }
-              if (head !== review.createdAtHead) {
-                const commit = await deps.finder.find(
-                  review.worktreeRoot,
-                  review,
-                  review.createdAtHead,
-                );
-                if (commit) {
-                  const r = reanchorToCommit(current, commit, deps.clock);
-                  if (r.isOk()) next = r.value;
-                }
+          if (anchorGone(review, lines)) {
+            const r = markOutdated(review, deps.clock);
+            if (r.isOk()) next = r.value;
+          } else {
+            let current = review;
+            if (current.status === "outdated") {
+              // 行が戻っている（または削除が再び有効）なら user の再アンカー成功として open に戻す
+              const r = reopenFromOutdated(current, deps.clock);
+              if (r.isOk()) {
+                current = r.value;
+                next = current;
               }
             }
-
-            if (next) {
-              await deps.repository.save(next);
-              deps.events.emit({
-                type: "review",
-                event: next.status === "outdated" ? "outdated" : "reanchored",
-                review: next,
-              });
-              return next;
-            }
-            return review;
-          }
-
-          // commit-bound: HEAD の祖先でなくなっていれば内容一致で retarget を試みる
-          const head = input.head ?? (await deps.gitHistory.headOf(review.worktreeRoot));
-          if (head) {
-            const reachable = await deps.gitHistory.isAncestor(
-              review.worktreeRoot,
-              review.target.hash,
-              head,
-            );
-            if (!reachable) {
+            if (head !== review.createdAtHead) {
               const commit = await deps.finder.find(
                 review.worktreeRoot,
                 review,
                 review.createdAtHead,
               );
               if (commit) {
-                const r = retargetCommit(review, commit, deps.clock);
-                if (r.isOk()) {
-                  await deps.repository.save(r.value);
-                  deps.events.emit({ type: "review", event: "reanchored", review: r.value });
-                  return r.value;
-                }
+                const r = reanchorToCommit(current, commit, deps.clock);
+                if (r.isOk()) next = r.value;
               }
             }
           }
-          return review;
-        })(),
-      );
-    });
+
+          if (next) {
+            await deps.repository.save(next);
+            deps.events.emit({
+              type: "review",
+              event: next.status === "outdated" ? "outdated" : "reanchored",
+              review: next,
+            });
+            return ok(next);
+          }
+          return ok(review);
+        }
+
+        // commit-bound: HEAD の祖先でなくなっていれば内容一致で retarget を試みる
+        const head = input.head ?? (await deps.gitHistory.headOf(review.worktreeRoot));
+        if (head) {
+          const reachable = await deps.gitHistory.isAncestor(
+            review.worktreeRoot,
+            review.target.hash,
+            head,
+          );
+          if (!reachable) {
+            const commit = await deps.finder.find(
+              review.worktreeRoot,
+              review,
+              review.createdAtHead,
+            );
+            if (commit) {
+              const r = retargetCommit(review, commit, deps.clock);
+              if (r.isOk()) {
+                await deps.repository.save(r.value);
+                deps.events.emit({ type: "review", event: "reanchored", review: r.value });
+                return ok(r.value);
+              }
+            }
+          }
+        }
+        return ok(review);
+      }),
+    ).andThen((r) => r);
   };
 }

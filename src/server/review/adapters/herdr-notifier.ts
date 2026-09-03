@@ -66,6 +66,13 @@ export function createHerdrNotifier(deps: HerdrNotifierDeps): AgentNotifier {
         }
         return { result: "agent_blocked", pane: target.pane_id };
       } catch (err) {
+        // F7: a transport-level timeout means we genuinely don't know whether
+        // the prompt was ever sent — "agent_blocked" would be a false claim
+        // that herdr rejected it, and would mislead a human into not retrying.
+        if (err instanceof Error && /timed out/i.test(err.message)) {
+          logger.error("notify: agent.prompt timed out", err);
+          return { result: "unknown", pane: target.pane_id };
+        }
         logger.error("notify: agent.prompt failed", err);
         return { result: "agent_blocked", pane: target.pane_id };
       }

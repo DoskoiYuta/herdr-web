@@ -23,7 +23,9 @@ export function createGitIntroducingCommitFinder(history: GitHistory): Introduci
         });
         if (shown.code !== 0) return null;
         const loc = locateAnchor(review.anchor, splitLines(shown.stdout));
-        if (!loc) return null;
+        // F1: a bare line match (no context on either side) is not solid evidence
+        // this is really the annotated line — don't blame it.
+        if (!loc || loc.confidence === "line") return null;
         const blame = await runGit(
           ["blame", "--porcelain", "-L", `${loc.line},${loc.line}`, "HEAD", "--", review.path],
           { cwd: root, okCodes: [0, 128] },

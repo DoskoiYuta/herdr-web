@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { createApp } from "./app";
 import { serveEmbedded } from "./static";
 import type { WebAssets } from "./web-assets";
-import { attachReviewToRuntime, createRuntime } from "./bootstrap";
+import { attachReviewToRuntime, attachWorktreeMissingToReview, createRuntime } from "./bootstrap";
 import { applyEnvOverrides, loadConfig, resolveDbPath } from "./config";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
 import { spawnHerdr } from "./terminal/pty";
@@ -29,17 +29,24 @@ if (config.host !== "127.0.0.1" && config.host !== "localhost" && config.host !=
   );
 }
 
-const runtime = createRuntime({ config });
-
+// Open the DB (and run migrations) BEFORE createRuntime: a DB failure here must
+// not leave sockets/pollers already running with no way to persist reviews.
 const dbPath = resolveDbPath(config);
 await mkdir(dirname(dbPath), { recursive: true });
+const reviewDb = openReviewDb(dbPath);
+
+const runtime = createRuntime({ config });
+
 const review = createReviewRuntime({
   config,
-  db: openReviewDb(dbPath),
+  db: reviewDb,
   herdr: { state: runtime.state, gateway: runtime.gateway, resolver: runtime.resolver },
   onEvent: (e) => runtime.hub.broadcast(e),
 });
 attachReviewToRuntime(runtime, review);
+attachWorktreeMissingToReview(runtime, review);
+// F5: pick back up any notification a debounce timer lost when the process last exited.
+await review.notifyScheduler.drainPending();
 
 const api = createApp({
   version: "0.1.0",

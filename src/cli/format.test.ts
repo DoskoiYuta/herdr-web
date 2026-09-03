@@ -36,6 +36,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
         agentSession: null,
       },
     ],
+    notify: { state: "none", pane: null, at: null },
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,

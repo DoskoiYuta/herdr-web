@@ -21,7 +21,9 @@ import type {
 import { createReviewUsecase } from "./usecases/create-review";
 import { forDiffUsecase } from "./usecases/for-diff";
 import { listVisibleUsecase } from "./usecases/list-visible";
+import { createLocks } from "./usecases/locks";
 import { createNotifyScheduler } from "./usecases/notify-scheduler";
+import { outdateWorktreeUsecase } from "./usecases/outdate-worktree";
 import { reanchorAfterChangeUsecase } from "./usecases/reanchor-after-change";
 import { reanchorReviewUsecase } from "./usecases/reanchor-review";
 import { reassignRepoUsecase } from "./usecases/reassign-repo";
@@ -40,7 +42,7 @@ export type ReviewRuntimeDeps = {
   clock?: Clock;
   timer?: Timer;
   onEvent: (e: ReviewEvent) => void;
-  logger?: Pick<typeof console, "warn" | "error">;
+  logger?: Pick<typeof console, "info" | "warn" | "error">;
 };
 
 export const realTimer: Timer = {
@@ -87,7 +89,14 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
     clock,
     timer,
     debounceMs: deps.config.notify.debounceMs,
+    logger,
   });
+
+  // F4: a single shared lock registry, so a reply/resolve/manual-reanchor can never
+  // race a concurrent reanchorAfterChange and lose one side's update (per-review
+  // locks), and two concurrent reanchorAfterChange passes on the same root serialize
+  // instead of duplicating work (per-root lock).
+  const locks = createLocks();
 
   const reanchorAfterChange = reanchorAfterChangeUsecase({
     repository,
@@ -96,13 +105,18 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
     gitHistory,
     clock,
     events,
+    locks,
+    logger,
   });
+
+  const outdateWorktree = outdateWorktreeUsecase({ repository, clock, events, logger });
 
   return {
     repository,
     gitHistory,
     notifyScheduler,
     reanchorAfterChange,
+    outdateWorktree,
     routes: {
       repository,
       createReview: createReviewUsecase({
@@ -110,9 +124,24 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
         events,
         clock,
         scheduleNotify: (r) => notifyScheduler.schedule(r),
+        // F3: a stale createdAtHead (poller missed a commit, or HEAD moved between
+        // loading the diff and the POST landing) is commit-bound immediately rather
+        // than waiting for the next repo-changed tick.
+        afterCreate: async (review) => {
+          if (review.target.kind !== "worktree") return;
+          const head = await gitHistory.headOf(review.worktreeRoot);
+          if (head && head !== review.createdAtHead) {
+            await reanchorAfterChange({
+              repo: review.repo,
+              worktreeRoot: review.worktreeRoot,
+              prevHead: null,
+              head,
+            });
+          }
+        },
       }),
-      replyToReview: replyToReviewUsecase({ repository, events, clock }),
-      resolveReview: resolveReviewUsecase({ repository, events, clock }),
+      replyToReview: replyToReviewUsecase({ repository, events, clock, locks }),
+      resolveReview: resolveReviewUsecase({ repository, events, clock, locks }),
       listVisible: listVisibleUsecase({ repository, gitHistory }),
       forDiff: forDiffUsecase({ repository }),
       reanchorReview: reanchorReviewUsecase({
@@ -122,6 +151,7 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
         gitHistory,
         clock,
         events,
+        locks,
       }),
       notifyScheduler,
     },

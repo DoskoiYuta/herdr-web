@@ -15,4 +15,14 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "3105271d40d3a7c7ccc589bc6f4a05a249ae7fdbf46749d909e23ee0f6ab1f69",
     bps: true,
   },
+  {
+    sql: [
+      "ALTER TABLE `reviews` ADD `notify_state` text DEFAULT 'none' NOT NULL;",
+      "\nALTER TABLE `reviews` ADD `notify_pane` text;",
+      "\nALTER TABLE `reviews` ADD `notify_at` text;",
+    ],
+    folderMillis: 1788410630244,
+    hash: "06fb4d3dc7c77b0d8be70d0ae5130560b0a23e68a616552a0dea5836a232d945",
+    bps: true,
+  },
 ];

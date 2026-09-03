@@ -37,6 +37,9 @@ export type RepoRoutesDeps = {
 
 function mapUsecaseError(c: Context, error: UsecaseError) {
   if (error.type === "not_found") return c.json({ error: error.message, type: error.type }, 404);
+  if (error.type === "invalid_rev") return c.json({ error: error.message, type: error.type }, 400);
+  if (error.type === "already_exists")
+    return c.json({ error: error.message, type: error.type }, 409);
   return c.json({ error: error.message, type: error.type }, 409);
 }
 
@@ -68,7 +71,10 @@ export function reviewRoutes(deps: ReviewRoutesDeps) {
             path: query.path,
           },
         });
-        return c.json(result._unsafeUnwrap());
+        return result.match(
+          (reviews) => c.json(reviews),
+          (error) => mapUsecaseError(c, error),
+        );
       }
 
       const status = query.status
@@ -138,7 +144,10 @@ export function repoRoutes(deps: RepoRoutesDeps) {
   const app = new Hono().post("/move", vValidator("json", RepoMoveRequestSchema), async (c) => {
     const body = c.req.valid("json");
     const result = await deps.reassignRepo(body);
-    return c.json(result._unsafeUnwrap());
+    return result.match(
+      (counts) => c.json(counts),
+      (error) => mapUsecaseError(c, error),
+    );
   });
 
   return app;

@@ -225,9 +225,16 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
     }
   });
 
-  let wasConnected = false;
+  let wasConnected = gateway.status().connected;
   gateway.onStatus((status) => {
     if (status.connected && !wasConnected) void loadSnapshot();
+    if (!status.connected && wasConnected) {
+      // herdr disconnected: drop the stale snapshot so the notifier (and anything
+      // else reading the store) can never target a pane that may no longer exist —
+      // "ghost panes" would otherwise linger until the next reconnect's snapshot.
+      state = emptyState();
+      notify({ kind: "reset" });
+    }
     wasConnected = status.connected;
   });
   if (gateway.status().connected) void loadSnapshot();

@@ -62,4 +62,50 @@ describe("createHerdrNotifier", () => {
       await notifier.notify({ worktreeRoot: "/wt/A", commit: null, reviewIds: ["1"] }),
     ).toEqual({ result: "agent_blocked", pane: a.pane_id });
   });
+
+  // F7: a transport timeout must not be reported as agent_blocked — we don't actually
+  // know whether herdr received/sent the prompt, so surface it as unknown instead.
+  test("a gateway transport timeout resolves to unknown, not agent_blocked", async () => {
+    const paneId = "w1:p1";
+    const pane = {
+      pane_id: paneId,
+      terminal_id: "t1",
+      workspace_id: "w1",
+      tab_id: "t1",
+      focused: false,
+      agent_status: "idle" as const,
+      revision: 1,
+      agent: "claude",
+      cwd: "/wt/A",
+    };
+    const state = {
+      get: () => ({
+        panes: new Map([[paneId, pane]]),
+        workspaces: new Map(),
+        tabs: new Map(),
+        focusedPaneId: null,
+        focusedWorkspaceId: null,
+        focusedTabId: null,
+      }),
+      onChange: () => () => {},
+    };
+    const gateway = {
+      agentPrompt: async () => {
+        throw new Error("herdr: request agent.prompt timed out after 60000ms");
+      },
+    } as unknown as Parameters<typeof createHerdrNotifier>[0]["gateway"];
+
+    const notifier = createHerdrNotifier({
+      state,
+      gateway,
+      resolver: resolverFor({ "/wt/A": "/wt/A" }),
+      gitHistory: new FakeGitHistory(),
+      template: "{count} 件",
+      logger: { warn() {}, error() {} },
+    });
+
+    expect(
+      await notifier.notify({ worktreeRoot: "/wt/A", commit: null, reviewIds: ["1"] }),
+    ).toEqual({ result: "unknown", pane: paneId });
+  });
 });

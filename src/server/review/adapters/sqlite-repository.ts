@@ -1,8 +1,14 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { Anchor, RepoRecord, Review, ReviewStatus } from "../../../contract/review";
+import type {
+  Anchor,
+  NotifyState,
+  RepoRecord,
+  Review,
+  ReviewStatus,
+} from "../../../contract/review";
 import type { Db } from "../../db/client";
 import { repos, reviewEntries, reviews } from "../../db/schema";
-import type { ListFilter, ReviewRepository } from "../ports";
+import { RepoMoveTargetExistsError, type ListFilter, type ReviewRepository } from "../ports";
 
 type ReviewRow = typeof reviews.$inferSelect;
 type ReviewEntryRow = typeof reviewEntries.$inferSelect;
@@ -32,6 +38,11 @@ function rowsToReview(row: ReviewRow, entryRows: ReviewEntryRow[]): Review {
         at: e.at,
         agentSession: e.agentSession,
       })),
+    notify: {
+      state: row.notifyState as NotifyState,
+      pane: row.notifyPane,
+      at: row.notifyAt,
+    },
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -50,6 +61,9 @@ function reviewToRow(review: Review): ReviewRow {
     viewedFrom: review.viewedAs.from,
     viewedTo: review.viewedAs.to,
     status: review.status,
+    notifyState: review.notify.state,
+    notifyPane: review.notify.pane,
+    notifyAt: review.notify.at,
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
   };
@@ -112,20 +126,30 @@ export function createSqliteReviewRepository(db: Db): ReviewRepository {
 
     async save(review: Review) {
       const row = reviewToRow(review);
-      await db.insert(reviews).values(row).onConflictDoUpdate({ target: reviews.id, set: row });
-      await db.delete(reviewEntries).where(eq(reviewEntries.reviewId, review.id));
-      if (review.thread.length > 0) {
-        await db.insert(reviewEntries).values(
-          review.thread.map((entry) => ({
-            reviewId: review.id,
-            seq: entry.seq,
-            author: entry.author,
-            body: entry.body,
-            at: entry.at,
-            agentSession: entry.agentSession,
-          })),
-        );
-      }
+      // F4a: the review row and its thread entries must be replaced atomically —
+      // a concurrent reader must never observe the new row with the old thread
+      // (or vice versa). `db.transaction` on bun:sqlite requires a *synchronous*
+      // callback (its native wrapper runs BEGIN/callback/COMMIT with no await in
+      // between — see sqlite-repository.test.ts), so every statement inside uses
+      // the sync `.run()` form rather than `await`ing the query builder.
+      db.transaction((tx) => {
+        tx.insert(reviews).values(row).onConflictDoUpdate({ target: reviews.id, set: row }).run();
+        tx.delete(reviewEntries).where(eq(reviewEntries.reviewId, review.id)).run();
+        if (review.thread.length > 0) {
+          tx.insert(reviewEntries)
+            .values(
+              review.thread.map((entry) => ({
+                reviewId: review.id,
+                seq: entry.seq,
+                author: entry.author,
+                body: entry.body,
+                at: entry.at,
+                agentSession: entry.agentSession,
+              })),
+            )
+            .run();
+        }
+      });
     },
 
     async upsertRepo(repo: RepoRecord) {
@@ -148,37 +172,46 @@ export function createSqliteReviewRepository(db: Db): ReviewRepository {
     },
 
     async moveRepo(from: string, to: string) {
-      let repoCount = 0;
-      const allRepos = await db.select().from(repos);
-      for (const r of allRepos) {
-        const next = rewritePrefix(r.key, from, to);
-        if (next === null) continue;
-        await db.update(repos).set({ key: next }).where(eq(repos.key, r.key));
-        repoCount++;
-      }
+      // F8: atomic (single transaction) and safe — `to` must not already be a
+      // registered repo key (would silently merge two repos' reviews).
+      return db.transaction((tx) => {
+        if (to !== from) {
+          const existing = tx.select().from(repos).where(eq(repos.key, to)).all();
+          if (existing.length > 0) throw new RepoMoveTargetExistsError(to);
+        }
 
-      let reviewCount = 0;
-      const allReviews = await db.select().from(reviews);
-      for (const r of allReviews) {
-        const nextRepo = rewritePrefix(r.repo, from, to);
-        const nextWorktreeRoot = rewritePrefix(r.worktreeRoot, from, to);
-        const nextTargetValue =
-          r.targetKind === "worktree" ? rewritePrefix(r.targetValue, from, to) : null;
+        let repoCount = 0;
+        const allRepos = tx.select().from(repos).all();
+        for (const r of allRepos) {
+          const next = rewritePrefix(r.key, from, to);
+          if (next === null) continue;
+          tx.update(repos).set({ key: next }).where(eq(repos.key, r.key)).run();
+          repoCount++;
+        }
 
-        if (nextRepo === null && nextWorktreeRoot === null && nextTargetValue === null) continue;
+        let reviewCount = 0;
+        const allReviews = tx.select().from(reviews).all();
+        for (const r of allReviews) {
+          const nextRepo = rewritePrefix(r.repo, from, to);
+          const nextWorktreeRoot = rewritePrefix(r.worktreeRoot, from, to);
+          const nextTargetValue =
+            r.targetKind === "worktree" ? rewritePrefix(r.targetValue, from, to) : null;
 
-        await db
-          .update(reviews)
-          .set({
-            repo: nextRepo ?? r.repo,
-            worktreeRoot: nextWorktreeRoot ?? r.worktreeRoot,
-            targetValue: nextTargetValue ?? r.targetValue,
-          })
-          .where(eq(reviews.id, r.id));
-        reviewCount++;
-      }
+          if (nextRepo === null && nextWorktreeRoot === null && nextTargetValue === null) continue;
 
-      return { repos: repoCount, reviews: reviewCount };
+          tx.update(reviews)
+            .set({
+              repo: nextRepo ?? r.repo,
+              worktreeRoot: nextWorktreeRoot ?? r.worktreeRoot,
+              targetValue: nextTargetValue ?? r.targetValue,
+            })
+            .where(eq(reviews.id, r.id))
+            .run();
+          reviewCount++;
+        }
+
+        return { repos: repoCount, reviews: reviewCount };
+      });
     },
   };
 }

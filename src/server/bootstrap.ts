@@ -55,6 +55,10 @@ export function createRuntime(deps: RuntimeDeps) {
   const wired: WiredHerdr = wireHerdrToHub({ state, gateway, focus, resolver, hub, logger });
 
   const repoChangedListeners = new Set<(info: ChangedInfo) => void>();
+  // F6: a poller failure classified "missing" (ENOENT / "not a git repository")
+  // means the worktree root itself is gone — distinct from every other poller
+  // error, which is just logged.
+  const worktreeMissingListeners = new Set<(root: string) => void>();
   const pollers = createPollerRegistry({
     intervalMs: config.pollIntervalMs,
     onChanged(info) {
@@ -78,8 +82,17 @@ export function createRuntime(deps: RuntimeDeps) {
         }
       }
     },
-    onStatus({ root, error }) {
+    onStatus({ root, error, kind }) {
       if (error) logger.warn(`poller ${root}: ${error}`);
+      if (kind === "missing") {
+        for (const cb of worktreeMissingListeners) {
+          try {
+            cb(root);
+          } catch (err) {
+            logger.error("worktree-missing listener threw", err);
+          }
+        }
+      }
     },
   });
 
@@ -99,6 +112,21 @@ export function createRuntime(deps: RuntimeDeps) {
     logger,
   });
 
+  // F6: herdr itself can report a worktree's removal (e.g. `EnterWorktree`/agent-driven
+  // cleanup) before the next poll tick would notice — forward it the same way as a
+  // poller "missing" classification.
+  const unsubscribeWorktreeRemoved = gateway.subscribe((event) => {
+    if (event.data.type !== "worktree_removed") return;
+    const path = event.data.worktree.path;
+    for (const cb of worktreeMissingListeners) {
+      try {
+        cb(path);
+      } catch (err) {
+        logger.error("worktree-missing listener threw", err);
+      }
+    }
+  });
+
   return {
     gateway,
     state,
@@ -112,9 +140,15 @@ export function createRuntime(deps: RuntimeDeps) {
       repoChangedListeners.add(cb);
       return () => repoChangedListeners.delete(cb);
     },
+    /** F6: fires with a worktree root that just disappeared (poller ENOENT, or herdr's `worktree_removed`). */
+    onWorktreeMissing(cb: (root: string) => void): () => void {
+      worktreeMissingListeners.add(cb);
+      return () => worktreeMissingListeners.delete(cb);
+    },
     herdrStatus: () => gateway.status(),
     stop() {
       unsubscribeFocus();
+      unsubscribeWorktreeRemoved();
       pollers.stopAll();
       wired.stop();
       focus.stop();
@@ -137,6 +171,14 @@ export function createRuntimeWithFakeHerdr(
 /**
  * repo-changed → 再アンカー。root ごとに直前の HEAD を覚え、変化のたびに
  * reanchorAfterChange を回す（status 変化でも「行が消えた」検出のために回す）。
+ *
+ * F2/F3: `prevHead` は root ごとに実際に観測した直前の HEAD だけを渡す — 未観測
+ * （起動直後にこの root で最初に受け取った repo-changed）なら `null` を渡し、
+ * reanchorAfterChange 側で rebase 検出をスキップさせる。以前のように「未観測なら
+ * head 自身を prevHead として渡す」実装だと、常に `prevHead === head` になって
+ * commit-bound レビューの祖先チェックが常に「一致」扱いになり、他 worktree の
+ * squash/rebase をこの worktree のものと誤認するクロス worktree ハイジャックの
+ * 温床になっていた。
  */
 export function attachReviewToRuntime(
   runtime: Pick<Runtime, "onRepoChanged" | "resolver">,
@@ -144,7 +186,7 @@ export function attachReviewToRuntime(
     reanchorAfterChange: (input: {
       repo: string;
       worktreeRoot: string;
-      prevHead: string;
+      prevHead: string | null;
       head: string;
     }) => ResultAsync<unknown, never>;
   },
@@ -154,8 +196,8 @@ export function attachReviewToRuntime(
   return runtime.onRepoChanged((info) => {
     void (async () => {
       const head = info.head;
-      if (!head) return;
-      const prevHead = lastHead.get(info.root) ?? head;
+      if (!head) return; // unborn branch: 何も記録しない
+      const prevHead = lastHead.get(info.root) ?? null;
       lastHead.set(info.root, head);
       const wt = await runtime.resolver.resolve(info.root).catch(() => null);
       if (!wt) return;
@@ -166,5 +208,23 @@ export function attachReviewToRuntime(
         head,
       });
     })().catch((err) => logger.error("reanchor after repo-changed failed", err));
+  });
+}
+
+/**
+ * F6: worktree が消えた（poller の ENOENT / herdr の `worktree_removed`）ことを
+ * outdateWorktree に橋渡しする。
+ */
+export function attachWorktreeMissingToReview(
+  runtime: Pick<Runtime, "onWorktreeMissing">,
+  review: {
+    outdateWorktree: (input: { worktreeRoot: string }) => ResultAsync<unknown, never>;
+  },
+  logger: Pick<typeof console, "error"> = console,
+): () => void {
+  return runtime.onWorktreeMissing((root) => {
+    void (async () => {
+      await review.outdateWorktree({ worktreeRoot: root });
+    })().catch((err) => logger.error("outdate worktree after removal failed", err));
   });
 }

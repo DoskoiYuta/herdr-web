@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { Anchor, Review } from "../../../contract/review";
 import { openDb, type Db } from "../../db/client";
 import { applyMigrations } from "../../db/migrate";
+import { RepoMoveTargetExistsError } from "../ports";
 import { createSqliteReviewRepository } from "./sqlite-repository";
 
 const ANCHOR: Anchor = {
@@ -27,6 +28,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
     thread: [
       { seq: 0, author: "user", body: "why?", at: "2026-01-01T00:00:00.000Z", agentSession: null },
     ],
+    notify: { state: "none", pane: null, at: null },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -207,6 +209,39 @@ describe("createSqliteReviewRepository", () => {
       expect(r3?.repo).toBe("/new/repo");
       expect(r3?.worktreeRoot).toBe("/new/repo");
       expect(r3?.target).toEqual({ kind: "commit", hash: "deadbeef" }); // unchanged
+    });
+
+    // F8: moving onto an already-registered repo key must throw, not silently merge.
+    test("throws RepoMoveTargetExistsError when `to` is already registered, and applies nothing", async () => {
+      const repo = createSqliteReviewRepository(db);
+      await repo.upsertRepo({
+        key: "/repo",
+        rootCommit: null,
+        name: "repo",
+        firstSeenAt: "t",
+        lastSeenAt: "t",
+      });
+      await repo.upsertRepo({
+        key: "/other",
+        rootCommit: null,
+        name: "other",
+        firstSeenAt: "t",
+        lastSeenAt: "t",
+      });
+      await repo.save(
+        makeReview({
+          id: "r1",
+          repo: "/repo",
+          worktreeRoot: "/repo",
+          target: { kind: "worktree", root: "/repo" },
+        }),
+      );
+
+      await expect(repo.moveRepo("/repo", "/other")).rejects.toThrow(RepoMoveTargetExistsError);
+
+      // nothing was applied (atomic: the whole transaction rolled back)
+      expect(await repo.getRepo("/repo")).not.toBeNull();
+      expect((await repo.get("r1"))?.repo).toBe("/repo");
     });
 
     test("does not match a sibling path with the same prefix (e.g. /repo2 when moving /repo)", async () => {

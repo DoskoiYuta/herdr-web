@@ -182,6 +182,35 @@ describe("createHerdrSocketClient", () => {
     await expect(client.paneGet("p1")).rejects.toThrow(/timed out/);
   });
 
+  // F7: agent.prompt gets its own (longer) timeout, independent of requestTimeoutMs.
+  test("agent.prompt uses agentPromptTimeoutMs, not requestTimeoutMs", async () => {
+    const server = new FakeHerdrServer(tmpSocketPath());
+    server.onLine = (socket, line) => {
+      if (line.method === "ping") {
+        server.send(socket, {
+          id: line.id,
+          result: { type: "pong", version: "0.8.2", protocol: 20 },
+        });
+      }
+      // agent.prompt: never respond
+    };
+    await server.listen();
+    cleanups.push(() => server.stop());
+
+    const client = createHerdrSocketClient({
+      socketPath: server.socketPath,
+      logger: quietLogger(),
+      requestTimeoutMs: 30, // would fire quickly if agent.prompt used this
+      agentPromptTimeoutMs: 200,
+    });
+    cleanups.push(() => client.close());
+    await waitFor(() => client.status().connected);
+
+    const start = Date.now();
+    await expect(client.agentPrompt("p1", "hi")).rejects.toThrow(/timed out after 200ms/);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(150); // well past requestTimeoutMs=30
+  });
+
   test("reconnects with backoff after the server drops the connection, and re-pings", async () => {
     const socketPath = tmpSocketPath();
     const server = new FakeHerdrServer(socketPath);

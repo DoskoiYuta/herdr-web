@@ -22,6 +22,12 @@ export interface HerdrSocketClientOptions {
   logger?: Logger;
   /** Per-request timeout (ms), covering connect + response. Default 10s. */
   requestTimeoutMs?: number;
+  /**
+   * F7: `agent.prompt` can legitimately take much longer than other requests
+   * (herdr waits out the prompt/send cycle before responding) — default 60s,
+   * overriding `requestTimeoutMs` for that one method only.
+   */
+  agentPromptTimeoutMs?: number;
   /** Reconnect backoff for the subscribe connection: starts here, doubles, caps at `backoffMaxMs`. Default 500ms. */
   backoffInitialMs?: number;
   /** Default 10s. */
@@ -72,6 +78,7 @@ function ndjsonReader(onLine: (line: string) => void): (chunk: Buffer) => void {
 export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGateway {
   const logger = opts.logger ?? console;
   const requestTimeoutMs = opts.requestTimeoutMs ?? 10_000;
+  const agentPromptTimeoutMs = opts.agentPromptTimeoutMs ?? 60_000;
   const backoffInitialMs = opts.backoffInitialMs ?? 500;
   const backoffMaxMs = opts.backoffMaxMs ?? 10_000;
 
@@ -95,7 +102,7 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
   }
 
   /** One ephemeral connection: write one request, resolve on the matching response, then it closes. */
-  function request<T>(method: string, params: unknown): Promise<T> {
+  function request<T>(method: string, params: unknown, timeoutMs = requestTimeoutMs): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const id = `hw-${nextId++}`;
       const sock = net.createConnection(opts.socketPath);
@@ -105,8 +112,8 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
         if (settled) return;
         settled = true;
         sock.destroy();
-        reject(new Error(`herdr: request ${method} timed out after ${requestTimeoutMs}ms`));
-      }, requestTimeoutMs);
+        reject(new Error(`herdr: request ${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
 
       function finish(fn: () => void): void {
         if (settled) return;
@@ -252,7 +259,11 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     },
     async agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome> {
       try {
-        const raw = await request<unknown>("agent.prompt", { target: paneId, text });
+        const raw = await request<unknown>(
+          "agent.prompt",
+          { target: paneId, text },
+          agentPromptTimeoutMs,
+        );
         const parsed = v.parse(AgentPromptedResultSchema, raw);
         return { status: "sent", agent: parsed.agent };
       } catch (err) {

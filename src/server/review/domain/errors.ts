@@ -3,7 +3,9 @@ export type DomainErrorType =
   | "already_resolved"
   | "not_outdatable"
   | "already_committed"
-  | "not_commit_bound";
+  | "not_commit_bound"
+  | "invalid_rev"
+  | "already_exists";
 
 export type DomainError = { type: DomainErrorType; message: string };
 

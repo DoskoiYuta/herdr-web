@@ -189,6 +189,8 @@ describe("reanchorAfterChange — commit-bound reviews (rebase/squash)", () => {
     const review = makeReview({ target: { kind: "commit", hash: "c1" }, createdAtHead: "head0" });
     await repository.save(review);
     finder.results.set(finder.keyFor("/repo", "r1", "head0"), "c2");
+    // c1 was reachable from this worktree's own previous HEAD (F2): it's ours to rebase-detect.
+    gitHistory.ancestryOf.set("c1", new Set(["head0"]));
 
     const changed = await usecase()({
       repo: "/repo",
@@ -205,6 +207,7 @@ describe("reanchorAfterChange — commit-bound reviews (rebase/squash)", () => {
   test("commit unreachable, no content match -> left as is (surfaced via --unreachable)", async () => {
     const review = makeReview({ target: { kind: "commit", hash: "c1" } });
     await repository.save(review);
+    gitHistory.ancestryOf.set("c1", new Set(["head0"]));
     // no finder result -> null
 
     const changed = await usecase()({

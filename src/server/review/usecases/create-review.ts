@@ -11,6 +11,13 @@ export type CreateReviewDeps = {
   scheduleNotify: (review: Review) => void;
   /** テスト用に id 生成を差し替えられるようにする。既定は Bun.randomUUIDv7() */
   generateId?: () => string;
+  /**
+   * F3: `createdAtHead` が古い（poller が commit を見逃した／作成前に既に進んでいた）
+   * 場合に即座に commit-bind を試みるためのフック。`review/runtime.ts` が
+   * `reanchorAfterChange` を `prevHead: null` で呼ぶよう配線する。保存の後、created を
+   * emit する前に呼ぶ（作成イベントの review が最終的な commit-bound 状態を指すように）。
+   */
+  afterCreate?: (review: Review) => Promise<void>;
 };
 
 export function createReviewUsecase(deps: CreateReviewDeps) {
@@ -48,6 +55,7 @@ export function createReviewUsecase(deps: CreateReviewDeps) {
         });
 
         deps.events.emit({ type: "review", event: "created", review });
+        await deps.afterCreate?.(review);
         deps.scheduleNotify(review);
         return review;
       })(),

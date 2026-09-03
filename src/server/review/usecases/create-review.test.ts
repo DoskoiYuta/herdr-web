@@ -81,4 +81,35 @@ describe("createReviewUsecase", () => {
       lastSeenAt: "2026-02-01T00:00:00.000Z",
     });
   });
+
+  // F3: a review created against a `createdAtHead` that's already stale (the poller
+  // missed a commit, or HEAD moved between the diff being loaded and the POST landing)
+  // must be commit-bound immediately, not wait for the next repo-changed tick.
+  test("calls afterCreate so a stale createdAtHead is commit-bound immediately", async () => {
+    const repository = new FakeReviewRepository();
+    const events = new FakeReviewEvents();
+    const clock = new ManualClock("2026-01-01T00:00:00.000Z");
+    const afterCreateCalls: string[] = [];
+
+    const usecase = createReviewUsecase({
+      repository,
+      events,
+      clock,
+      scheduleNotify: () => {},
+      generateId: () => "id-1",
+      afterCreate: async (review) => {
+        afterCreateCalls.push(review.id);
+        // simulate what runtime.ts wires: reanchorAfterChange commit-binding it
+        await repository.save({
+          ...review,
+          target: { kind: "commit", hash: "commit-now" },
+        });
+      },
+    });
+
+    const result = await usecase(makeInput({ createdAtHead: "stale-head" }));
+    expect(result.isOk()).toBe(true);
+    expect(afterCreateCalls).toEqual(["id-1"]);
+    expect((await repository.get("id-1"))?.target).toEqual({ kind: "commit", hash: "commit-now" });
+  });
 });
