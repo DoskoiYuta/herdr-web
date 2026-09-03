@@ -388,7 +388,7 @@ src/cli                      → contract のみ
 - **git 解決のコスト**: cwd → 結果のキャッシュを持つ。
 - **ブラウザのキー衝突**: `Ctrl+W` / `Ctrl+T` / `Ctrl+N` を `attachCustomKeyEventHandler` で握る。
 - **herdr ソケット**: 購読用接続とリクエスト用接続を分ける。
-- **CodeView の更新**: item の `id` に `version` を含めないと更新が無視される（tdiff の `reconcile.ts` を踏襲）。
+- **CodeView の更新**: item の `id:version` が変わらないと再描画されない。内容変更は `reconcile.ts` の version、annotation（コンポーザー / レビュースレッド）の変化は `annotationVersion.ts` で version に畳み込む。
 - **再アンカーのコスト**: worktree 付きかつ対象ファイルが変更された場合のみ blame。
 - **drizzle**: マイグレーション SQL を `bun build --compile` に同梱し、起動時に適用する。
 
@@ -423,20 +423,20 @@ herdr-web/
 
 ## 12. 調査・確認タスク
 
-| #   | 項目                                                | 状態                                                                                |
-| --- | --------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 1   | `foreground_cwd` 変化で `pane.updated` が発火するか | 未確認（3 秒ポーリングをフォールバックとして実装済み）                              |
-| 2   | schema の正確な形                                   | `herdr api schema --json` あり。valibot 手書きで対応                                |
-| 3   | `agent.prompt` の Claude Code への入り方            | 済（Enter まで送られ通常のメッセージとして届く。10 秒デバウンス後の到達を実機確認） |
-| 4   | PTY ライブラリ                                      | 済（node-pty は Bun で onData が来ない。bun-pty 採用、`env -i` で環境を置換）       |
-| 5   | herdr TUI の xterm.js 描画                          | attach でバイト受信を確認。描画品質はブラウザで要確認                               |
-| 6   | 移植範囲                                            | 済（§3）                                                                            |
-| 7   | `agent_session` の形                                | 済（§3）                                                                            |
-| 8   | サイドバー非表示キー                                | 済（`[ui] sidebar_collapsed_mode = "hidden"`）                                      |
-| 9   | `pane.focus` の workspace 越え                      | 未確認。`workspace.focus` → `pane.focus` の順で呼ぶ安全側で実装                     |
-| 10  | snapshot に `foreground_cwd`                        | 済（含まれる）                                                                      |
-| 11  | 他エージェントの `agent_session`                    | 未確認                                                                              |
-| 12  | `tailscale serve` 経由の WS                         | M6 で確認                                                                           |
+| #   | 項目                                                | 状態                                                                                               |
+| --- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 1   | `foreground_cwd` 変化で `pane.updated` が発火するか | 未確認（3 秒ポーリングをフォールバックとして実装済み）                                             |
+| 2   | schema の正確な形                                   | `herdr api schema --json` あり。valibot 手書きで対応                                               |
+| 3   | `agent.prompt` の Claude Code への入り方            | 済（ブラウザでレビュー作成 → 10 秒後にこの pane へ到達 → `hw review reply` → UI に即時反映を確認） |
+| 4   | PTY ライブラリ                                      | 済（node-pty は Bun で onData が来ない。bun-pty 採用、`env -i` で環境を置換）                      |
+| 5   | herdr TUI の xterm.js 描画                          | 済（Chrome で TUI 描画・入力・サイドバー・diff/graph/レビューの往復を実走確認）                    |
+| 6   | 移植範囲                                            | 済（§3）                                                                                           |
+| 7   | `agent_session` の形                                | 済（§3）                                                                                           |
+| 8   | サイドバー非表示キー                                | 済（`[ui] sidebar_collapsed_mode = "hidden"`）                                                     |
+| 9   | `pane.focus` の workspace 越え                      | 未確認。`workspace.focus` → `pane.focus` の順で呼ぶ安全側で実装                                    |
+| 10  | snapshot に `foreground_cwd`                        | 済（含まれる）                                                                                     |
+| 11  | 他エージェントの `agent_session`                    | 未確認                                                                                             |
+| 12  | `tailscale serve` 経由の WS                         | M6 で確認                                                                                          |
 
 ## 13. 運用メモ（README 向け）
 
