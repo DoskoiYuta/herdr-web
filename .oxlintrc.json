@@ -23,5 +23,11 @@
     "react/react-in-jsx-scope": "off",
     "import/no-unassigned-import": "off"
   },
-  "ignorePatterns": ["dist", "node_modules", "drizzle", "src/web/components/ui"]
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "drizzle",
+    "src/web/components/ui",
+    "src/server/web-assets.generated.ts"
+  ]
 }

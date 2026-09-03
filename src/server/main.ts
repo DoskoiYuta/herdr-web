@@ -6,6 +6,7 @@ import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { createApp } from "./app";
 import { serveEmbedded } from "./static";
+import type { WebAssets } from "./web-assets";
 import { attachReviewToRuntime, createRuntime } from "./bootstrap";
 import { applyEnvOverrides, loadConfig, resolveDbPath } from "./config";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
@@ -53,7 +54,7 @@ const app = new Hono().route("/", api);
 
 if (isProd) {
   // dist/web は build:web が src/server/web-assets.generated.ts に埋め込む（単一バイナリ対応）
-  const { webAssets } = await import("./web-assets.generated");
+  const { webAssets } = (await import("./web-assets")) as { webAssets: WebAssets };
   app.get("*", serveEmbedded(webAssets));
 }
 
