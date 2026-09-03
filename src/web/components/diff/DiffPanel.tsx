@@ -15,6 +15,7 @@ import { buildAnchor } from "@/lib/anchor";
 import { gitApi, reviewApi, type ForDiffMatch } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
+import { annotationSignature, withAnnotationRev } from "./annotationVersion";
 import Banners from "./Banners.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
@@ -498,6 +499,10 @@ export function DiffPanel({
     [refreshMatches, showToast],
   );
 
+  // CodeView（@pierre/diffs/react）は item の `id:version` が変わったときしか
+  // annotation のポータルを作り直さない。annotation の集合が変わったら version を
+  // 上げないと、コンポーザーもレビュースレッドも画面に出ない。
+  const annotationRevs = useRef(new Map<string, { sig: string; rev: number }>());
   const itemsWithAnnotations = useMemo<CodeViewDiffItem<ReviewAnnotationMeta>[]>(() => {
     return items.map((item) => {
       const matches = matchesByPath.get(item.fileDiff.name) ?? [];
@@ -505,7 +510,12 @@ export function DiffPanel({
         composerTarget && composerTarget.id === item.id
           ? { side: composerTarget.side, lineNumber: composerTarget.lineNumber }
           : null;
-      return { ...item, annotations: buildAnnotations(item.fileDiff, matches, composer) };
+      const annotations = buildAnnotations(item.fileDiff, matches, composer);
+      const sig = annotationSignature(annotations);
+      const prev = annotationRevs.current.get(item.id);
+      const rev = prev === undefined ? 0 : prev.sig === sig ? prev.rev : prev.rev + 1;
+      annotationRevs.current.set(item.id, { sig, rev });
+      return { ...item, version: withAnnotationRev(item.version ?? 0, rev), annotations };
     });
   }, [items, matchesByPath, composerTarget]);
 
