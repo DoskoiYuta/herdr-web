@@ -28,3 +28,4 @@ dist
 *.db
 *.db-wal
 *.db-shm
+src/server/web-assets.generated.ts

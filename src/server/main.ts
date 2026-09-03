@@ -3,9 +3,9 @@ import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { createApp } from "./app";
+import { serveEmbedded } from "./static";
 import { attachReviewToRuntime, createRuntime } from "./bootstrap";
 import { applyEnvOverrides, loadConfig, resolveDbPath } from "./config";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
@@ -52,8 +52,9 @@ const api = createApp({
 const app = new Hono().route("/", api);
 
 if (isProd) {
-  app.use("/*", serveStatic({ root: "dist/web" }));
-  app.get("*", serveStatic({ path: "dist/web/index.html" }));
+  // dist/web は build:web が src/server/web-assets.generated.ts に埋め込む（単一バイナリ対応）
+  const { webAssets } = await import("./web-assets.generated");
+  app.get("*", serveEmbedded(webAssets));
 }
 
 const honoListener = getRequestListener(app.fetch);
