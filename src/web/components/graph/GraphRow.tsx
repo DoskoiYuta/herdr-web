@@ -120,7 +120,7 @@ export default function GraphRow({
         </div>
       </div>
       {expanded && (
-        <div className="graph-row-detail flex items-stretch" data-hash={row.hash}>
+        <div className="graph-row-detail flex items-stretch pl-2" data-hash={row.hash}>
           <div className="relative shrink-0" style={{ width }}>
             {/* Continues each segment's line straight down through the
                expanded block at its `toLane` x position, so the lane the

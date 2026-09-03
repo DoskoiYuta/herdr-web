@@ -268,7 +268,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     <CodeView
       ref={codeViewRef}
       containerRef={setContainerRef}
-      className="scroll-root h-full"
+      className="scroll-root h-full min-h-0 flex-1 overflow-y-auto"
       items={items}
       options={options}
       onScroll={handleScroll}

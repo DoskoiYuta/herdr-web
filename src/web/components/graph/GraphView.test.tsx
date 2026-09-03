@@ -103,6 +103,68 @@ describe("GraphView inline commit detail", () => {
     expect(container.querySelector(".graph-row-detail")).toBeNull();
   });
 
+  test("expanding a row shifts the translateY offset of every row below it by the measured expanded height", () => {
+    // Regression guard for the "縦線が前後のコミットでずれる" report's other
+    // possible cause: if `measureElement`/`data-index` weren't wired up, or
+    // the virtualizer weren't re-measured on expand, rows below an expanded
+    // one would keep rendering at their old (collapsed) offsets, stacking
+    // on top of the taller expanded row instead of being pushed down.
+    const EXPANDED_HEIGHT = 100;
+    const measureVirtualizerOptions = {
+      ...virtualizerOptions,
+      // Mimics real `measureElement`: reports whatever height the element
+      // actually rendered at, rather than a fixed 24px — so a row grows
+      // only once its own `.graph-row-detail` block is actually present.
+      measureElement: (el: Element) =>
+        el.querySelector(".graph-row-detail") ? EXPANDED_HEIGHT : 24,
+    };
+
+    const threeCommits = [
+      commits[0]!,
+      commits[1]!,
+      makeCommit({ hash: "c3".padEnd(40, "0"), parents: [] }),
+    ];
+
+    const { container, rerender } = renderGraphView({
+      commits: threeCommits,
+      virtualizerOptions: measureVirtualizerOptions,
+    });
+
+    const getTranslateY = (index: number): number => {
+      const el = container.querySelector(`[data-index="${index}"]`) as HTMLElement;
+      const match = /translateY\((\d+)px\)/.exec(el.style.transform);
+      return match ? Number(match[1]) : Number.NaN;
+    };
+
+    // Collapsed: fixed 24px rows.
+    expect(getTranslateY(0)).toBe(0);
+    expect(getTranslateY(1)).toBe(24);
+    expect(getTranslateY(2)).toBe(48);
+
+    rerender(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <GraphView
+          commits={threeCommits}
+          refsByHash={new Map()}
+          headHash={null}
+          selectedHash={HASH1}
+          detailOpen={true}
+          repo=""
+          onSelect={() => {}}
+          virtualizerOptions={measureVirtualizerOptions}
+        />
+      </QueryClientProvider>,
+    );
+
+    // Row 0 is now EXPANDED_HEIGHT tall, so every row below it must shift
+    // down by exactly that amount — not stay at its old collapsed offset.
+    expect(getTranslateY(0)).toBe(0);
+    expect(getTranslateY(1)).toBe(EXPANDED_HEIGHT);
+    expect(getTranslateY(2)).toBe(EXPANDED_HEIGHT + 24);
+  });
+
   test("the gutter SVG has one <line> per segment, each anchored at the segment toLane x position", () => {
     const { container } = renderGraphView({
       selectedHash: HASH1,
