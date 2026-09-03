@@ -9,6 +9,8 @@ export interface GraphPanelProps {
   repo: string;
   repoChangedTick: number;
   onSelectCommit(range: { from: string; to: string } | null): void;
+  /** 「diff を見る」/ ダブルクリック: 親との diff を選択して Diff タブへ遷移させる */
+  onOpenDiff?(range: { from: string; to: string }): void;
   /**
    * Test-only escape hatch, threaded down to GraphView (react-virtual needs
    * a real ResizeObserver to size itself; jsdom has none).
@@ -42,6 +44,7 @@ export function GraphPanel({
   repo,
   repoChangedTick,
   onSelectCommit,
+  onOpenDiff,
   virtualizerOptions,
 }: GraphPanelProps) {
   const [state, dispatch] = useReducer(reduce, undefined, () => initialState());
@@ -145,6 +148,10 @@ export function GraphPanel({
           detailNote={detailNote}
           onSelect={handleSelect}
           onCloseDetail={handleCloseDetail}
+          onOpenDiff={(hash) => {
+            const c = commits.find((x) => x.hash === hash);
+            if (c && c.parents[0]) onOpenDiff?.({ from: c.parents[0], to: c.hash });
+          }}
           virtualizerOptions={virtualizerOptions}
         />
       )}

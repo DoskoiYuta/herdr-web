@@ -43,6 +43,8 @@ export interface GraphRowProps {
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
+  /** 「diff を見る」/ 行のダブルクリック。未指定なら出さない。 */
+  onOpenDiff?(hash: string): void;
 }
 
 export default function GraphRow({
@@ -58,6 +60,7 @@ export default function GraphRow({
   now,
   onSelect,
   onCloseDetail,
+  onOpenDiff,
 }: GraphRowProps) {
   const isUncommitted = row.hash === UNCOMMITTED_HASH;
   const isMerge = commit.parents.length > 1;
@@ -74,6 +77,9 @@ export default function GraphRow({
         role="row"
         data-hash={row.hash}
         onClick={(e) => onSelect(row.hash, { shiftKey: e.shiftKey })}
+        onDoubleClick={() => {
+          if (!isUncommitted && commit.parents.length > 0) onOpenDiff?.(row.hash);
+        }}
         style={{ height: GEOM.rowHeight }}
       >
         <svg
@@ -153,6 +159,9 @@ export default function GraphRow({
               repo={repo}
               hash={row.hash}
               onClose={onCloseDetail ?? (() => {})}
+              onOpenDiff={
+                onOpenDiff && commit.parents.length > 0 ? () => onOpenDiff(row.hash) : undefined
+              }
               note={detailNote}
             />
           </div>

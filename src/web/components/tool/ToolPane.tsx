@@ -158,6 +158,11 @@ export function ToolPane({
     setComparison(range);
   }, []);
 
+  const openDiffFor = useCallback((range: { from: string; to: string }) => {
+    setComparison(range);
+    setActiveTab("diff");
+  }, []);
+
   const resetToWorktree = useCallback(() => {
     setComparison(null);
   }, []);
@@ -261,12 +266,25 @@ export function ToolPane({
           />
         </TabsContent>
 
-        <TabsContent value="graph" className="min-h-0 flex-1 overflow-hidden">
-          <GraphPanel
-            repo={worktreeRoot}
-            repoChangedTick={repoChangedTick}
-            onSelectCommit={handleSelectCommit}
-          />
+        <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {comparison && (
+            <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+              <span>
+                選択中: {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
+              </span>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setActiveTab("diff")}>
+                Diff で見る
+              </Button>
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
+            <GraphPanel
+              repo={worktreeRoot}
+              repoChangedTick={repoChangedTick}
+              onSelectCommit={handleSelectCommit}
+              onOpenDiff={openDiffFor}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="review" className="min-h-0 flex-1 overflow-hidden">

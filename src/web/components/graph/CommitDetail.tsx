@@ -7,6 +7,8 @@ export interface CommitDetailProps {
   repo: string;
   hash: string;
   onClose(): void;
+  /** 「diff を見る」ボタン。未指定なら出さない（ルートコミット等）。 */
+  onOpenDiff?(): void;
   /**
    * Inline note shown above the metadata, e.g. for a root commit ("no
    * parent to diff against").
@@ -19,7 +21,7 @@ function formatDate(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleString();
 }
 
-export default function CommitDetail({ repo, hash, onClose, note }: CommitDetailProps) {
+export default function CommitDetail({ repo, hash, onClose, onOpenDiff, note }: CommitDetailProps) {
   const isUncommitted = hash === UNCOMMITTED_HASH;
   const query = useCommit(repo, hash);
   const fileTree = useMemo(() => buildFileTree(query.data?.files ?? []), [query.data]);
@@ -34,14 +36,25 @@ export default function CommitDetail({ repo, hash, onClose, note }: CommitDetail
         <span className="font-mono text-xs text-muted-foreground">
           {hash === UNCOMMITTED_HASH ? hash : hash.slice(0, 12)}
         </span>
-        <button
-          type="button"
-          className="rounded-sm px-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onClose}
-          aria-label="close"
-        >
-          ×
-        </button>
+        <span className="flex items-center gap-1">
+          {onOpenDiff && !isUncommitted && (
+            <button
+              type="button"
+              className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-muted"
+              onClick={onOpenDiff}
+            >
+              diff を見る
+            </button>
+          )}
+          <button
+            type="button"
+            className="rounded-sm px-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={onClose}
+            aria-label="close"
+          >
+            ×
+          </button>
+        </span>
       </div>
 
       {note && (

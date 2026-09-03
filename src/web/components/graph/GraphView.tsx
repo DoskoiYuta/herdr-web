@@ -24,6 +24,7 @@ export interface GraphViewProps {
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
+  onOpenDiff?(hash: string): void;
   /**
    * Escape hatch for tests: react-virtual measures its scroll container via
    * ResizeObserver, which jsdom never fires (height stays 0 and no rows
@@ -44,6 +45,7 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
     detailNote,
     onSelect,
     onCloseDetail,
+    onOpenDiff,
     virtualizerOptions,
   },
   ref,
@@ -126,6 +128,7 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
                 detailNote={detailNote}
                 onSelect={onSelect}
                 onCloseDetail={onCloseDetail}
+                onOpenDiff={onOpenDiff}
               />
             </div>
           );
