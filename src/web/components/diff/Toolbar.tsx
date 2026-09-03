@@ -15,6 +15,10 @@ export interface ToolbarProps {
   onFontDec(): void;
   onFontInc(): void;
   onRefresh(): void;
+  /** Collapse every file in the diff (M3 follow-up: per-file collapse). */
+  onCollapseAll(): void;
+  /** Expand every file in the diff. */
+  onExpandAll(): void;
   disabled: boolean;
 }
 
@@ -26,6 +30,8 @@ export default function Toolbar({
   onFontDec,
   onFontInc,
   onRefresh,
+  onCollapseAll,
+  onExpandAll,
   disabled,
 }: ToolbarProps) {
   return (
@@ -85,6 +91,28 @@ export default function Toolbar({
         disabled={disabled}
       >
         A+
+      </Button>
+      <Button
+        id="btn-collapse-all"
+        type="button"
+        variant="ghost"
+        size="sm"
+        title="すべて折りたたむ"
+        onClick={onCollapseAll}
+        disabled={disabled}
+      >
+        すべて折りたたむ
+      </Button>
+      <Button
+        id="btn-expand-all"
+        type="button"
+        variant="ghost"
+        size="sm"
+        title="すべて展開"
+        onClick={onExpandAll}
+        disabled={disabled}
+      >
+        すべて展開
       </Button>
       <span className="flex-1" />
       <Button

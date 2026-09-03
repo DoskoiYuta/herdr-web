@@ -26,3 +26,13 @@ export function annotationSignature(
 export function withAnnotationRev(version: number, rev: number): number {
   return version * 1_000_000 + (rev % 1_000_000);
 }
+
+/**
+ * Folds `collapsed` into a version number the same way `withAnnotationRev`
+ * folds in the annotation rev — CodeView only re-renders an item's header
+ * (and thus notices a `collapsed` flip) when `id:version` changes. Apply
+ * this last, on top of `withAnnotationRev`'s result.
+ */
+export function withCollapsedVersion(version: number, collapsed: boolean): number {
+  return version * 2 + (collapsed ? 1 : 0);
+}

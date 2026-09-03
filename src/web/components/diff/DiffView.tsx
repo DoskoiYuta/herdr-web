@@ -24,8 +24,13 @@ import type {
   FileDiffMetadata,
 } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
-import type { CodeViewDiffItem, CodeViewHandle, CodeViewReactOptions } from "@pierre/diffs/react";
-import type { ReactNode } from "react";
+import type {
+  CodeViewDiffItem,
+  CodeViewHandle,
+  CodeViewItem,
+  CodeViewReactOptions,
+} from "@pierre/diffs/react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { ReviewAnnotationMeta } from "./reviewAnnotations.ts";
 import {
   forwardRef,
@@ -37,6 +42,7 @@ import {
   useState,
 } from "react";
 import { gitApi } from "@/lib/api";
+import { findHeaderClickItemId } from "./headerClick.ts";
 import { effectiveDiffStyle, fontMetrics } from "./reconcile.ts";
 import type { Settings } from "./state.ts";
 
@@ -66,6 +72,9 @@ export interface DiffViewProps {
   /** F3-6: current line/range selection (comment composer target). */
   selectedLines?: CodeViewLineSelection | null;
   onSelectedLinesChange?(selection: CodeViewLineSelection | null): void;
+  /** Per-file collapse: called with an item's id when its chevron toggle, or
+   * anywhere else in its file header, is clicked. */
+  onToggleCollapse?(id: string): void;
   /** Renders the composer / inline review thread for one DiffLineAnnotation (F3-6, F5-8). */
   renderAnnotation?(
     annotation: DiffLineAnnotation<ReviewAnnotationMeta>,
@@ -97,6 +106,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     onScrollTopChange,
     selectedLines,
     onSelectedLinesChange,
+    onToggleCollapse,
     renderAnnotation,
   },
   ref,
@@ -107,6 +117,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
   const onToastRef = useRef(onToast);
   const onTopItemChangeRef = useRef(onTopItemChange);
   const onScrollTopChangeRef = useRef(onScrollTopChange);
+  const onToggleCollapseRef = useRef(onToggleCollapse);
   const repoRef = useRef(repo);
 
   // Keep the "latest value" refs in sync after each render (not during it —
@@ -119,6 +130,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     onToastRef.current = onToast;
     onTopItemChangeRef.current = onTopItemChange;
     onScrollTopChangeRef.current = onScrollTopChange;
+    onToggleCollapseRef.current = onToggleCollapse;
     repoRef.current = repo;
   });
 
@@ -186,6 +198,69 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     node.style.setProperty("--diffs-line-height", `${metrics.lineHeight}px`);
     node.style.setProperty("--diffs-font-family", DIFF_FONT_FAMILY);
   }, [metrics.fontSize, metrics.lineHeight]);
+
+  // Per-file collapse (M3 follow-up): @pierre/diffs has no built-in
+  // collapse-toggle UI, only the `collapsed` item flag (see
+  // node_modules/@pierre/diffs/dist/types.d.ts). We render our own chevron
+  // into the header via renderHeaderPrefix, and separately make the *whole*
+  // header row clickable below (native listener + composedPath, since the
+  // header lives inside a shadow root outside React's tree).
+  useLayoutEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    function handleHeaderClick(event: MouseEvent) {
+      // bun-types' Event.composedPath() override narrows the return type to
+      // `[EventTarget?]` (a bug — see node_modules/bun-types/globals.d.ts),
+      // which the real DOM API never actually returns; widen it back.
+      const path = event.composedPath() as EventTarget[];
+      // The chevron button (below) is *inside* the header, nested below this
+      // native listener in the DOM — React's own onClick for it is
+      // dispatched later, higher up (at React's root delegation target), so
+      // by the time that handler could stopPropagation() this listener has
+      // already run. Skip here instead and let the button's own onClick be
+      // the single source of truth for its own clicks.
+      if (path.some((n) => n instanceof Element && n.hasAttribute("data-diffs-collapse-toggle"))) {
+        return;
+      }
+      const instance = codeViewRef.current?.getInstance?.();
+      if (!instance) return;
+      const id = findHeaderClickItemId(path, instance.getRenderedItems());
+      if (id) onToggleCollapseRef.current?.(id);
+    }
+    node.addEventListener("click", handleHeaderClick);
+    return () => node.removeEventListener("click", handleHeaderClick);
+  }, []);
+
+  // Renders the chevron toggle into each file header's prefix slot. This is
+  // a top-level <CodeView> prop (not part of `options`) — the React wrapper
+  // exposes a React-friendly overload of it that receives the whole item
+  // (so `.collapsed`/`.id` are right there) and returns a ReactNode,
+  // distinct from the DOM-Element-returning one in vanilla `options`.
+  const renderHeaderPrefix = useCallback((item: CodeViewItem<ReviewAnnotationMeta>) => {
+    if (item.type !== "diff") return null;
+    const collapsed = !!item.collapsed;
+    return (
+      <button
+        type="button"
+        data-diffs-collapse-toggle=""
+        className="diffs-collapse-toggle mr-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-expanded={!collapsed}
+        aria-label={
+          collapsed ? `${item.fileDiff.name} を展開` : `${item.fileDiff.name} を折りたたむ`
+        }
+        onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
+          // The whole header row is also clickable via the native listener
+          // above, which skips clicks that pass through this button
+          // (data-diffs-collapse-toggle) so the two don't both fire for one
+          // click.
+          event.stopPropagation();
+          onToggleCollapseRef.current?.(item.id);
+        }}
+      >
+        {collapsed ? "▸" : "▾"}
+      </button>
+    );
+  }, []);
 
   const options: CodeViewReactOptions<ReviewAnnotationMeta> = useMemo(
     () => ({
@@ -274,6 +349,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
       onScroll={handleScroll}
       selectedLines={selectedLines}
       onSelectedLinesChange={onSelectedLinesChange}
+      renderHeaderPrefix={renderHeaderPrefix}
       renderAnnotation={renderAnnotation}
     />
   );

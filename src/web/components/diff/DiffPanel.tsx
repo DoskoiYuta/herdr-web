@@ -16,7 +16,7 @@ import { gitApi, reviewApi, type ForDiffMatch } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
-import { annotationSignature, withAnnotationRev } from "./annotationVersion";
+import { annotationSignature, withAnnotationRev, withCollapsedVersion } from "./annotationVersion";
 import Banners from "./Banners.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
@@ -29,6 +29,7 @@ import {
   fromAnnotationSide,
   type ReviewAnnotationMeta,
 } from "./reviewAnnotations.ts";
+import { orderItemsByTree } from "./order.ts";
 import { lineNumberToIndex, sideLines } from "./sideLines.ts";
 import {
   DEFAULT_SETTINGS,
@@ -168,6 +169,41 @@ export function DiffPanel({
     });
   }, []);
 
+  // -------------------------------------------------------------------
+  // Per-file collapse (M3 follow-up). Keyed by file name rather than item id
+  // so it survives a content-driven id/version bump (reconcile.ts) across a
+  // patch refresh — lost on remount is fine (DiffPanel-instance-scoped, per
+  // spec), but not on every poll tick. `pendingScrollId` defers
+  // scrollToItem() to an effect that runs after a FileTree click both
+  // expands (if needed) and re-renders, so CodeView isn't scrolled against
+  // stale (still-collapsed) layout.
+  // -------------------------------------------------------------------
+  const [collapsedNames, setCollapsedNames] = useState<Set<string>>(new Set());
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+
+  const toggleCollapse = useCallback(
+    (id: string) => {
+      const item = items.find((i) => i.id === id);
+      if (!item) return;
+      const name = item.fileDiff.name;
+      setCollapsedNames((prev) => {
+        const next = new Set(prev);
+        if (next.has(name)) next.delete(name);
+        else next.add(name);
+        return next;
+      });
+    },
+    [items],
+  );
+
+  const collapseAll = useCallback(() => {
+    setCollapsedNames(new Set(items.map((item) => item.fileDiff.name)));
+  }, [items]);
+
+  const expandAll = useCallback(() => {
+    setCollapsedNames(new Set());
+  }, []);
+
   const showToast = useCallback((message: string) => {
     setToast(message);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -235,6 +271,30 @@ export function DiffPanel({
     applyPatchResponse(data);
   }, [patchQuery.data, applyPatchResponse]);
 
+  // Tree order (part 2: right pane follows the FileTree, not git's patch
+  // order). Built here — ahead of selection/j-k-nav — because those need to
+  // walk items in the same order the tree and the rendered panes use.
+  const treeNodes = useMemo(() => {
+    const entries = items.map((item) => {
+      const fileDiff = item.fileDiff;
+      const untracked = !!untrackedByName.get(fileDiff.name);
+      const stats = fileStats(fileDiff);
+      return {
+        id: item.id,
+        name: fileDiff.name,
+        status: fileStatus(fileDiff, untracked),
+        additions: stats.additions,
+        deletions: stats.deletions,
+      };
+    });
+    return buildTree(entries);
+  }, [items, untrackedByName]);
+
+  // reconcile() (above) preserves object identity for unchanged files —
+  // reordering here must not disturb that, so this only permutes the array,
+  // never clones items (see order.ts).
+  const orderedItems = useMemo(() => orderItemsByTree(items, treeNodes), [items, treeNodes]);
+
   // -------------------------------------------------------------------
   // File selection follows the rendered items. Adjusted during render
   // (React's documented pattern for "state that depends on a prop/derived
@@ -245,29 +305,50 @@ export function DiffPanel({
   if (items !== prevItemsForSelection) {
     setPrevItemsForSelection(items);
     const next =
-      items.length === 0
+      orderedItems.length === 0
         ? null
-        : selectedId && items.some((item) => item.id === selectedId)
+        : selectedId && orderedItems.some((item) => item.id === selectedId)
           ? selectedId
-          : items[0]!.id;
+          : orderedItems[0]!.id;
     if (next !== selectedId) setSelectedId(next);
   }
 
   const jumpToIndex = useCallback(
     (index: number) => {
-      if (items.length === 0) return;
-      const clamped = Math.max(0, Math.min(items.length - 1, index));
-      const id = items[clamped]!.id;
+      if (orderedItems.length === 0) return;
+      const clamped = Math.max(0, Math.min(orderedItems.length - 1, index));
+      const id = orderedItems[clamped]!.id;
       setSelectedId(id);
       diffViewRef.current?.scrollToItem(id);
     },
-    [items],
+    [orderedItems],
   );
 
-  const selectFile = useCallback((id: string) => {
-    setSelectedId(id);
-    diffViewRef.current?.scrollToItem(id);
-  }, []);
+  const selectFile = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      const item = items.find((i) => i.id === id);
+      if (item && collapsedNames.has(item.fileDiff.name)) {
+        setCollapsedNames((prev) => {
+          const next = new Set(prev);
+          next.delete(item.fileDiff.name);
+          return next;
+        });
+      }
+      // Deferred to an effect (below) so the scroll happens after any
+      // expand-on-select above has committed and CodeView has re-laid-out
+      // the item — scrolling in the same tick would target its still-
+      // collapsed height.
+      setPendingScrollId(id);
+    },
+    [items, collapsedNames],
+  );
+
+  useEffect(() => {
+    if (!pendingScrollId) return;
+    diffViewRef.current?.scrollToItem(pendingScrollId);
+    setPendingScrollId(null);
+  }, [pendingScrollId, orderedItems]);
 
   const handleTopItemChange = useCallback((id: string) => {
     setSelectedId((prev) => (prev === id ? prev : id));
@@ -278,8 +359,8 @@ export function DiffPanel({
   // -------------------------------------------------------------------
   const selectedIndexRef = useRef(0);
   useEffect(() => {
-    selectedIndexRef.current = items.findIndex((item) => item.id === selectedId);
-  }, [items, selectedId]);
+    selectedIndexRef.current = orderedItems.findIndex((item) => item.id === selectedId);
+  }, [orderedItems, selectedId]);
 
   useEffect(() => {
     function onKeydown(event: KeyboardEvent) {
@@ -313,22 +394,6 @@ export function DiffPanel({
       : null;
   const summary = useMemo(() => summarize(parsedFiles), [parsedFiles]);
   const label = comparisonLabel(from, to);
-
-  const treeNodes = useMemo(() => {
-    const entries = items.map((item) => {
-      const fileDiff = item.fileDiff;
-      const untracked = !!untrackedByName.get(fileDiff.name);
-      const stats = fileStats(fileDiff);
-      return {
-        id: item.id,
-        name: fileDiff.name,
-        status: fileStatus(fileDiff, untracked),
-        additions: stats.additions,
-        deletions: stats.deletions,
-      };
-    });
-    return buildTree(entries);
-  }, [items, untrackedByName]);
 
   // -------------------------------------------------------------------
   // F3-6 / F5: line-selection comment composer + inline review annotations.
@@ -532,7 +597,7 @@ export function DiffPanel({
   // 上げないと、コンポーザーもレビュースレッドも画面に出ない。
   const annotationRevs = useRef(new Map<string, { sig: string; rev: number }>());
   const itemsWithAnnotations = useMemo<CodeViewDiffItem<ReviewAnnotationMeta>[]>(() => {
-    return items.map((item) => {
+    return orderedItems.map((item) => {
       const matches = matchesByPath.get(item.fileDiff.name) ?? [];
       const composer =
         composerTarget && composerTarget.id === item.id
@@ -543,9 +608,11 @@ export function DiffPanel({
       const prev = annotationRevs.current.get(item.id);
       const rev = prev === undefined ? 0 : prev.sig === sig ? prev.rev : prev.rev + 1;
       annotationRevs.current.set(item.id, { sig, rev });
-      return { ...item, version: withAnnotationRev(item.version ?? 0, rev), annotations };
+      const collapsed = collapsedNames.has(item.fileDiff.name);
+      const version = withCollapsedVersion(withAnnotationRev(item.version ?? 0, rev), collapsed);
+      return { ...item, version, collapsed, annotations };
     });
-  }, [items, matchesByPath, composerTarget]);
+  }, [orderedItems, matchesByPath, composerTarget, collapsedNames]);
 
   const renderAnnotation = useCallback(
     (annotation: { metadata?: ReviewAnnotationMeta }) => {
@@ -622,6 +689,8 @@ export function DiffPanel({
         onFontDec={() => setSettings((s) => ({ ...s, fontSize: Math.max(10, s.fontSize - 1) }))}
         onFontInc={() => setSettings((s) => ({ ...s, fontSize: Math.min(24, s.fontSize + 1) }))}
         onRefresh={applyPending}
+        onCollapseAll={collapseAll}
+        onExpandAll={expandAll}
         disabled={false}
       />
       <div className="border-b border-border px-2 py-1 text-xs text-muted-foreground">{label}</div>
@@ -670,6 +739,7 @@ export function DiffPanel({
               onScrollTopChange={handleScrollTopChange}
               selectedLines={selection}
               onSelectedLinesChange={setSelection}
+              onToggleCollapse={toggleCollapse}
               renderAnnotation={renderAnnotation}
             />
           </div>

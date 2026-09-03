@@ -7,12 +7,20 @@ import { comparisonLabel } from "./DiffPanel.tsx";
 // Minimal stand-in for @pierre/diffs/react's CodeView (same pattern as
 // DiffView.test.tsx) plus a button that lets a test simulate CodeView
 // reporting a scroll position, to exercise DiffPanel's
-// scrolled-away-from-top vs. auto-apply banner logic.
+// scrolled-away-from-top vs. auto-apply banner logic. Also records
+// scrollToItem calls and renders each item's id/collapsed flag (in the
+// `items` prop order DiffPanel hands it) so tests can assert on per-file
+// collapse and right-pane ordering without the real virtualized renderer.
+export const scrollToItemMock = vi.fn();
 vi.mock("@pierre/diffs/react", () => {
   // biome-ignore lint: test double
   const CodeView = forwardRef((props: any, ref: any) => {
-    useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
-    const { containerRef } = props;
+    useImperativeHandle(ref, () => ({
+      scrollTo: (target: any) => {
+        if (target?.type === "item") scrollToItemMock(target.id);
+      },
+    }));
+    const { containerRef, items = [] } = props;
     return (
       <div ref={containerRef} data-testid="scroll-root">
         <button
@@ -20,6 +28,13 @@ vi.mock("@pierre/diffs/react", () => {
           data-testid="simulate-scroll-away"
           onClick={() => props.onScroll?.(100, { getTopForItem: () => undefined })}
         />
+        <ol data-testid="item-order">
+          {items.map((item: any) => (
+            <li key={item.id} data-collapsed={!!item.collapsed} data-name={item.fileDiff.name}>
+              {item.id}
+            </li>
+          ))}
+        </ol>
       </div>
     );
   });
@@ -72,6 +87,7 @@ beforeEach(() => {
     jsonResponse(patch("h1", [{ name: "a.txt", contentLine: "hello" }])),
   );
   vi.stubGlobal("fetch", fetchMock);
+  scrollToItemMock.mockClear();
 });
 
 afterEach(() => {
@@ -223,4 +239,79 @@ test("calls onInitialLocationConsumed once after jumping, and doesn't re-jump on
   );
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
   expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1);
+});
+
+// ---------------------------------------------------------------------------
+// Per-file collapse (M3 follow-up)
+// ---------------------------------------------------------------------------
+
+test("toolbar すべて折りたたむ/すべて展開 collapse and expand every file", async () => {
+  fetchMock.mockImplementation(async () =>
+    jsonResponse(
+      patch("h1", [
+        { name: "a.txt", contentLine: "hello" },
+        { name: "b.txt", contentLine: "world" },
+      ]),
+    ),
+  );
+  renderPanel({ repo: "/repo", repoChangedTick: 0 });
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+
+  const collapsedOf = (name: string) =>
+    document.querySelector(`[data-name="${name}"]`)?.getAttribute("data-collapsed");
+
+  expect(collapsedOf("a.txt")).toBe("false");
+  expect(collapsedOf("b.txt")).toBe("false");
+
+  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  expect(collapsedOf("a.txt")).toBe("true");
+  expect(collapsedOf("b.txt")).toBe("true");
+
+  fireEvent.click(screen.getByText("すべて展開"));
+  expect(collapsedOf("a.txt")).toBe("false");
+  expect(collapsedOf("b.txt")).toBe("false");
+});
+
+test("clicking a file in the FileTree expands it (if collapsed) and scrolls to it", async () => {
+  renderPanel({ repo: "/repo", repoChangedTick: 0 });
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+
+  const collapsedOfA = () =>
+    document.querySelector('[data-name="a.txt"]')?.getAttribute("data-collapsed");
+
+  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  expect(collapsedOfA()).toBe("true");
+
+  // The FileTree row (basename label, distinct DOM node from the item-order
+  // <li> above which shows the item id).
+  fireEvent.click(screen.getByText("a.txt", { selector: ".tree-file .tree-label" }));
+
+  await waitFor(() => expect(collapsedOfA()).toBe("false"));
+  await waitFor(() => expect(scrollToItemMock).toHaveBeenCalled());
+});
+
+// ---------------------------------------------------------------------------
+// Right-pane order follows the FileTree (part 2)
+// ---------------------------------------------------------------------------
+
+test("the right pane orders files like the FileTree (dirs first, alphabetical), not git's patch order", async () => {
+  // Patch order deliberately not tree order: root z.ts first, then src/*.
+  fetchMock.mockImplementation(async () =>
+    jsonResponse(
+      patch("h1", [
+        { name: "z.ts", contentLine: "z" },
+        { name: "src/b.ts", contentLine: "b" },
+        { name: "src/a.ts", contentLine: "a" },
+      ]),
+    ),
+  );
+  renderPanel({ repo: "/repo", repoChangedTick: 0 });
+  await waitFor(() => expect(screen.getByText("z.ts")).toBeInTheDocument());
+
+  const order = screen.getByTestId("item-order").querySelectorAll("li");
+  expect(Array.from(order).map((li) => li.getAttribute("data-name"))).toEqual([
+    "src/a.ts",
+    "src/b.ts",
+    "z.ts",
+  ]);
 });

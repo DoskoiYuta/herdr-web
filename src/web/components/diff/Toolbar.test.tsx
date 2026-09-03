@@ -12,6 +12,8 @@ function baseProps() {
     onFontDec: vi.fn(),
     onFontInc: vi.fn(),
     onRefresh: vi.fn(),
+    onCollapseAll: vi.fn(),
+    onExpandAll: vi.fn(),
     disabled: false,
   };
 }
@@ -43,4 +45,13 @@ test("disabled disables toolbar controls", () => {
   render(<Toolbar {...baseProps()} disabled={true} />);
   expect(screen.getByTitle("ファイルツリー")).toBeDisabled();
   expect(screen.getByTitle("更新 (r)")).toBeDisabled();
+});
+
+test("collapse-all / expand-all buttons call their handlers", () => {
+  const props = baseProps();
+  render(<Toolbar {...props} />);
+  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  expect(props.onCollapseAll).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByText("すべて展開"));
+  expect(props.onExpandAll).toHaveBeenCalledOnce();
 });
