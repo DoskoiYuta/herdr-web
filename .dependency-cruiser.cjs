@@ -59,6 +59,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: "node_modules" },
+    exclude: { path: "(^|/)dist/|web-assets\\.generated\\.ts$" },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: "tsconfig.server.json" },
     enhancedResolveOptions: {

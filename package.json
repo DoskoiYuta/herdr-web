@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/server/main.ts",
+    "hw": "bun src/cli/hw.ts",
     "start": "NODE_ENV=production bun src/server/main.ts",
     "build": "bun run build:web && bun run build:bin",
     "build:web": "vite build && bun scripts/embed-web.ts",
