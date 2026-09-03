@@ -21,6 +21,7 @@ async function walk(dir: string): Promise<string[]> {
 
 const files = (await walk(webDir)).sort();
 const lines: string[] = [
+  "// @ts-nocheck",
   "// 自動生成: bun scripts/embed-web.ts（bun run build:web の後）。手で編集しない。",
   "",
 ];
