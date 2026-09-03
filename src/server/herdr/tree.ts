@@ -26,6 +26,14 @@ export interface WorktreeResolver {
 const OTHER_REPO_KEY = "other";
 const OTHER_REPO_NAME = "その他";
 
+/**
+ * workspace が state に存在する pane だけを返す。herdr は workspace を閉じた後も
+ * しばらく pane レコードを返すことがあり、そのまま出すと閉じた workspace が ID 名で残る。
+ */
+export function livePanes(state: HerdrState): PaneInfo[] {
+  return [...state.panes.values()].filter((p) => state.workspaces.has(p.workspace_id));
+}
+
 export function toPaneRow(
   pane: PaneInfo,
   state?: Pick<HerdrState, "workspaces" | "tabs">,
@@ -71,7 +79,7 @@ export function buildTree(state: HerdrState, resolved: Map<string, WorktreeInfo 
     return repo;
   }
 
-  for (const pane of state.panes.values()) {
+  for (const pane of livePanes(state)) {
     const cwd = paneCwd(pane);
     const info = cwd ? (resolved.get(cwd) ?? null) : null;
 
@@ -120,7 +128,7 @@ export function buildWorkspaceTree(state: HerdrState): WorkspaceNode[] {
   const tabsByWorkspace = new Map<string, TabNode[]>();
   const panesByTab = new Map<string, PaneRow[]>();
 
-  for (const pane of state.panes.values()) {
+  for (const pane of livePanes(state)) {
     const row = toPaneRow(pane, state);
     const list = panesByTab.get(pane.tab_id) ?? [];
     list.push(row);

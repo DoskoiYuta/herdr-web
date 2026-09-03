@@ -3,7 +3,13 @@ import type { ClientEventMessage, ServerEventMessage } from "../../contract/even
 import type { HerdrGateway } from "../herdr/gateway";
 import type { FocusTracker } from "../herdr/focus";
 import type { HerdrStateStore, Logger } from "../herdr/state";
-import { buildTree, toPaneRow, type WorktreeInfo, type WorktreeResolver } from "../herdr/tree";
+import {
+  buildTree,
+  livePanes,
+  toPaneRow,
+  type WorktreeInfo,
+  type WorktreeResolver,
+} from "../herdr/tree";
 
 /** Abstraction over a `/ws/events` client connection, so the hub is testable without `ws`. */
 export interface Sink {
@@ -86,7 +92,7 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
   async function currentTree() {
     const s = state.get();
     const cwds = new Set<string>();
-    for (const pane of s.panes.values()) {
+    for (const pane of livePanes(s)) {
       const cwd = effectiveCwd(pane);
       if (cwd) cwds.add(cwd);
     }
@@ -115,7 +121,9 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
 
   async function broadcastPaneUpdated(paneId: string): Promise<void> {
     const pane = state.get().panes.get(paneId);
-    if (!pane) return;
+    // workspace 未登録の pane（閉じた直後の残骸や workspace_created 前の pane）は流さない。
+    // 後者は workspace_created の reset で tree ごと送られる。
+    if (!pane || !state.get().workspaces.has(pane.workspace_id)) return;
     const cwd = effectiveCwd(pane);
     const info = cwd ? await resolveCached(cwd) : null;
     hub.broadcast({

@@ -31,3 +31,18 @@ describe("workspace_closed / tab_closed drop their panes", () => {
     expect([...s1.panes.values()].some((p) => p.tab_id === tab)).toBe(false);
   });
 });
+
+import { buildTree, livePanes } from "./tree";
+
+describe("livePanes", () => {
+  test("panes of unknown workspaces are excluded from the tree", () => {
+    const s0 = stateFromSnapshot(snapshot);
+    const orphan = { ...[...s0.panes.values()][0]!, pane_id: "zz:p1", workspace_id: "zz" };
+    const s1 = { ...s0, panes: new Map([...s0.panes, [orphan.pane_id, orphan]]) };
+    expect(livePanes(s1).some((p) => p.pane_id === "zz:p1")).toBe(false);
+    const repos = buildTree(s1, new Map());
+    expect(
+      repos.some((r) => r.worktrees.some((w) => w.panes.some((p) => p.workspaceId === "zz"))),
+    ).toBe(false);
+  });
+});
