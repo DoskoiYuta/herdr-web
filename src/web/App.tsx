@@ -124,6 +124,7 @@ export function App() {
         herdrConnected={state.herdr.connected}
         connection={state.connection}
         pinnedWorktreeRoot={pinned ? worktreeRoot : null}
+        focusedWorkspaceId={state.focus?.workspace ?? null}
         onSelectPane={handleSelectPane}
         layout={sidebarLayout}
         onLayoutChange={handleSidebarLayoutChange}

@@ -24,6 +24,8 @@ import { STATUS_META } from "./PaneRow";
 export type RepoWorkspaceRowProps = {
   workspace: WorkspaceGroup;
   pinnedWorktreeRoot: string | null;
+  /** herdr で現在フォーカスされている workspace。背景ハイライトはこれだけを表す。 */
+  focusedWorkspaceId: string | null;
   onSelectPane: (paneId: string) => void;
 };
 
@@ -46,6 +48,7 @@ const SUMMARY_STATUSES = ["blocked", "working", "done"] as const;
 export function RepoWorkspaceRow({
   workspace,
   pinnedWorktreeRoot,
+  focusedWorkspaceId,
   onSelectPane,
 }: RepoWorkspaceRowProps) {
   const [renameOpen, setRenameOpen] = useState(false);
@@ -72,6 +75,9 @@ export function RepoWorkspaceRow({
     if (pane.focused) focusedPane = pane;
   }
 
+  // pane.focused は workspace ごとの「その workspace 内でアクティブな pane」なので、
+  // 選択状態の判定には使わない（全 workspace がハイライトされてしまう）。
+  const isFocusedWorkspace = workspace.workspaceId === focusedWorkspaceId;
   const isPinned =
     pinnedWorktreeRoot != null &&
     workspace.panes.some((p) => p.worktreeRoot === pinnedWorktreeRoot);
@@ -140,11 +146,11 @@ export function RepoWorkspaceRow({
           <button
             type="button"
             onClick={handleClick}
-            aria-current={focusedPane ? "true" : undefined}
+            aria-current={isFocusedWorkspace ? "true" : undefined}
             data-testid={`workspace-row-${workspace.workspaceId}`}
             className={cn(
               "flex w-full flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted",
-              focusedPane && "bg-muted font-medium",
+              isFocusedWorkspace && "bg-muted font-medium",
               isPinned && "ring-1 ring-inset ring-primary",
             )}
           >

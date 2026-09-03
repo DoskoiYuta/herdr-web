@@ -44,6 +44,7 @@ function defaultProps() {
   return {
     workspace: workspace(),
     pinnedWorktreeRoot: null,
+    focusedWorkspaceId: null,
     onSelectPane: vi.fn(),
   };
 }

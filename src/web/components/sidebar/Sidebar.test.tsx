@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import type { PaneRow, Repo } from "@contract/events";
 import { Sidebar, type SidebarProps } from "./Sidebar";
@@ -37,6 +37,7 @@ function defaultProps(): SidebarProps {
     herdrConnected: true,
     connection: "open",
     pinnedWorktreeRoot: null,
+    focusedWorkspaceId: null,
     onSelectPane: vi.fn(),
     layout: { width: 240, collapsed: false },
     onLayoutChange: vi.fn(),
@@ -98,17 +99,24 @@ describe("Sidebar", () => {
     expect(props.onSelectPane).toHaveBeenCalledWith("p2");
   });
 
-  test("the workspace row containing the focused pane is highlighted via aria-current", () => {
+  test("the workspace row of the focused workspace is highlighted via aria-current", () => {
     const props = defaultProps();
-    props.repos = [
+    props.focusedWorkspaceId = "w1";
+    render(<Sidebar {...props} />);
+    expect(screen.getByTestId("workspace-row-w1")).toHaveAttribute("aria-current", "true");
+    cleanup();
+    // pane.focused だけでは選択状態にならない（workspace ごとのアクティブ pane に過ぎない）
+    const other = defaultProps();
+    other.focusedWorkspaceId = null;
+    other.repos = [
       repo({
         worktrees: [
           { root: "/repo", branch: "main", isMain: true, panes: [pane({ focused: true })] },
         ],
       }),
     ];
-    render(<Sidebar {...props} />);
-    expect(screen.getByTestId("workspace-row-w1")).toHaveAttribute("aria-current", "true");
+    render(<Sidebar {...other} />);
+    expect(screen.getByTestId("workspace-row-w1")).not.toHaveAttribute("aria-current");
   });
 
   test("the workspace row containing the pinned worktree shows a pin marker", () => {

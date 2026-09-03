@@ -19,6 +19,7 @@ export type SidebarProps = {
   herdrConnected: boolean;
   connection: "connecting" | "open" | "reconnecting" | "closed";
   pinnedWorktreeRoot: string | null;
+  focusedWorkspaceId: string | null;
   onSelectPane: (paneId: string) => void;
   layout: SidebarLayout;
   onLayoutChange: (next: SidebarLayout) => void;
@@ -39,6 +40,7 @@ export function Sidebar({
   herdrConnected,
   connection,
   pinnedWorktreeRoot,
+  focusedWorkspaceId,
   onSelectPane,
   layout,
   onLayoutChange,
@@ -146,6 +148,7 @@ export function Sidebar({
                 repo={repo}
                 displayName={displayNames.get(repo.key) ?? repo.name}
                 pinnedWorktreeRoot={pinnedWorktreeRoot}
+                focusedWorkspaceId={focusedWorkspaceId}
                 collapsed={collapsedRepos.has(repo.key)}
                 onToggleCollapse={() => toggleRepo(repo.key)}
                 onSelectPane={onSelectPane}
