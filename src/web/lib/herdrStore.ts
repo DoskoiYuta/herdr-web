@@ -34,6 +34,7 @@ export type HerdrStore = {
   subscribeReviewEvents: (cb: (event: ReviewEvent) => void) => () => void;
   getReviewEvents: () => ReviewEvent[];
   send: (message: ClientEventMessage) => void;
+  open: () => void;
   close: () => void;
 };
 
@@ -48,6 +49,8 @@ const INITIAL_STATE: HerdrStoreState = {
 export type CreateHerdrStoreOptions = {
   location?: { protocol: string; host: string };
   WebSocketImpl?: typeof WebSocket;
+  /** false なら open() を呼ぶまで接続しない（React effect から張る用） */
+  autoOpen?: boolean;
 };
 
 export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore {
@@ -101,11 +104,22 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
     }
   }
 
-  const handle = connectEvents(loc, {
-    onMessage: handleMessage,
-    onStatus: (connection) => setState({ ...state, connection }),
-    WebSocketImpl: opts.WebSocketImpl,
-  });
+  // 接続は open() で張り、close() で落とす。React StrictMode の effect 二重実行
+  // （mount → cleanup → mount）に耐えるよう、close 後に再度 open できる。
+  let handle: ReturnType<typeof connectEvents> | null = null;
+  function open(): void {
+    if (handle) return;
+    handle = connectEvents(loc, {
+      onMessage: handleMessage,
+      onStatus: (connection) => setState({ ...state, connection }),
+      WebSocketImpl: opts.WebSocketImpl,
+    });
+  }
+  function close(): void {
+    handle?.close();
+    handle = null;
+  }
+  if (opts.autoOpen !== false) open();
 
   return {
     getState: () => state,
@@ -118,8 +132,9 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
       return () => reviewListeners.delete(cb);
     },
     getReviewEvents: () => [...reviewEvents],
-    send: handle.send,
-    close: handle.close,
+    send: (m) => handle?.send(m),
+    open,
+    close,
   };
 }
 

@@ -94,6 +94,8 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
     term.open(container);
     fit.fit();
     setDisconnected(false);
+    // StrictMode の二重実行で、破棄済みソケットの close が新しい接続の overlay を出さないようにする
+    let cancelled = false;
 
     const ws = connectTermSocket(
       { protocol: location.protocol, host: location.host },
@@ -104,7 +106,9 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
         onExit: () => {
           /* close は onClose 側でハンドルする */
         },
-        onClose: () => setDisconnected(true),
+        onClose: () => {
+          if (!cancelled) setDisconnected(true);
+        },
       },
     );
 
@@ -117,6 +121,7 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
     resizeObserver.observe(container);
 
     return () => {
+      cancelled = true;
       resizeObserver.disconnect();
       dataDisposable.dispose();
       ws.close();

@@ -31,8 +31,11 @@ export function App() {
   // レイジー初期化（useState(() => ...)）を使う: `useRef(createHerdrStore())` は
   // 引数を毎レンダーで評価してしまい、破棄される store ごとに /ws/events への
   // 接続が張られてしまう。
-  const [store] = useState(() => createHerdrStore());
-  useEffect(() => () => store.close(), [store]);
+  const [store] = useState(() => createHerdrStore({ autoOpen: false }));
+  useEffect(() => {
+    store.open();
+    return () => store.close();
+  }, [store]);
   const state = useHerdrStore(store);
 
   // ピン留めのローカルフラグ（ボタンの見た目用）。実際に表示する worktree は
@@ -50,6 +53,8 @@ export function App() {
         agentSession: state.focus.agentSession,
       }
     : null;
+
+  const repoKey = state.focus?.repoKey ?? null;
 
   const repoChangedTick = useMemo(() => {
     if (!worktreeRoot || !state.repoChanged || state.repoChanged.root !== worktreeRoot) return 0;
@@ -142,6 +147,7 @@ export function App() {
         {!layout.toolCollapsed && (
           <ToolPane
             worktreeRoot={worktreeRoot}
+            repoKey={worktreeRoot ? repoKey : null}
             pinned={pinned}
             onPinToggle={handlePinToggle}
             repoChangedTick={repoChangedTick}
