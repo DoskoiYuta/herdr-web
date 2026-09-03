@@ -29,6 +29,11 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 - ローカル Unix ドメインソケット（既定 `~/.config/herdr/herdr.sock`、NDJSON）で socket API を公開。Web UI サーバーは `node:net` で直接接続し、ブラウザには WebSocket で中継する。`herdr api schema --json` で JSON Schema（`request` / `success_response` / `error_response` / `event` / `subscription_event`）を取得できる。
 - `session.snapshot` は `{ agents, panes, tabs, workspaces, layouts, focused_pane_id, focused_tab_id, focused_workspace_id, protocol, version }` を返す。**pane レコードに `foreground_cwd` と `agent_session` が含まれる**（§12-10 確認済み）。
 - `agent_session` は `{ source, agent, kind: "id" | "path", value }`。公式 Claude Code 連携では `source: "herdr:claude"`, `agent: "claude"`, `kind: "id"`, `value: <Claude Code セッション UUID>`（§12-7 確認済み）。他エージェントは `pane.report_agent_session` で報告されれば取れる。
+- **ワイヤ形式（M2 で実機確認）**: リクエスト `{id, method, params}`、応答 `{id, result}` / `{id, error: {code, message}}`。購読フレームは `{event, data}` で、`data.type` は `pane_updated` のようにアンダースコア区切り、`events.subscribe` の `subscriptions` に渡す名前は `pane.updated` のようにドット区切り。
+- **1 接続 1 リクエスト**: herdr は通常のリクエストに応答した直後に接続を閉じる。長寿命なのは `events.subscribe` の接続だけ。socket-client はリクエストごとに接続を張り直す。
+- `pane.agent_status_changed` の購読には `pane_id` が必須（全 pane 一括では購読できない）。状態変化は `pane_updated` が `agent_status` を含むのでそちらで拾う。
+- `agent.prompt` の失敗は `agent_blocked` / `agent_prompt_stalled` というエラーコードで返る。成功は `{type: "agent_prompted", agent}`。`pane.focus` / `pane.get` の応答は `{type: "pane_info", pane}`。
+- herdr は `pane_focused` / `workspace_focused` / `tab_focused` / `layout_updated` を毎秒数回送ることがある。focus / tree の配信は内容が変わったときだけ行う。
 - pane 内プロセスは `HERDR_ENV`、`HERDR_PANE_ID`、`HERDR_WORKSPACE_ID`、`HERDR_TAB_ID`、`HERDR_SOCKET_PATH`、`HERDR_BIN_PATH` を継承する。
 - `agent.prompt` はプロンプト送信と待機を 1 リクエストで行い、エージェントが `blocked` なら送信せず `agent_blocked` を返す。
 - herdr サイドバーは `~/.config/herdr/config.toml` の `[ui] sidebar_collapsed_mode = "hidden"` で非表示にできる（§12-8 確認済み）。
@@ -418,20 +423,20 @@ herdr-web/
 
 ## 12. 調査・確認タスク
 
-| #   | 項目                                                | 状態                                                 |
-| --- | --------------------------------------------------- | ---------------------------------------------------- |
-| 1   | `foreground_cwd` 変化で `pane.updated` が発火するか | 未確認（M2 で実機）                                  |
-| 2   | schema の正確な形                                   | `herdr api schema --json` あり。valibot 手書きで対応 |
-| 3   | `agent.prompt` の Claude Code への入り方            | 未確認（M5 で実機）                                  |
-| 4   | PTY ライブラリ                                      | M1 で確認                                            |
-| 5   | herdr TUI の xterm.js 描画                          | M1 で確認                                            |
-| 6   | 移植範囲                                            | 済（§3）                                             |
-| 7   | `agent_session` の形                                | 済（§3）                                             |
-| 8   | サイドバー非表示キー                                | 済（`[ui] sidebar_collapsed_mode = "hidden"`）       |
-| 9   | `pane.focus` の workspace 越え                      | M2.5 で確認                                          |
-| 10  | snapshot に `foreground_cwd`                        | 済（含まれる）                                       |
-| 11  | 他エージェントの `agent_session`                    | 未確認                                               |
-| 12  | `tailscale serve` 経由の WS                         | M6 で確認                                            |
+| #   | 項目                                                | 状態                                                                                |
+| --- | --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | `foreground_cwd` 変化で `pane.updated` が発火するか | 未確認（3 秒ポーリングをフォールバックとして実装済み）                              |
+| 2   | schema の正確な形                                   | `herdr api schema --json` あり。valibot 手書きで対応                                |
+| 3   | `agent.prompt` の Claude Code への入り方            | 済（Enter まで送られ通常のメッセージとして届く。10 秒デバウンス後の到達を実機確認） |
+| 4   | PTY ライブラリ                                      | 済（node-pty は Bun で onData が来ない。bun-pty 採用、`env -i` で環境を置換）       |
+| 5   | herdr TUI の xterm.js 描画                          | attach でバイト受信を確認。描画品質はブラウザで要確認                               |
+| 6   | 移植範囲                                            | 済（§3）                                                                            |
+| 7   | `agent_session` の形                                | 済（§3）                                                                            |
+| 8   | サイドバー非表示キー                                | 済（`[ui] sidebar_collapsed_mode = "hidden"`）                                      |
+| 9   | `pane.focus` の workspace 越え                      | 未確認。`workspace.focus` → `pane.focus` の順で呼ぶ安全側で実装                     |
+| 10  | snapshot に `foreground_cwd`                        | 済（含まれる）                                                                      |
+| 11  | 他エージェントの `agent_session`                    | 未確認                                                                              |
+| 12  | `tailscale serve` 経由の WS                         | M6 で確認                                                                           |
 
 ## 13. 運用メモ（README 向け）
 
