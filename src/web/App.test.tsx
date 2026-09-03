@@ -22,6 +22,12 @@ vi.mock("@/components/graph/GraphPanel", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
+  configApi: {
+    get: vi.fn(async () => ({
+      terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1 },
+      graphInitialCommits: 200,
+    })),
+  },
   gitApi: {
     root: vi.fn(async (path: string) => ({
       root: path,

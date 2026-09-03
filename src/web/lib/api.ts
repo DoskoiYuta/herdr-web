@@ -1,6 +1,7 @@
 import { hc } from "hono/client";
 import * as v from "valibot";
 import type { AppType } from "../../server/app";
+import { ClientConfigSchema, type ClientConfig } from "../../contract/config";
 import {
   CommitDetailSchema,
   FilesResponseSchema,
@@ -153,5 +154,13 @@ export const reviewApi = {
     const res = await client.api.review[":id"].notify.$post({ param: { id } });
     if (!res.ok) throw new Error(`POST /api/review/:id/notify failed: ${res.status}`);
     return (await res.json()) as { ok: true };
+  },
+};
+
+export const configApi = {
+  async get(): Promise<ClientConfig> {
+    const res = await client.api.config.$get();
+    if (!res.ok) throw new Error(`GET /api/config failed: ${res.status}`);
+    return v.parse(ClientConfigSchema, await res.json());
   },
 };

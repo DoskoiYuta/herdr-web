@@ -15,6 +15,18 @@ export const ConfigSchema = v.object({
   graphInitialCommits: v.optional(v.pipe(v.number(), v.integer(), v.minValue(10)), 200),
   /** PTY 起動時に process.env から追加で許可する環境変数名（許可リストへの追記） */
   herdrEnvPassthrough: v.optional(v.array(v.string()), []),
+  terminal: v.optional(
+    v.object({
+      /** ブラウザ側のフォント。Nerd Font を先頭に置く。 */
+      fontFamily: v.optional(
+        v.string(),
+        '"BitstromWera Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", "FiraCode Nerd Font", "Symbols Nerd Font Mono", Menlo, monospace',
+      ),
+      fontSize: v.optional(v.pipe(v.number(), v.minValue(8), v.maxValue(40)), 13),
+      lineHeight: v.optional(v.pipe(v.number(), v.minValue(0.8), v.maxValue(2)), 1.0),
+    }),
+    {},
+  ),
   notify: v.optional(
     v.object({
       debounceMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)), 10_000),
@@ -28,3 +40,10 @@ export const ConfigSchema = v.object({
 });
 export type Config = v.InferOutput<typeof ConfigSchema>;
 export type ConfigInput = v.InferInput<typeof ConfigSchema>;
+
+/** GET /api/config でフロントに渡す部分。 */
+export const ClientConfigSchema = v.object({
+  terminal: v.object({ fontFamily: v.string(), fontSize: v.number(), lineHeight: v.number() }),
+  graphInitialCommits: v.number(),
+});
+export type ClientConfig = v.InferOutput<typeof ClientConfigSchema>;

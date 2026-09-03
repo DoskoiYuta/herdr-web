@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
+import { useQuery } from "@tanstack/react-query";
 import { Terminal } from "@/components/terminal/Terminal";
+import { configApi } from "@/lib/api";
 import { ToolPane } from "@/components/tool/ToolPane";
 import { createHerdrStore, useHerdrStore } from "@/lib/herdrStore";
 import {
@@ -23,6 +25,11 @@ function loadInitialLayout() {
 }
 
 export function App() {
+  const { data: clientConfig } = useQuery({
+    queryKey: ["client-config"],
+    queryFn: configApi.get,
+    staleTime: Infinity,
+  });
   const [layout, setLayout] = useState(loadInitialLayout);
   // ドラッグ中のライブ幅。ドラッグ確定（onResizeEnd）で layout.toolWidth と
   // 一致するため、外部からの再同期用エフェクトは不要（初期値のみ layout から取る）。
@@ -123,7 +130,12 @@ export function App() {
       />
 
       <main className="min-w-0 flex-1">
-        <Terminal className="h-full w-full" />
+        <Terminal
+          className="h-full w-full"
+          fontFamily={clientConfig?.terminal.fontFamily}
+          fontSize={clientConfig?.terminal.fontSize}
+          lineHeight={clientConfig?.terminal.lineHeight}
+        />
       </main>
 
       {!layout.toolCollapsed && (

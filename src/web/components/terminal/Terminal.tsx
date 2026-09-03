@@ -7,6 +7,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
+import { encodeModifiedEnter } from "@/lib/termKeys";
 import { connectTermSocket, sendInput, sendResize } from "@/lib/termSocket";
 import { cn } from "@/lib/utils";
 
@@ -14,10 +15,14 @@ export type TerminalProps = {
   session?: string;
   className?: string;
   fontFamily?: string;
+  fontSize?: number;
+  lineHeight?: number;
 };
 
 const DEFAULT_FONT_FAMILY =
-  '"JetBrainsMono Nerd Font", "JetBrainsMono NF", "Hack Nerd Font", "FiraCode Nerd Font", "Symbols Nerd Font Mono", monospace';
+  '"BitstromWera Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", "FiraCode Nerd Font", "Symbols Nerd Font Mono", Menlo, monospace';
+const DEFAULT_FONT_SIZE = 13;
+const DEFAULT_LINE_HEIGHT = 1.0;
 
 // ブラウザ標準のショートカットと衝突しうるキー。xterm 側へ渡した上で
 // ブラウザの既定動作（新規タブ/ウィンドウを開く等）は止める。
@@ -43,7 +48,13 @@ function resolveCssColor(varName: string, fallback: string): string {
   return resolved || fallback;
 }
 
-export function Terminal({ session, className, fontFamily = DEFAULT_FONT_FAMILY }: TerminalProps) {
+export function Terminal({
+  session,
+  className,
+  fontFamily = DEFAULT_FONT_FAMILY,
+  fontSize = DEFAULT_FONT_SIZE,
+  lineHeight = DEFAULT_LINE_HEIGHT,
+}: TerminalProps) {
   const [reconnectNonce, setReconnectNonce] = useState(0);
   return (
     <TerminalSession
@@ -51,18 +62,29 @@ export function Terminal({ session, className, fontFamily = DEFAULT_FONT_FAMILY 
       session={session}
       className={className}
       fontFamily={fontFamily}
+      fontSize={fontSize}
+      lineHeight={lineHeight}
       onReconnect={() => setReconnectNonce((n) => n + 1)}
     />
   );
 }
 
-type TerminalSessionProps = Required<Pick<TerminalProps, "fontFamily">> &
+type TerminalSessionProps = Required<
+  Pick<TerminalProps, "fontFamily" | "fontSize" | "lineHeight">
+> &
   Pick<TerminalProps, "session" | "className"> & { onReconnect: () => void };
 
 // key={reconnectNonce} で丸ごと再マウントすることで PTY 接続をやり直す。
 // そのぶんこの内側のコンポーネントの effect 依存配列には
 // 「再接続のためだけの値」が混ざらず、正確に保てる。
-function TerminalSession({ session, className, fontFamily, onReconnect }: TerminalSessionProps) {
+function TerminalSession({
+  session,
+  className,
+  fontFamily,
+  fontSize,
+  lineHeight,
+  onReconnect,
+}: TerminalSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [disconnected, setDisconnected] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -73,6 +95,8 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
 
     const term = new XTerm({
       fontFamily,
+      fontSize,
+      lineHeight,
       theme: {
         background: resolveCssColor("--background", "#000000"),
         foreground: resolveCssColor("--foreground", "#ffffff"),
@@ -91,7 +115,15 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
       // WebGL が使えない環境ではデフォルトの canvas/dom レンダラーに任せる
     }
 
-    term.attachCustomKeyEventHandler(shouldPassToXterm);
+    term.attachCustomKeyEventHandler((event) => {
+      const seq = encodeModifiedEnter(event);
+      if (seq !== null) {
+        event.preventDefault();
+        if (ws.readyState === WebSocket.OPEN) sendInput(ws, seq);
+        return false;
+      }
+      return shouldPassToXterm(event);
+    });
     term.open(container);
     fit.fit();
     setDisconnected(false);
@@ -129,7 +161,7 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
       ws.close();
       term.dispose();
     };
-  }, [session, fontFamily]);
+  }, [session, fontFamily, fontSize, lineHeight]);
 
   return (
     <div className={cn("relative h-full w-full", className)}>

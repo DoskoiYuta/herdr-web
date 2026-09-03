@@ -49,6 +49,10 @@ export function createTestApp(opts: TestAppOptions = {}) {
     version: "test",
     herdrStatus: () => fake.status(),
     git: { allowedRoots: opts.allowedRoots ?? [] },
+    clientConfig: () => {
+      const c = v.parse(ConfigSchema, {});
+      return { terminal: c.terminal, graphInitialCommits: c.graphInitialCommits };
+    },
     review: review.routes,
     repo: review.repoRoutes,
     hw: { state, resolver },

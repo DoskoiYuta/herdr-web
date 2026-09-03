@@ -84,6 +84,10 @@ const api = createApp({
   version: "0.1.0",
   herdrStatus: runtime.herdrStatus,
   git: { allowedRoots: config.allowedRoots },
+  clientConfig: () => ({
+    terminal: config.terminal,
+    graphInitialCommits: config.graphInitialCommits,
+  }),
   review: review.routes,
   repo: review.repoRoutes,
   hw: { state: runtime.state, resolver: runtime.resolver },
