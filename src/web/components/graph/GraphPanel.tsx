@@ -8,6 +8,10 @@ import GraphView from "./GraphView";
 export interface GraphPanelProps {
   repo: string;
   repoChangedTick: number;
+  /** See usePatch's `pollMs` (useGraph mirrors it): a client-side refetch
+   * interval for repos that don't get their own `repoChangedTick` (a
+   * sub-repo/submodule selection). */
+  pollMs?: number;
   onSelectCommit(range: { from: string; to: string } | null): void;
   /** 「diff を見る」/ ダブルクリック: 親との diff を選択して Diff タブへ遷移させる */
   onOpenDiff?(range: { from: string; to: string }): void;
@@ -43,6 +47,7 @@ const ROOT_COMMIT_NOTE = "ルートコミットの diff は表示できません
 export function GraphPanel({
   repo,
   repoChangedTick,
+  pollMs,
   onSelectCommit,
   onOpenDiff,
   virtualizerOptions,
@@ -51,7 +56,7 @@ export function GraphPanel({
   // Anchor commit for a pending shift-click range (the most recent plain click).
   const [anchorHash, setAnchorHash] = useState<string | null>(null);
 
-  const graphQuery = useGraph(repo, true, 500, repoChangedTick);
+  const graphQuery = useGraph(repo, true, 500, repoChangedTick, pollMs);
 
   const graphData = graphQuery.data;
   // `?? []` would otherwise produce a fresh array reference on every render

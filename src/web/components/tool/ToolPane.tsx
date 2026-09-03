@@ -1,16 +1,37 @@
+import { useQuery } from "@tanstack/react-query";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
+import type { SubRepo } from "@contract/git";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
 import { useReviewList } from "@/components/review/hooks/useReviewList";
 import { ReviewPanel, type ReviewNavigation } from "@/components/review/ReviewPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gitApi } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
+
+/** A sub-repo/submodule selection never gets its own `repoChangedTick` from
+ * the server — the poller only watches the *focused* worktree (see
+ * server/git/poller.ts) — so the diff/graph queries fall back to polling on
+ * this interval while a non-root sub-repo is selected. */
+const SUB_REPO_POLL_MS = 3000;
+
+const SUB_REPO_KIND_LABEL: Record<SubRepo["kind"], string> = {
+  root: "",
+  submodule: "submodule",
+  nested: ".repos",
+};
 
 export type CommitRange = { from: string; to: string } | null;
 
@@ -148,11 +169,50 @@ export function ToolPane({
   // `prevInitialLocation`), not in an effect: an effect here would setState
   // synchronously on every worktreeRoot change and force an extra commit.
   const [prevWorktreeRoot, setPrevWorktreeRoot] = useState(worktreeRoot);
+  // `subRepoId` is the selected entry's `SubRepo.id` ("" = the worktree
+  // root itself). Reset alongside `comparison`/`initialLocation` when
+  // `worktreeRoot` changes; deliberately NOT reset on `repoChangedTick`
+  // (see ToolPaneProps).
+  const [subRepoId, setSubRepoId] = useState("");
   if (worktreeRoot !== prevWorktreeRoot) {
     setPrevWorktreeRoot(worktreeRoot);
     if (comparison !== null) setComparison(null);
     if (initialLocation !== null) setInitialLocation(null);
+    if (subRepoId !== "") setSubRepoId("");
   }
+
+  // Sub-repository switcher (plan.md: submodules + `.repos/<child>` nested
+  // repos). Listed even for a null worktreeRoot (query stays disabled) so
+  // hook order is unconditional.
+  const subReposQuery = useQuery({
+    queryKey: ["subrepos", worktreeRoot],
+    queryFn: () => gitApi.subrepos(worktreeRoot as string),
+    enabled: worktreeRoot !== null,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const subRepos = subReposQuery.data?.repos ?? [];
+  const selectedSubRepo = subRepos.find((r) => r.id === subRepoId) ?? null;
+  const isSubRepoSelected = selectedSubRepo !== null && selectedSubRepo.kind !== "root";
+  const subRepoRoot = selectedSubRepo?.root ?? worktreeRoot ?? "";
+
+  // repoKey にも選択中のサブリポジトリを反映する。サブリポジトリは herdr の
+  // フォーカス pane が把握している repoKey とは別の git-common-dir を持つので、
+  // 選択中は /api/git/root で都度解決する。
+  const subRepoRootInfoQuery = useQuery({
+    queryKey: ["git-root", subRepoRoot],
+    queryFn: () => gitApi.root(subRepoRoot),
+    enabled: isSubRepoSelected,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const resolvedRepoKey = isSubRepoSelected
+    ? (subRepoRootInfoQuery.data?.commonDir ?? null)
+    : repoKey;
+  // サブリポジトリ選択中は repoChangedTick が来ない（サーバの poller はフォーカス
+  // 中の worktree しか見ていない — server/git/poller.ts）ため、diff/graph の
+  // クエリをこの間隔でポーリングして代替する。
+  const subRepoPollMs = isSubRepoSelected ? SUB_REPO_POLL_MS : undefined;
 
   const handleSelectCommit = useCallback((range: CommitRange) => {
     setComparison(range);
@@ -213,17 +273,42 @@ export function ToolPane({
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{basename(worktreeRoot)}</div>
-          <div className="truncate text-xs text-muted-foreground">{worktreeRoot}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {selectedSubRepo && selectedSubRepo.id !== ""
+              ? `${worktreeRoot}/${selectedSubRepo.id}`
+              : worktreeRoot}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onPinToggle}
-          aria-pressed={pinned}
-          aria-label={pinned ? "ピン留めを解除" : "ピン留め"}
-          className="shrink-0 rounded-md px-1.5 py-1 text-sm hover:bg-muted"
-        >
-          📌
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {subRepos.length > 1 && (
+            <Select value={subRepoId} onValueChange={setSubRepoId}>
+              <SelectTrigger size="sm" className="max-w-40" aria-label="サブリポジトリを選択">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {subRepos.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    <span className="truncate">{r.name}</span>
+                    {SUB_REPO_KIND_LABEL[r.kind] && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {SUB_REPO_KIND_LABEL[r.kind]}
+                      </span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <button
+            type="button"
+            onClick={onPinToggle}
+            aria-pressed={pinned}
+            aria-label={pinned ? "ピン留めを解除" : "ピン留め"}
+            className="shrink-0 rounded-md px-1.5 py-1 text-sm hover:bg-muted"
+          >
+            📌
+          </button>
+        </div>
       </header>
 
       {focusInfo && <FocusInfoBar focusInfo={focusInfo} />}
@@ -254,12 +339,13 @@ export function ToolPane({
             </div>
           )}
           <DiffPanel
-            key={`${worktreeRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
-            repo={worktreeRoot}
-            repoKey={repoKey}
+            key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
+            repo={subRepoRoot}
+            repoKey={resolvedRepoKey}
             from={comparison?.from}
             to={comparison?.to}
             repoChangedTick={repoChangedTick}
+            pollMs={subRepoPollMs}
             subscribeReviewEvents={subscribeReviewEvents}
             initialLocation={initialLocation}
             onInitialLocationConsumed={handleInitialLocationConsumed}
@@ -279,8 +365,9 @@ export function ToolPane({
           )}
           <div className="min-h-0 flex-1">
             <GraphPanel
-              repo={worktreeRoot}
+              repo={subRepoRoot}
               repoChangedTick={repoChangedTick}
+              pollMs={subRepoPollMs}
               onSelectCommit={handleSelectCommit}
               onOpenDiff={openDiffFor}
             />
@@ -289,8 +376,8 @@ export function ToolPane({
 
         <TabsContent value="review" className="min-h-0 flex-1 overflow-hidden">
           <ReviewPanel
-            repoKey={repoKey}
-            worktreeRoot={worktreeRoot}
+            repoKey={resolvedRepoKey}
+            worktreeRoot={subRepoRoot}
             subscribeReviewEvents={subscribeReviewEvents}
             onNavigate={handleReviewNavigate}
           />

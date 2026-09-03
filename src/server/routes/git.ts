@@ -8,12 +8,15 @@ import {
   PatchQuerySchema,
   RootQuerySchema,
   type RootResponse,
+  SubReposQuerySchema,
+  type SubReposResponse,
 } from "../../contract/git";
 import { getCommitDetail } from "../git/detail";
 import { resolveFiles } from "../git/files";
 import { buildGraph } from "../git/graph";
 import { InvalidComparisonError, generatePatch } from "../git/patch";
 import { resolveWorktree } from "../git/resolve";
+import { listSubRepos } from "../git/subrepos";
 import { isAllowedRoot, pathExists } from "./allowed-roots";
 
 export interface GitRoutesDeps {
@@ -100,6 +103,25 @@ export function gitRoutes(deps: GitRoutesDeps = {}) {
           all: all === "true" || all === "1",
         });
         return c.json(graph, 200);
+      } catch (err) {
+        return c.json(
+          { error: "internal" as const, message: err instanceof Error ? err.message : String(err) },
+          500,
+        );
+      }
+    })
+    .get("/subrepos", vValidator("query", SubReposQuerySchema), async (c) => {
+      const { repo } = c.req.valid("query");
+
+      if (!(await isAllowed(repo, allowedRoots))) {
+        if (!(await exists(repo))) return c.json({ error: "not-found" as const }, 404);
+        return c.json({ error: "forbidden" as const }, 403);
+      }
+
+      try {
+        const repos = await listSubRepos(repo);
+        const body: SubReposResponse = { repos };
+        return c.json(body, 200);
       } catch (err) {
         return c.json(
           { error: "internal" as const, message: err instanceof Error ? err.message : String(err) },

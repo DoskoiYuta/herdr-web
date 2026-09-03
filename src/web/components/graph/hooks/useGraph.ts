@@ -14,11 +14,26 @@ export function graphQueryKey(
   return ["graph", repo, all, max, repoChangedTick] as const;
 }
 
-export function useGraph(repo: string, all: boolean, max: number, repoChangedTick = 0) {
+/**
+ * `pollMs`: poll interval in ms, in addition to the `repoChangedTick`-driven
+ * refetch. `repoChangedTick` is only emitted by the server for the
+ * *focused* worktree (see poller.ts) — a sub-repo/submodule selected in the
+ * tool pane never gets its own tick, so ToolPane passes a short `pollMs` in
+ * that case to keep the graph reasonably fresh. Omit for the normal
+ * tick-driven path.
+ */
+export function useGraph(
+  repo: string,
+  all: boolean,
+  max: number,
+  repoChangedTick = 0,
+  pollMs?: number,
+) {
   return useQuery({
     queryKey: graphQueryKey(repo, all, max, repoChangedTick),
     queryFn: () => gitApi.graph({ repo, all, max }),
     staleTime: Infinity,
+    refetchInterval: pollMs,
     retry: false,
   });
 }

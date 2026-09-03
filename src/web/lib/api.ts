@@ -8,6 +8,7 @@ import {
   GraphResponseSchema,
   PatchResponseSchema,
   RootResponseSchema,
+  SubReposResponseSchema,
 } from "../../contract/git";
 import {
   type CreateReviewRequest,
@@ -91,6 +92,12 @@ export const gitApi = {
     });
     if (!res.ok) throw new Error(`GET /api/git/commit/:hash failed: ${res.status}`);
     return v.parse(CommitDetailSchema, await res.json());
+  },
+
+  async subrepos(repo: string) {
+    const res = await client.api.git.subrepos.$get({ query: { repo } });
+    if (!res.ok) throw new Error(`GET /api/git/subrepos failed: ${res.status}`);
+    return v.parse(SubReposResponseSchema, await res.json());
   },
 };
 

@@ -26,14 +26,24 @@ export interface UsePatchParams {
   /** Bumped by the caller whenever the repo's git state is known to have
    * changed (e.g. from a `repo-changed` WS event) — triggers a refetch. */
   repoChangedTick: number;
+  /**
+   * Poll interval in ms, instead of relying solely on `repoChangedTick`.
+   * `repoChangedTick` is only emitted by the server for the *focused*
+   * worktree (see poller.ts) — a sub-repo/submodule selected in the tool
+   * pane never gets its own tick, so ToolPane passes a short `pollMs` in
+   * that case to keep the diff reasonably fresh. Omit for the normal
+   * tick-driven path.
+   */
+  pollMs?: number;
 }
 
-export function usePatch({ repo, from, to, repoChangedTick }: UsePatchParams) {
+export function usePatch({ repo, from, to, repoChangedTick, pollMs }: UsePatchParams) {
   const query = useQuery({
     queryKey: patchQueryKey(repo, from, to),
     queryFn: () => gitApi.patch({ repo, from, to }),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+    refetchInterval: pollMs,
     retry: false,
   });
 

@@ -3,6 +3,7 @@ import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-librar
 import type { ReactElement } from "react";
 import { useEffect } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { SubReposResponse } from "@contract/git";
 import type { Review } from "@contract/review";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { ToolPane } from "./ToolPane";
@@ -55,21 +56,31 @@ vi.mock("@/components/diff/DiffPanel", () => ({
 }));
 
 vi.mock("@/components/review/ReviewPanel", () => ({
-  ReviewPanel: ({ onNavigate }: { onNavigate: (nav: { routeToGraph: true }) => void }) => (
+  ReviewPanel: ({
+    repoKey,
+    worktreeRoot,
+    onNavigate,
+  }: {
+    repoKey: string | null;
+    worktreeRoot: string;
+    onNavigate: (nav: { routeToGraph: true }) => void;
+  }) => (
     <button
       type="button"
       data-testid="review-panel-stub"
       onClick={() => onNavigate({ routeToGraph: true })}
     >
-      review
+      review:{worktreeRoot}:{repoKey ?? "null"}
     </button>
   ),
 }));
 
 vi.mock("@/components/graph/GraphPanel", () => ({
   GraphPanel: ({
+    repo,
     onSelectCommit,
   }: {
+    repo: string;
     onSelectCommit: (range: { from: string; to: string } | null) => void;
   }) => (
     <button
@@ -77,12 +88,15 @@ vi.mock("@/components/graph/GraphPanel", () => ({
       data-testid="graph-panel-stub"
       onClick={() => onSelectCommit({ from: "aaa111", to: "bbb222" })}
     >
-      graph
+      graph:{repo}
     </button>
   ),
 }));
 
 const reviewListMock = vi.fn(async (..._args: unknown[]) => []);
+const subreposMock = vi.fn(async (repo: string): Promise<SubReposResponse> => ({
+  repos: [{ id: "", name: repo.split("/").pop() ?? repo, root: repo, kind: "root" }],
+}));
 
 vi.mock("@/lib/api", () => ({
   gitApi: {
@@ -94,6 +108,7 @@ vi.mock("@/lib/api", () => ({
       head: "abc123",
       rootCommit: "abc123",
     })),
+    subrepos: (...args: [string]) => subreposMock(...args),
   },
   reviewApi: {
     list: (...args: unknown[]) => reviewListMock(...args),
@@ -371,5 +386,137 @@ describe("ToolPane", () => {
       review: review({ repo: "/Users/dev/project/.git" }),
     });
     await waitFor(() => expect(reviewListMock).toHaveBeenCalledTimes(2));
+  });
+
+  describe("sub-repo switcher", () => {
+    test("does not show the select when there's only one entry (the root)", async () => {
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      await waitFor(() => expect(subreposMock).toHaveBeenCalledWith("/Users/dev/project"));
+      expect(
+        screen.queryByRole("combobox", { name: "サブリポジトリを選択" }),
+      ).not.toBeInTheDocument();
+    });
+
+    test("shows the select with >1 entries; switching updates the repo/repoKey passed to Diff/Graph/Review panels, and the header path", async () => {
+      subreposMock.mockResolvedValueOnce({
+        repos: [
+          { id: "", name: "project", root: "/Users/dev/project", kind: "root" as const },
+          {
+            id: "vendor/lib",
+            name: "lib",
+            root: "/Users/dev/project/vendor/lib",
+            kind: "submodule" as const,
+          },
+        ],
+      });
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+
+      const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
+      expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+        "/Users/dev/project:WORKTREE:HEAD",
+      );
+
+      fireEvent.click(trigger);
+      const option = await screen.findByRole("option", { name: /lib/ });
+      fireEvent.click(option);
+
+      // repo passed to DiffPanel follows the selected sub-repo's root.
+      await waitFor(() =>
+        expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+          "/Users/dev/project/vendor/lib:WORKTREE:HEAD",
+        ),
+      );
+      // header path shows <worktree>/<subrepo>
+      expect(screen.getByText("/Users/dev/project/vendor/lib")).toBeInTheDocument();
+
+      selectTab("Graph");
+      expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
+        "graph:/Users/dev/project/vendor/lib",
+      );
+
+      selectTab("Review");
+      // repoKey is re-resolved via gitApi.root(subRepoRoot) instead of the
+      // focus repoKey, since the sub-repo has its own git-common-dir.
+      await waitFor(() =>
+        expect(screen.getByTestId("review-panel-stub")).toHaveTextContent(
+          "review:/Users/dev/project/vendor/lib:/Users/dev/project/vendor/lib/.git",
+        ),
+      );
+    });
+
+    test("resets the sub-repo selection back to the worktree root when worktreeRoot changes", async () => {
+      subreposMock.mockResolvedValueOnce({
+        repos: [
+          { id: "", name: "project-a", root: "/Users/dev/project-a", kind: "root" as const },
+          {
+            id: "vendor/lib",
+            name: "lib",
+            root: "/Users/dev/project-a/vendor/lib",
+            kind: "submodule" as const,
+          },
+        ],
+      });
+      const client = new QueryClient();
+      const { rerender } = rtlRender(
+        <QueryClientProvider client={client}>
+          <ToolPane
+            worktreeRoot="/Users/dev/project-a"
+            pinned={false}
+            onPinToggle={vi.fn()}
+            repoChangedTick={0}
+            onOpenPath={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
+      const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
+      fireEvent.click(trigger);
+      const option = await screen.findByRole("option", { name: /lib/ });
+      fireEvent.click(option);
+      await waitFor(() =>
+        expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+          "/Users/dev/project-a/vendor/lib:WORKTREE:HEAD",
+        ),
+      );
+
+      // subreposMock's default implementation (single root entry) applies
+      // to project-b, since the queued mockResolvedValueOnce above was
+      // already consumed by the mount above.
+      rerender(
+        <QueryClientProvider client={client}>
+          <ToolPane
+            worktreeRoot="/Users/dev/project-b"
+            pinned={false}
+            onPinToggle={vi.fn()}
+            repoChangedTick={0}
+            onOpenPath={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+          "/Users/dev/project-b:WORKTREE:HEAD",
+        ),
+      );
+      expect(
+        screen.queryByRole("combobox", { name: "サブリポジトリを選択" }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

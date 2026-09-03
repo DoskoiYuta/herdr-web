@@ -116,6 +116,9 @@ export interface DiffPanelProps {
   to?: string;
   /** Bumped by the parent whenever this repo's git state is known to have changed. */
   repoChangedTick: number;
+  /** See usePatch's `pollMs`: a client-side refetch interval for repos that
+   * don't get their own `repoChangedTick` (a sub-repo/submodule selection). */
+  pollMs?: number;
   /** F5-9: review / review-notify WS イベントを購読し、インライン表示を追従させる。 */
   subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
   /** Review タブからのジャンプ先（F5-8）。一度消費したら親が null に戻す想定。 */
@@ -132,6 +135,7 @@ export function DiffPanel({
   from,
   to,
   repoChangedTick,
+  pollMs,
   subscribeReviewEvents,
   initialLocation = null,
   onInitialLocationConsumed,
@@ -239,7 +243,7 @@ export function DiffPanel({
     setBannerState((s) => reduceBanner(s, { type: "applied", hash: data.hash }));
   }, []);
 
-  const patchQuery = usePatch({ repo, from, to, repoChangedTick });
+  const patchQuery = usePatch({ repo, from, to, repoChangedTick, pollMs });
 
   const appliedHashRef = useRef<string | null>(null);
   // Mirrors `appliedHashRef.current === null` as state, for the one place

@@ -198,3 +198,30 @@ export const CommitDetailSchema = v.object({
   files: v.array(CommitFileSchema),
 });
 export type CommitDetail = v.InferOutput<typeof CommitDetailSchema>;
+
+// ---------------------------------------------------------------------------
+// /api/git/subrepos
+// ---------------------------------------------------------------------------
+
+export const SubReposQuerySchema = v.object({
+  repo: v.pipe(v.string(), v.minLength(1)),
+});
+export type SubReposQuery = v.InferOutput<typeof SubReposQuerySchema>;
+
+export const SubRepoKindSchema = v.picklist(["root", "submodule", "nested"]);
+export type SubRepoKind = v.InferOutput<typeof SubRepoKindSchema>;
+
+export const SubRepoSchema = v.object({
+  /** Path relative to `repo`, `/`-separated; `""` for `repo` itself. */
+  id: v.string(),
+  name: v.string(),
+  /** Absolute, realpath'd. */
+  root: v.string(),
+  kind: SubRepoKindSchema,
+});
+export type SubRepo = v.InferOutput<typeof SubRepoSchema>;
+
+export const SubReposResponseSchema = v.object({
+  repos: v.array(SubRepoSchema),
+});
+export type SubReposResponse = v.InferOutput<typeof SubReposResponseSchema>;

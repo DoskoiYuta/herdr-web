@@ -197,3 +197,61 @@ describe("GET /api/git/commit/:hash", () => {
     expect(body.files[0].oldPath).toBe("old.txt");
   });
 });
+
+describe("GET /api/git/subrepos", () => {
+  test("returns just the root when there are no submodules or .repos children", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([dir]);
+
+    const res = await app.request(`/api/git/subrepos?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.repos).toEqual([{ id: "", name: expect.any(String), root: dir, kind: "root" }]);
+  });
+
+  test("includes an initialized submodule", async () => {
+    const upstream = await makeRepo();
+    await commit(upstream, "lib.txt", "lib\n", "init");
+
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    await execFileP(
+      "git",
+      ["-c", "protocol.file.allow=always", "submodule", "add", "-q", upstream, "vendor/lib"],
+      { cwd: dir },
+    );
+    await execFileP("git", ["commit", "-q", "-m", "add submodule"], { cwd: dir });
+    const app = makeApp([dir]);
+
+    const res = await app.request(`/api/git/subrepos?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(
+      body.repos.map((r: { id: string; kind: string }) => ({ id: r.id, kind: r.kind })),
+    ).toEqual([
+      { id: "", kind: "root" },
+      { id: "vendor/lib", kind: "submodule" },
+    ]);
+  });
+
+  test("404s on an unknown path", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([dir]);
+
+    const missing = await app.request(
+      `/api/git/subrepos?repo=${encodeURIComponent(`${dir}-does-not-exist`)}`,
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  test("repo outside allowed roots -> 403", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([]); // nothing allowed beyond $HOME, and dir is under tmpdir
+
+    const res = await app.request(`/api/git/subrepos?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(403);
+  });
+});
