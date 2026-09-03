@@ -6,7 +6,6 @@ import FileTree from "./FileTree";
 export interface CommitDetailProps {
   repo: string;
   hash: string;
-  onClose(): void;
   /** 「diff を見る」ボタン。未指定なら出さない（ルートコミット等）。 */
   onOpenDiff?(): void;
   /**
@@ -21,17 +20,13 @@ function formatDate(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleString();
 }
 
-export default function CommitDetail({ repo, hash, onClose, onOpenDiff, note }: CommitDetailProps) {
+export default function CommitDetail({ repo, hash, onOpenDiff, note }: CommitDetailProps) {
   const isUncommitted = hash === UNCOMMITTED_HASH;
   const query = useCommit(repo, hash);
   const fileTree = useMemo(() => buildFileTree(query.data?.files ?? []), [query.data]);
 
   return (
-    <div
-      className="rounded-md border border-border bg-card p-2 text-card-foreground"
-      role="region"
-      aria-label="commit detail"
-    >
+    <div className="px-2 py-1 text-sm" role="region" aria-label="commit detail">
       <div className="mb-2 flex items-center justify-between">
         <span className="font-mono text-xs text-muted-foreground">
           {hash === UNCOMMITTED_HASH ? hash : hash.slice(0, 12)}
@@ -46,14 +41,6 @@ export default function CommitDetail({ repo, hash, onClose, onOpenDiff, note }: 
               diff を見る
             </button>
           )}
-          <button
-            type="button"
-            className="rounded-sm px-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={onClose}
-            aria-label="close"
-          >
-            ×
-          </button>
         </span>
       </div>
 

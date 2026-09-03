@@ -59,7 +59,6 @@ export default function GraphRow({
   detailNote,
   now,
   onSelect,
-  onCloseDetail,
   onOpenDiff,
 }: GraphRowProps) {
   const isUncommitted = row.hash === UNCOMMITTED_HASH;
@@ -158,7 +157,6 @@ export default function GraphRow({
             <CommitDetail
               repo={repo}
               hash={row.hash}
-              onClose={onCloseDetail ?? (() => {})}
               onOpenDiff={
                 onOpenDiff && commit.parents.length > 0 ? () => onOpenDiff(row.hash) : undefined
               }

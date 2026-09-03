@@ -36,7 +36,7 @@ describe("CommitDetail", () => {
   test('shows "uncommitted changes" for UNCOMMITTED without calling the API', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<CommitDetail repo="/repo" hash="UNCOMMITTED" onClose={() => {}} />, {
+    render(<CommitDetail repo="/repo" hash="UNCOMMITTED" />, {
       wrapper: wrapper(),
     });
     expect(screen.getByText("未コミットの変更")).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("CommitDetail", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CommitDetail repo="/repo" hash={detail.hash} onClose={() => {}} />, {
+    render(<CommitDetail repo="/repo" hash={detail.hash} />, {
       wrapper: wrapper(),
     });
 
@@ -69,7 +69,7 @@ describe("CommitDetail", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CommitDetail repo="/repo" hash={detail.hash} onClose={() => {}} />, {
+    render(<CommitDetail repo="/repo" hash={detail.hash} />, {
       wrapper: wrapper(),
     });
 
@@ -83,7 +83,6 @@ describe("CommitDetail", () => {
       <CommitDetail
         repo="/repo"
         hash={detail.hash}
-        onClose={() => {}}
         note="ルートコミットの diff は表示できません"
       />,
       { wrapper: wrapper() },

@@ -11,7 +11,7 @@ function renderDetail(props: Partial<React.ComponentProps<typeof CommitDetail>> 
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CommitDetail repo="/r" hash="abcdef1234567890" onClose={() => {}} {...props} />
+      <CommitDetail repo="/r" hash="abcdef1234567890" {...props} />
     </QueryClientProvider>,
   );
 }

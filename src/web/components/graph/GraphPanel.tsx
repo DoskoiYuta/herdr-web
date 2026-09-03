@@ -105,6 +105,12 @@ export function GraphPanel({
       }
     }
 
+    // 選択中のコミットをもう一度クリックしたら詳細を閉じる（閉じるボタンは置かない）。
+    if (state.selectedHash === hash && state.detailOpen) {
+      dispatch({ type: "toggleDetail" });
+      return;
+    }
+
     // Plain click (or shift-click with no usable anchor): select this
     // commit alone and open its inline detail.
     dispatch({ type: "selectHash", hash, openDetail: true });
