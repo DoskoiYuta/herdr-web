@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 describe("gitApi.subrepos", () => {
-  test("parses a response with root + submodule + nested repos", async () => {
+  test("parses a response with root + submodule + vcstool repos", async () => {
     const repos = [
       { id: "", name: "project", root: "/repo", kind: "root" as const },
       { id: "vendor/lib", name: "lib", root: "/repo/vendor/lib", kind: "submodule" as const },
@@ -14,7 +14,7 @@ describe("gitApi.subrepos", () => {
         id: ".repos/nested-a",
         name: "nested-a",
         root: "/repo/.repos/nested-a",
-        kind: "nested" as const,
+        kind: "vcs" as const,
       },
     ];
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ repos }) });
