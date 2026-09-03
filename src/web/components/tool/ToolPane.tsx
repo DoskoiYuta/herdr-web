@@ -1,4 +1,6 @@
+import { Check, Copy } from "lucide-react";
 import { useCallback, useState } from "react";
+import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
 import { DiffPanel } from "@/components/diff/DiffPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
 import { Button } from "@/components/ui/button";
@@ -7,12 +9,60 @@ import { gitApi } from "@/lib/api";
 
 export type CommitRange = { from: string; to: string } | null;
 
+/** plan.md F2-2: フォーカス pane のエージェント情報。null はフォーカス無し/herdr 未接続。 */
+export type ToolPaneFocusInfo = {
+  agent: string | null;
+  agentStatus: AgentStatus | null;
+  agentSession: AgentSessionInfo | null;
+};
+
 export interface ToolPaneProps {
   worktreeRoot: string | null;
   pinned: boolean;
   onPinToggle: () => void;
   repoChangedTick: number;
   onOpenPath: (root: string) => void;
+  focusInfo?: ToolPaneFocusInfo | null;
+}
+
+function ResumeCopyButton({ sessionId }: { sessionId: string }) {
+  const [copied, setCopied] = useState(false);
+  const command = `claude --resume ${sessionId}`;
+
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // クリップボード API が使えない環境では何もしない
+    }
+  }, [command]);
+
+  return (
+    <Button type="button" size="xs" variant="outline" onClick={copy} className="gap-1">
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      {command}
+    </Button>
+  );
+}
+
+function FocusInfoBar({ focusInfo }: { focusInfo: ToolPaneFocusInfo }) {
+  if (!focusInfo.agent && !focusInfo.agentSession) return null;
+  const session = focusInfo.agentSession;
+  const showResume = session?.source === "herdr:claude" && session.kind === "id";
+
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+      {focusInfo.agent && (
+        <span>
+          {focusInfo.agent}
+          {focusInfo.agentStatus ? ` · ${focusInfo.agentStatus}` : ""}
+        </span>
+      )}
+      {showResume && <ResumeCopyButton sessionId={session.value} />}
+    </div>
+  );
 }
 
 function basename(path: string): string {
@@ -73,6 +123,7 @@ export function ToolPane({
   onPinToggle,
   repoChangedTick,
   onOpenPath,
+  focusInfo,
 }: ToolPaneProps) {
   const [comparison, setComparison] = useState<CommitRange>(null);
 
@@ -110,6 +161,8 @@ export function ToolPane({
           📌
         </button>
       </header>
+
+      {focusInfo && <FocusInfoBar focusInfo={focusInfo} />}
 
       <Tabs defaultValue="diff" className="min-h-0 flex-1">
         <TabsList className="mx-2 mt-2 w-fit">

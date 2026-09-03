@@ -1,7 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Terminal } from "@/components/terminal/Terminal";
 import { ToolPane } from "@/components/tool/ToolPane";
+import { createHerdrStore, useHerdrStore } from "@/lib/herdrStore";
 import {
   DEFAULT_LAYOUT,
   LAYOUT_STORAGE_KEY,
@@ -9,6 +11,7 @@ import {
   TOOL_MAX_WIDTH,
   TOOL_MIN_WIDTH,
   writeLayout,
+  type Layout,
 } from "@/lib/layout";
 
 function loadInitialLayout() {
@@ -25,13 +28,35 @@ export function App() {
   // 一致するため、外部からの再同期用エフェクトは不要（初期値のみ layout から取る）。
   const [liveToolWidth, setLiveToolWidth] = useState(layout.toolWidth);
 
-  // フォーカス追従（F2）はまだ配線されていないため、手動オープンのみをサポートする。
-  const [worktreeRoot, setWorktreeRoot] = useState<string | null>(null);
-  const [pinned, setPinned] = useState(false);
-  // repo-changed イベント配信（events WS）はまだ配線されていない。0 のまま。
-  const [repoChangedTick] = useState(0);
+  // レイジー初期化（useState(() => ...)）を使う: `useRef(createHerdrStore())` は
+  // 引数を毎レンダーで評価してしまい、破棄される store ごとに /ws/events への
+  // 接続が張られてしまう。
+  const [store] = useState(() => createHerdrStore());
+  useEffect(() => () => store.close(), [store]);
+  const state = useHerdrStore(store);
 
-  const persist = useCallback((next: typeof layout) => {
+  // ピン留めのローカルフラグ（ボタンの見た目用）。実際に表示する worktree は
+  // サーバーが送り返す focus.worktreeRoot に従う（plan.md F2-4 / §6.4-6）。
+  const [pinned, setPinned] = useState(false);
+  // herdr 未接続時に手動で開いた worktree（focus が無いときのフォールバック表示）。
+  const [manualWorktreeRoot, setManualWorktreeRoot] = useState<string | null>(null);
+
+  const worktreeRoot = state.focus?.worktreeRoot ?? manualWorktreeRoot;
+
+  const focusInfo = state.focus
+    ? {
+        agent: state.focus.agent,
+        agentStatus: state.focus.agentStatus,
+        agentSession: state.focus.agentSession,
+      }
+    : null;
+
+  const repoChangedTick = useMemo(() => {
+    if (!worktreeRoot || !state.repoChanged || state.repoChanged.root !== worktreeRoot) return 0;
+    return state.repoChanged.tick;
+  }, [worktreeRoot, state.repoChanged]);
+
+  const persist = useCallback((next: Layout) => {
     setLayout(next);
     try {
       localStorage.setItem(LAYOUT_STORAGE_KEY, writeLayout(next));
@@ -44,11 +69,47 @@ export function App() {
     persist({ ...layout, toolCollapsed: !layout.toolCollapsed });
   }, [layout, persist]);
 
+  const handlePinToggle = useCallback(() => {
+    const next = !pinned;
+    setPinned(next);
+    store.send({ type: "pin", worktreeRoot: next ? worktreeRoot : null });
+  }, [pinned, worktreeRoot, store]);
+
+  const handleOpenPath = useCallback(
+    (root: string) => {
+      setManualWorktreeRoot(root);
+      setPinned(true);
+      store.send({ type: "pin", worktreeRoot: root });
+    },
+    [store],
+  );
+
+  const handleSelectPane = useCallback(
+    (pane: string) => {
+      store.send({ type: "focus-pane", pane });
+    },
+    [store],
+  );
+
+  const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
+  const handleSidebarLayoutChange = useCallback(
+    (next: { width: number; collapsed: boolean }) => {
+      persist({ ...layout, sidebar: next });
+    },
+    [layout, persist],
+  );
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <aside className="w-60 shrink-0 border-r border-border p-2 text-sm text-muted-foreground">
-        サイドバー
-      </aside>
+      <Sidebar
+        repos={state.repos}
+        herdrConnected={state.herdr.connected}
+        connection={state.connection}
+        pinnedWorktreeRoot={pinned ? worktreeRoot : null}
+        onSelectPane={handleSelectPane}
+        layout={sidebarLayout}
+        onLayoutChange={handleSidebarLayoutChange}
+      />
 
       <main className="min-w-0 flex-1">
         <Terminal className="h-full w-full" />
@@ -82,9 +143,10 @@ export function App() {
           <ToolPane
             worktreeRoot={worktreeRoot}
             pinned={pinned}
-            onPinToggle={() => setPinned((p) => !p)}
+            onPinToggle={handlePinToggle}
             repoChangedTick={repoChangedTick}
-            onOpenPath={setWorktreeRoot}
+            onOpenPath={handleOpenPath}
+            focusInfo={worktreeRoot ? focusInfo : null}
           />
         )}
       </aside>

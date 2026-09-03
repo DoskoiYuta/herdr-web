@@ -144,4 +144,46 @@ describe("ToolPane", () => {
       "/Users/dev/project:WORKTREE:HEAD",
     );
   });
+
+  test("shows the focused pane's agent/status and offers a claude --resume copy button", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <ToolPane
+        worktreeRoot="/Users/dev/project"
+        pinned={false}
+        onPinToggle={vi.fn()}
+        repoChangedTick={0}
+        onOpenPath={vi.fn()}
+        focusInfo={{
+          agent: "claude",
+          agentStatus: "working",
+          agentSession: { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" },
+        }}
+      />,
+    );
+    expect(screen.getByText("claude · working")).toBeInTheDocument();
+    const copyButton = screen.getByRole("button", { name: "claude --resume abc-123" });
+    fireEvent.click(copyButton);
+    expect(writeText).toHaveBeenCalledWith("claude --resume abc-123");
+  });
+
+  test("does not show a resume button for a non-claude agent session", () => {
+    render(
+      <ToolPane
+        worktreeRoot="/Users/dev/project"
+        pinned={false}
+        onPinToggle={vi.fn()}
+        repoChangedTick={0}
+        onOpenPath={vi.fn()}
+        focusInfo={{
+          agent: "codex",
+          agentStatus: "idle",
+          agentSession: { source: "herdr:codex", agent: "codex", kind: "path", value: "/tmp/x" },
+        }}
+      />,
+    );
+    expect(screen.getByText("codex · idle")).toBeInTheDocument();
+    expect(screen.queryByText(/claude --resume/)).not.toBeInTheDocument();
+  });
 });

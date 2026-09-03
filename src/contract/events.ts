@@ -64,6 +64,7 @@ export type WorkspaceNode = v.InferOutput<typeof WorkspaceNodeSchema>;
 // ---------------------------------------------------------------------------
 
 export const TreeMessageSchema = v.object({ type: v.literal("tree"), repos: v.array(RepoSchema) });
+export type TreeMessage = v.InferOutput<typeof TreeMessageSchema>;
 
 export const PaneUpdatedMessageSchema = v.object({
   type: v.literal("pane-updated"),
@@ -71,11 +72,13 @@ export const PaneUpdatedMessageSchema = v.object({
   worktreeRoot: v.nullable(v.string()),
   repoKey: v.nullable(v.string()),
 });
+export type PaneUpdatedMessage = v.InferOutput<typeof PaneUpdatedMessageSchema>;
 
 export const PaneRemovedMessageSchema = v.object({
   type: v.literal("pane-removed"),
   pane: v.string(),
 });
+export type PaneRemovedMessage = v.InferOutput<typeof PaneRemovedMessageSchema>;
 
 export const FocusMessageSchema = v.object({
   type: v.literal("focus"),
@@ -105,13 +108,15 @@ export const ReviewMessageSchema = v.object({
   event: v.picklist(["created", "replied", "resolved", "reanchored", "outdated"]),
   review: v.unknown(),
 });
+export type ReviewMessage = v.InferOutput<typeof ReviewMessageSchema>;
 
 export const ReviewNotifyMessageSchema = v.object({
   type: v.literal("review-notify"),
   reviewId: v.string(),
-  result: v.picklist(["sent", "agent_blocked", "no_target"]),
+  result: v.picklist(["sent", "agent_blocked", "no_target", "unknown"]),
   pane: v.nullable(v.string()),
 });
+export type ReviewNotifyMessage = v.InferOutput<typeof ReviewNotifyMessageSchema>;
 
 export const HerdrStatusMessageSchema = v.object({
   type: v.literal("herdr"),
