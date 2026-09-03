@@ -106,6 +106,8 @@ describe("createHerdrStore", () => {
                   {
                     paneId: "p1",
                     workspaceId: "w1",
+                    workspaceLabel: null,
+                    tabLabel: null,
                     tabId: "t1",
                     label: null,
                     agent: null,

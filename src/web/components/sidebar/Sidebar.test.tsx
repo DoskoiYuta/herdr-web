@@ -5,6 +5,8 @@ import { Sidebar, type SidebarProps } from "./Sidebar";
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
+    workspaceLabel: null,
+    tabLabel: null,
     paneId: "p1",
     workspaceId: "w1",
     tabId: "t1",
@@ -42,31 +44,61 @@ function defaultProps(): SidebarProps {
 }
 
 describe("Sidebar", () => {
-  test("renders repo header, worktree branch/marker, and pane row", () => {
+  test("renders repo header and a workspace row (leaf, no per-pane rows)", () => {
     render(<Sidebar {...defaultProps()} />);
     expect(screen.getByText("repo")).toBeInTheDocument();
-    expect(screen.getByText("main worktree")).toBeInTheDocument();
-    expect(screen.getByText("claude: session")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-row-w1")).toBeInTheDocument();
+    // aggregated status summary, not a per-pane row
+    expect(screen.queryByText("claude: session")).not.toBeInTheDocument();
   });
 
-  test("shows blocked/done badges with an icon (not just color), blocked most prominent", () => {
+  test("workspace row shows an aggregated status count (working) and agent count, omitting zero counts", () => {
+    render(<Sidebar {...defaultProps()} />);
+    const row = screen.getByTestId("workspace-row-w1");
+    expect(within(row).queryByLabelText("状態: blocked")).not.toBeInTheDocument();
+    expect(within(row).queryByLabelText("状態: done")).not.toBeInTheDocument();
+    expect(within(row).getByLabelText("状態: working").closest("span")).toHaveTextContent("1");
+    expect(within(row).getByLabelText("agent 数").closest("span")).toHaveTextContent("1");
+  });
+
+  test("shows blocked/done badges on the repo header with an icon (not just color), blocked most prominent", () => {
     const props = defaultProps();
     props.repos = [repo({ counts: { blocked: 2, done: 1 } })];
     render(<Sidebar {...props} />);
-    const blockedBadge = screen.getByText("2").closest("span")!;
+    const header = screen.getByTestId("repo-header-/repo/.git");
+    const blockedBadge = within(header).getByText("2").closest("span")!;
     expect(within(blockedBadge).getByText("2")).toBeInTheDocument();
     expect(blockedBadge.querySelector("svg")).not.toBeNull();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(within(header).getByText("1")).toBeInTheDocument();
   });
 
-  test("clicking a pane row sends focus-pane via onSelectPane", () => {
+  test("clicking a workspace row focuses its focused pane if any, else its first pane", () => {
     const props = defaultProps();
     render(<Sidebar {...props} />);
-    fireEvent.click(screen.getByText("claude: session"));
+    fireEvent.click(screen.getByTestId("workspace-row-w1"));
     expect(props.onSelectPane).toHaveBeenCalledWith("p1");
   });
 
-  test("the focused pane row is highlighted via aria-current", () => {
+  test("clicking a workspace row with a focused pane sends that pane, not the first one", () => {
+    const props = defaultProps();
+    props.repos = [
+      repo({
+        worktrees: [
+          {
+            root: "/repo",
+            branch: "main",
+            isMain: true,
+            panes: [pane({ paneId: "p1", focused: false }), pane({ paneId: "p2", focused: true })],
+          },
+        ],
+      }),
+    ];
+    render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByTestId("workspace-row-w1"));
+    expect(props.onSelectPane).toHaveBeenCalledWith("p2");
+  });
+
+  test("the workspace row containing the focused pane is highlighted via aria-current", () => {
     const props = defaultProps();
     props.repos = [
       repo({
@@ -76,14 +108,40 @@ describe("Sidebar", () => {
       }),
     ];
     render(<Sidebar {...props} />);
-    expect(screen.getByTestId("pane-row-p1")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("workspace-row-w1")).toHaveAttribute("aria-current", "true");
   });
 
-  test("the pinned worktree shows a pin marker", () => {
+  test("the workspace row containing the pinned worktree shows a pin marker", () => {
     const props = defaultProps();
     props.pinnedWorktreeRoot = "/repo";
     render(<Sidebar {...props} />);
-    expect(screen.getByLabelText("ピン留め中")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("workspace-row-w1")).getByLabelText("ピン留め中"),
+    ).toBeInTheDocument();
+  });
+
+  test("shows a branch badge only for panes in a non-main worktree, with the worktree root as tooltip", () => {
+    const props = defaultProps();
+    props.repos = [
+      repo({
+        worktrees: [
+          { root: "/repo", branch: "main", isMain: true, panes: [pane({ paneId: "p1" })] },
+          {
+            root: "/repo-linked",
+            branch: "feature",
+            isMain: false,
+            panes: [pane({ paneId: "p2", workspaceId: "w1" })],
+          },
+        ],
+      }),
+    ];
+    render(<Sidebar {...props} />);
+    const row = screen.getByTestId("workspace-row-w1");
+    expect(within(row).getByText("feature")).toBeInTheDocument();
+    expect(within(row).getByText("feature").closest("span")).toHaveAttribute(
+      "title",
+      "/repo-linked",
+    );
   });
 
   test("shows herdr 未接続 with connection state when not connected", () => {
@@ -94,15 +152,15 @@ describe("Sidebar", () => {
     expect(screen.getByText("herdr 未接続（再接続中…）")).toBeInTheDocument();
   });
 
-  test("collapsing a repo group hides its worktrees/panes", () => {
+  test("collapsing a repo group hides its workspace rows", () => {
     render(<Sidebar {...defaultProps()} />);
     fireEvent.click(screen.getByTestId("repo-header-/repo/.git"));
-    expect(screen.queryByText("claude: session")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-row-w1")).not.toBeInTheDocument();
   });
 
   test("switching to workspace mode reconstructs workspace > tab > pane from the same rows", () => {
     render(<Sidebar {...defaultProps()} />);
-    fireEvent.click(screen.getByRole("radio", { name: "workspace 表示" }));
+    fireEvent.click(screen.getByRole("radio", { name: "ワークスペース表示" }));
     expect(screen.getByText("workspace w1")).toBeInTheDocument();
     expect(screen.getByText("tab t1")).toBeInTheDocument();
     expect(screen.getByText("claude: session")).toBeInTheDocument();
@@ -114,7 +172,7 @@ describe("Sidebar", () => {
     props.repos = [repo({ counts: { blocked: 3, done: 0 } })];
     render(<Sidebar {...props} />);
     expect(screen.getByLabelText("サイドバー（折りたたみ）")).toBeInTheDocument();
-    expect(screen.queryByText("claude: session")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-row-w1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("サイドバーを開く"));
     expect(props.onLayoutChange).toHaveBeenCalledWith({ width: 240, collapsed: false });
   });

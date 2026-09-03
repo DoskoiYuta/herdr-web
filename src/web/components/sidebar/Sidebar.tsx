@@ -31,8 +31,9 @@ const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
   closed: "切断",
 };
 
-/** plan.md F8: `repository > worktree > pane`（既定）/ `workspace > tab > pane` の
- * サイドバー。折りたたみ可能でアイコンレールになり、幅はドラッグで変更できる。 */
+/** plan.md F8: `repository > workspace`（既定。workspace が leaf 行）/
+ * `workspace > tab > pane` の 2 モードを持つサイドバー。折りたたみ可能でアイコン
+ * レールになり、幅はドラッグで変更できる。 */
 export function Sidebar({
   repos,
   herdrConnected,
@@ -44,7 +45,6 @@ export function Sidebar({
 }: SidebarProps) {
   const [mode, setMode] = useState<SidebarMode>("repository");
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
-  const [collapsedWorktrees, setCollapsedWorktrees] = useState<ReadonlySet<string>>(new Set());
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string>>(new Set());
   const [liveWidth, setLiveWidth] = useState(layout.width);
 
@@ -60,7 +60,6 @@ export function Sidebar({
   );
 
   const toggleRepo = (key: string) => setCollapsedRepos((prev) => toggleInSet(prev, key));
-  const toggleWorktree = (root: string) => setCollapsedWorktrees((prev) => toggleInSet(prev, root));
   const toggleWorkspace = (id: string) => setCollapsedWorkspaces((prev) => toggleInSet(prev, id));
 
   if (layout.collapsed) {
@@ -110,11 +109,11 @@ export function Sidebar({
             onValueChange={(v) => v && setMode(v as SidebarMode)}
             size="sm"
           >
-            <ToggleGroupItem value="repository" aria-label="repository 表示">
-              repository
+            <ToggleGroupItem value="repository" aria-label="リポジトリ表示">
+              リポジトリ
             </ToggleGroupItem>
-            <ToggleGroupItem value="workspace" aria-label="workspace 表示">
-              workspace
+            <ToggleGroupItem value="workspace" aria-label="ワークスペース表示">
+              ワークスペース
             </ToggleGroupItem>
           </ToggleGroup>
           <button
@@ -149,8 +148,6 @@ export function Sidebar({
                 pinnedWorktreeRoot={pinnedWorktreeRoot}
                 collapsed={collapsedRepos.has(repo.key)}
                 onToggleCollapse={() => toggleRepo(repo.key)}
-                collapsedWorktrees={collapsedWorktrees}
-                onToggleWorktreeCollapse={toggleWorktree}
                 onSelectPane={onSelectPane}
               />
             ))}

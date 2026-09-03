@@ -1,8 +1,9 @@
 import { ChevronRight, CircleCheck, OctagonAlert } from "lucide-react";
 import type { Repo } from "@contract/events";
 import { Badge } from "@/components/ui/badge";
+import { groupByWorkspace } from "@/lib/repoWorkspaces";
 import { cn } from "@/lib/utils";
-import { WorktreeGroup } from "./WorktreeGroup";
+import { RepoWorkspaceRow } from "./RepoWorkspaceRow";
 
 export type RepoGroupProps = {
   repo: Repo;
@@ -11,23 +12,22 @@ export type RepoGroupProps = {
   pinnedWorktreeRoot: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  collapsedWorktrees: ReadonlySet<string>;
-  onToggleWorktreeCollapse: (root: string) => void;
   onSelectPane: (paneId: string) => void;
 };
 
 /** plan.md F8-1 / F8-4: repository ヘッダーに名前と blocked/done バッジ（blocked を
- * 最優先、色だけに頼らずアイコンも出す）を出し、折りたたみ可能にする。 */
+ * 最優先、色だけに頼らずアイコンも出す）を出し、折りたたみ可能にする。中身は
+ * `repository > worktree > pane` ではなく `repository > workspace`（leaf 行）。 */
 export function RepoGroup({
   repo,
   displayName,
   pinnedWorktreeRoot,
   collapsed,
   onToggleCollapse,
-  collapsedWorktrees,
-  onToggleWorktreeCollapse,
   onSelectPane,
 }: RepoGroupProps) {
+  const workspaces = groupByWorkspace(repo);
+
   return (
     <div>
       <button
@@ -55,14 +55,12 @@ export function RepoGroup({
         )}
       </button>
       {!collapsed && (
-        <div className="ml-3 flex flex-col gap-1 border-l border-border pl-2">
-          {repo.worktrees.map((worktree) => (
-            <WorktreeGroup
-              key={worktree.root}
-              worktree={worktree}
-              pinned={worktree.root === pinnedWorktreeRoot}
-              collapsed={collapsedWorktrees.has(worktree.root)}
-              onToggleCollapse={() => onToggleWorktreeCollapse(worktree.root)}
+        <div className="ml-3 flex flex-col gap-0.5 border-l border-border pl-2">
+          {workspaces.map((workspace) => (
+            <RepoWorkspaceRow
+              key={workspace.workspaceId}
+              workspace={workspace}
+              pinnedWorktreeRoot={pinnedWorktreeRoot}
               onSelectPane={onSelectPane}
             />
           ))}

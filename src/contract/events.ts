@@ -14,7 +14,9 @@ import { ReviewSchema } from "./review";
 export const PaneRowSchema = v.object({
   paneId: v.string(),
   workspaceId: v.string(),
+  workspaceLabel: v.nullable(v.string()),
   tabId: v.string(),
+  tabLabel: v.nullable(v.string()),
   label: v.nullable(v.string()),
   agent: v.nullable(v.string()),
   agentStatus: AgentStatusSchema,

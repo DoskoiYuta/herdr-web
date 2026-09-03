@@ -3,9 +3,16 @@ import type { PaneRow as PaneRowType } from "@contract/events";
 import type { AgentStatus } from "@contract/herdr";
 import { cn } from "@/lib/utils";
 
-type StatusMeta = { icon: typeof CircleDashed; label: string; className: string; spin?: boolean };
+export type StatusMeta = {
+  icon: typeof CircleDashed;
+  label: string;
+  className: string;
+  spin?: boolean;
+};
 
-const STATUS_META: Record<AgentStatus, StatusMeta> = {
+/** Shared with `RepoWorkspaceRow` so the repository view's aggregated status
+ * counts use the exact same icons/colors as this per-pane row. */
+export const STATUS_META: Record<AgentStatus, StatusMeta> = {
   idle: { icon: CircleDashed, label: "idle", className: "text-muted-foreground" },
   working: { icon: Loader2, label: "working", className: "text-blue-500", spin: true },
   blocked: { icon: OctagonAlert, label: "blocked", className: "text-red-500" },

@@ -6,6 +6,8 @@ function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
     paneId: "pane-1",
     workspaceId: "ws-1",
+    workspaceLabel: null,
+    tabLabel: null,
     tabId: "tab-1",
     label: null,
     agent: "claude",

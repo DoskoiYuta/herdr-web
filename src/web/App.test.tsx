@@ -185,7 +185,7 @@ describe("App", () => {
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
   });
 
-  test("clicking a sidebar pane row sends focus-pane", () => {
+  test("clicking a sidebar workspace row sends focus-pane", () => {
     renderApp();
     emit({
       type: "tree",
@@ -203,7 +203,9 @@ describe("App", () => {
                 {
                   paneId: "p1",
                   workspaceId: "w1",
+                  workspaceLabel: "w1",
                   tabId: "t1",
+                  tabLabel: null,
                   label: "session",
                   agent: "claude",
                   agentStatus: "working",
@@ -218,7 +220,7 @@ describe("App", () => {
         },
       ],
     });
-    fireEvent.click(screen.getByText("claude: session"));
+    fireEvent.click(screen.getByTestId("workspace-row-w1"));
     expect(sendMock).toHaveBeenCalledWith({ type: "focus-pane", pane: "p1" });
   });
 });

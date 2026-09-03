@@ -120,7 +120,7 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
     const info = cwd ? await resolveCached(cwd) : null;
     hub.broadcast({
       type: "pane-updated",
-      row: toPaneRow(pane),
+      row: toPaneRow(pane, state.get()),
       worktreeRoot: info?.root ?? null,
       repoKey: info?.commonDir ?? null,
     });

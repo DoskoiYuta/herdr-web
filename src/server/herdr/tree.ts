@@ -26,11 +26,16 @@ export interface WorktreeResolver {
 const OTHER_REPO_KEY = "other";
 const OTHER_REPO_NAME = "その他";
 
-export function toPaneRow(pane: PaneInfo): PaneRow {
+export function toPaneRow(
+  pane: PaneInfo,
+  state?: Pick<HerdrState, "workspaces" | "tabs">,
+): PaneRow {
   return {
     paneId: pane.pane_id,
     workspaceId: pane.workspace_id,
+    workspaceLabel: state?.workspaces.get(pane.workspace_id)?.label ?? null,
     tabId: pane.tab_id,
+    tabLabel: state?.tabs.get(pane.tab_id)?.label ?? null,
     label: pane.label ?? null,
     agent: pane.agent ?? null,
     agentStatus: pane.agent_status,
@@ -85,7 +90,7 @@ export function buildTree(state: HerdrState, resolved: Map<string, WorktreeInfo 
       };
       repo.worktrees.set(worktreeRoot, worktree);
     }
-    worktree.panes.push(toPaneRow(pane));
+    worktree.panes.push(toPaneRow(pane, state));
 
     if (pane.agent_status === "blocked") repo.blocked += 1;
     if (pane.agent_status === "done") repo.done += 1;
@@ -116,7 +121,7 @@ export function buildWorkspaceTree(state: HerdrState): WorkspaceNode[] {
   const panesByTab = new Map<string, PaneRow[]>();
 
   for (const pane of state.panes.values()) {
-    const row = toPaneRow(pane);
+    const row = toPaneRow(pane, state);
     const list = panesByTab.get(pane.tab_id) ?? [];
     list.push(row);
     panesByTab.set(pane.tab_id, list);
