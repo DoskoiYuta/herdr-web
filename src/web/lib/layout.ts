@@ -3,7 +3,7 @@ import * as v from "valibot";
 export const LAYOUT_STORAGE_KEY = "herdr-web:layout";
 
 export const TOOL_MIN_WIDTH = 240;
-export const TOOL_MAX_WIDTH = 720;
+export const TOOL_MAX_WIDTH = 1400;
 export const TOOL_DEFAULT_WIDTH = 640;
 
 export const SIDEBAR_MIN_WIDTH = 180;
