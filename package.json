@@ -17,7 +17,7 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "check": "bun run typecheck && bun run lint && bun run fmt:check && bun run test",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate && bun scripts/embed-migrations.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

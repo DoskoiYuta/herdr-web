@@ -1,16 +1,33 @@
 import { Hono } from "hono";
 import type { Health } from "../contract/health";
+import { gitRoutes } from "./routes/git";
+import { hwRoutes, type HwRoutesDeps } from "./routes/hw";
+import {
+  repoRoutes,
+  reviewRoutes,
+  type RepoRoutesDeps,
+  type ReviewRoutesDeps,
+} from "./routes/review";
 
 export type AppDeps = {
   version: string;
   herdrStatus: () => { connected: boolean; protocol: number | null };
+  git?: { allowedRoots?: string[] };
+  review: ReviewRoutesDeps;
+  repo: RepoRoutesDeps;
+  hw: HwRoutesDeps;
 };
 
 export function createApp(deps: AppDeps) {
-  const app = new Hono().get("/api/health", (c) => {
-    const body: Health = { ok: true, version: deps.version, herdr: deps.herdrStatus() };
-    return c.json(body);
-  });
+  const app = new Hono()
+    .get("/api/health", (c) => {
+      const body: Health = { ok: true, version: deps.version, herdr: deps.herdrStatus() };
+      return c.json(body);
+    })
+    .route("/api/git", gitRoutes(deps.git))
+    .route("/api/review", reviewRoutes(deps.review))
+    .route("/api/repo", repoRoutes(deps.repo))
+    .route("/api/hw", hwRoutes(deps.hw));
   return app;
 }
 

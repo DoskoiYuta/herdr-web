@@ -1,0 +1,716 @@
+{
+  "agents": [
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "a6e30ce2-6fd1-4b41-9bf6-68de64d89167"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "pane_id": "w1:p14",
+      "revision": 1,
+      "state_change_seq": 384,
+      "tab_id": "w1:t9",
+      "terminal_id": "term_65a4e0914e1311",
+      "terminal_title": "✳ ドリルのネイティブアプリ",
+      "terminal_title_stripped": "ドリルのネイティブアプリ",
+      "workspace_id": "w1"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "7a6b51e6-0dee-4bd4-94db-d73f276ee8f6"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "pane_id": "w1:p16",
+      "revision": 2,
+      "state_change_seq": 485,
+      "tab_id": "w1:t9",
+      "terminal_id": "term_65a4e0914f3782",
+      "terminal_title": "✳ mozer_classroom cloud9認証調査",
+      "terminal_title_stripped": "mozer_classroom cloud9認証調査",
+      "workspace_id": "w1"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "dd0350a2-c859-49fa-9f46-695ab583ceff"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "pane_id": "w2:p1E",
+      "revision": 5,
+      "state_change_seq": 395,
+      "tab_id": "w2:t1",
+      "terminal_id": "term_65a4e0914f7db3",
+      "terminal_title": "✳ gamepad-teleop-xInput",
+      "terminal_title_stripped": "gamepad-teleop-xInput",
+      "workspace_id": "w2"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "310a05fb-d3bd-4c02-9a50-6b785e6dc586"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "pane_id": "w2:p1K",
+      "revision": 3,
+      "state_change_seq": 438,
+      "tab_id": "w2:t1",
+      "terminal_id": "term_65a4e091500704",
+      "terminal_title": "✳ 出荷イメージの GPL ライセンス対応",
+      "terminal_title_stripped": "出荷イメージの GPL ライセンス対応",
+      "workspace_id": "w2"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "8e1e1826-cb2a-4cda-952c-7dc26697ccba"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "pane_id": "w6:p8",
+      "revision": 1,
+      "state_change_seq": 381,
+      "tab_id": "w6:t2",
+      "terminal_id": "term_65a4e091509736",
+      "terminal_title": "✳ OpenClaw風ノート管理システムの構築",
+      "terminal_title_stripped": "OpenClaw風ノート管理システムの構築",
+      "workspace_id": "w6"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "07c31fc7-5dca-4370-9b81-dcec24c49144"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/lifeistech/cpbl-dev-ai-agent",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/cpbl-dev-ai-agent",
+      "pane_id": "wB:p1",
+      "revision": 7,
+      "state_change_seq": 442,
+      "tab_id": "wB:t1",
+      "terminal_id": "term_65a4e0915215f8",
+      "terminal_title": "✳ Cloud9 メンバーデータ抽出",
+      "terminal_title_stripped": "Cloud9 メンバーデータ抽出",
+      "workspace_id": "wB"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "1765f492-7d91-4385-8b3d-90d124b2cc2d"
+      },
+      "agent_status": "working",
+      "cwd": "/Users/yuta/github.com/DoskoiYuta/herdr-web",
+      "focused": true,
+      "foreground_cwd": "/Users/yuta/github.com/DoskoiYuta/herdr-web",
+      "pane_id": "wE:p1",
+      "revision": 2,
+      "state_change_seq": 499,
+      "tab_id": "wE:t1",
+      "terminal_id": "term_65a8b93d836fd23",
+      "terminal_title": "◑ plan.mdのキャッチアップ",
+      "terminal_title_stripped": "plan.mdのキャッチアップ",
+      "workspace_id": "wE"
+    }
+  ],
+  "focused_pane_id": "wE:p1",
+  "focused_tab_id": "wE:t1",
+  "focused_workspace_id": "wE",
+  "layouts": [
+    {
+      "area": {
+        "height": 81,
+        "width": 293,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "w1:p16",
+      "panes": [
+        {
+          "focused": false,
+          "pane_id": "w1:p14",
+          "rect": {
+            "height": 81,
+            "width": 135,
+            "x": 26,
+            "y": 1
+          }
+        },
+        {
+          "focused": true,
+          "pane_id": "w1:p16",
+          "rect": {
+            "height": 81,
+            "width": 158,
+            "x": 161,
+            "y": 1
+          }
+        }
+      ],
+      "splits": [
+        {
+          "direction": "right",
+          "id": "split_0_root",
+          "ratio": 0.46075085,
+          "rect": {
+            "height": 81,
+            "width": 293,
+            "x": 26,
+            "y": 1
+          }
+        }
+      ],
+      "tab_id": "w1:t9",
+      "workspace_id": "w1",
+      "zoomed": false
+    },
+    {
+      "area": {
+        "height": 81,
+        "width": 293,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "w2:p1K",
+      "panes": [
+        {
+          "focused": false,
+          "pane_id": "w2:p1E",
+          "rect": {
+            "height": 81,
+            "width": 123,
+            "x": 26,
+            "y": 1
+          }
+        },
+        {
+          "focused": true,
+          "pane_id": "w2:p1K",
+          "rect": {
+            "height": 81,
+            "width": 170,
+            "x": 149,
+            "y": 1
+          }
+        }
+      ],
+      "splits": [
+        {
+          "direction": "right",
+          "id": "split_0_root",
+          "ratio": 0.41979522,
+          "rect": {
+            "height": 81,
+            "width": 293,
+            "x": 26,
+            "y": 1
+          }
+        }
+      ],
+      "tab_id": "w2:t1",
+      "workspace_id": "w2",
+      "zoomed": false
+    },
+    {
+      "area": {
+        "height": 81,
+        "width": 293,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "w6:p8",
+      "panes": [
+        {
+          "focused": false,
+          "pane_id": "w6:p3",
+          "rect": {
+            "height": 81,
+            "width": 147,
+            "x": 26,
+            "y": 1
+          }
+        },
+        {
+          "focused": true,
+          "pane_id": "w6:p8",
+          "rect": {
+            "height": 60,
+            "width": 146,
+            "x": 173,
+            "y": 1
+          }
+        },
+        {
+          "focused": false,
+          "pane_id": "w6:pA",
+          "rect": {
+            "height": 21,
+            "width": 146,
+            "x": 173,
+            "y": 61
+          }
+        }
+      ],
+      "splits": [
+        {
+          "direction": "right",
+          "id": "split_0_root",
+          "ratio": 0.5,
+          "rect": {
+            "height": 81,
+            "width": 293,
+            "x": 26,
+            "y": 1
+          }
+        },
+        {
+          "direction": "down",
+          "id": "split_1_1",
+          "ratio": 0.7407407,
+          "rect": {
+            "height": 81,
+            "width": 146,
+            "x": 173,
+            "y": 1
+          }
+        }
+      ],
+      "tab_id": "w6:t2",
+      "workspace_id": "w6",
+      "zoomed": false
+    },
+    {
+      "area": {
+        "height": 81,
+        "width": 293,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "wB:p1",
+      "panes": [
+        {
+          "focused": true,
+          "pane_id": "wB:p1",
+          "rect": {
+            "height": 81,
+            "width": 130,
+            "x": 26,
+            "y": 1
+          }
+        },
+        {
+          "focused": false,
+          "pane_id": "wB:p5",
+          "rect": {
+            "height": 81,
+            "width": 163,
+            "x": 156,
+            "y": 1
+          }
+        }
+      ],
+      "splits": [
+        {
+          "direction": "right",
+          "id": "split_0_root",
+          "ratio": 0.44444445,
+          "rect": {
+            "height": 81,
+            "width": 293,
+            "x": 26,
+            "y": 1
+          }
+        }
+      ],
+      "tab_id": "wB:t1",
+      "workspace_id": "wB",
+      "zoomed": false
+    },
+    {
+      "area": {
+        "height": 81,
+        "width": 293,
+        "x": 26,
+        "y": 1
+      },
+      "focused_pane_id": "wE:p1",
+      "panes": [
+        {
+          "focused": true,
+          "pane_id": "wE:p1",
+          "rect": {
+            "height": 81,
+            "width": 293,
+            "x": 26,
+            "y": 1
+          }
+        }
+      ],
+      "splits": [],
+      "tab_id": "wE:t1",
+      "workspace_id": "wE",
+      "zoomed": false
+    }
+  ],
+  "panes": [
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "a6e30ce2-6fd1-4b41-9bf6-68de64d89167"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "pane_id": "w1:p14",
+      "revision": 1,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "w1:t9",
+      "terminal_id": "term_65a4e0914e1311",
+      "terminal_title": "✳ ドリルのネイティブアプリ",
+      "terminal_title_stripped": "ドリルのネイティブアプリ",
+      "workspace_id": "w1"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "7a6b51e6-0dee-4bd4-94db-d73f276ee8f6"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/lesson-rebuild-planning",
+      "pane_id": "w1:p16",
+      "revision": 2,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "w1:t9",
+      "terminal_id": "term_65a4e0914f3782",
+      "terminal_title": "✳ mozer_classroom cloud9認証調査",
+      "terminal_title_stripped": "mozer_classroom cloud9認証調査",
+      "workspace_id": "w1"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "dd0350a2-c859-49fa-9f46-695ab583ceff"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "pane_id": "w2:p1E",
+      "revision": 5,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "w2:t1",
+      "terminal_id": "term_65a4e0914f7db3",
+      "terminal_title": "✳ gamepad-teleop-xInput",
+      "terminal_title_stripped": "gamepad-teleop-xInput",
+      "workspace_id": "w2"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "310a05fb-d3bd-4c02-9a50-6b785e6dc586"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/Jizai-inc/mi-mo-devkit-pre",
+      "pane_id": "w2:p1K",
+      "revision": 3,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "w2:t1",
+      "terminal_id": "term_65a4e091500704",
+      "terminal_title": "✳ 出荷イメージの GPL ライセンス対応",
+      "terminal_title_stripped": "出荷イメージの GPL ライセンス対応",
+      "workspace_id": "w2"
+    },
+    {
+      "agent_status": "unknown",
+      "cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "pane_id": "w6:p3",
+      "revision": 0,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "w6:t2",
+      "terminal_id": "term_65a4e091509655",
+      "workspace_id": "w6"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "8e1e1826-cb2a-4cda-952c-7dc26697ccba"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "pane_id": "w6:p8",
+      "revision": 1,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 58
+      },
+      "tab_id": "w6:t2",
+      "terminal_id": "term_65a4e091509736",
+      "terminal_title": "✳ OpenClaw風ノート管理システムの構築",
+      "terminal_title_stripped": "OpenClaw風ノート管理システムの構築",
+      "workspace_id": "w6"
+    },
+    {
+      "agent_status": "unknown",
+      "cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/DoskoiYuta/private",
+      "pane_id": "w6:pA",
+      "revision": 0,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 19
+      },
+      "tab_id": "w6:t2",
+      "terminal_id": "term_65a4e091512177",
+      "workspace_id": "w6"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "07c31fc7-5dca-4370-9b81-dcec24c49144"
+      },
+      "agent_status": "idle",
+      "cwd": "/Users/yuta/github.com/lifeistech/cpbl-dev-ai-agent",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/cpbl-dev-ai-agent",
+      "pane_id": "wB:p1",
+      "revision": 7,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "wB:t1",
+      "terminal_id": "term_65a4e0915215f8",
+      "terminal_title": "✳ Cloud9 メンバーデータ抽出",
+      "terminal_title_stripped": "Cloud9 メンバーデータ抽出",
+      "workspace_id": "wB"
+    },
+    {
+      "agent_status": "unknown",
+      "cwd": "/Users/yuta/github.com/lifeistech/cpbl-dev-ai-agent",
+      "focused": false,
+      "foreground_cwd": "/Users/yuta/github.com/lifeistech/cpbl-dev-ai-agent",
+      "pane_id": "wB:p5",
+      "revision": 20,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 79
+      },
+      "tab_id": "wB:t1",
+      "terminal_id": "term_65a670427638b16",
+      "workspace_id": "wB"
+    },
+    {
+      "agent": "claude",
+      "agent_session": {
+        "agent": "claude",
+        "kind": "id",
+        "source": "herdr:claude",
+        "value": "1765f492-7d91-4385-8b3d-90d124b2cc2d"
+      },
+      "agent_status": "working",
+      "cwd": "/Users/yuta/github.com/DoskoiYuta/herdr-web",
+      "focused": true,
+      "foreground_cwd": "/Users/yuta/github.com/DoskoiYuta/herdr-web",
+      "pane_id": "wE:p1",
+      "revision": 2,
+      "scroll": {
+        "max_offset_from_bottom": 0,
+        "offset_from_bottom": 0,
+        "viewport_rows": 81
+      },
+      "tab_id": "wE:t1",
+      "terminal_id": "term_65a8b93d836fd23",
+      "terminal_title": "◑ plan.mdのキャッチアップ",
+      "terminal_title_stripped": "plan.mdのキャッチアップ",
+      "workspace_id": "wE"
+    }
+  ],
+  "protocol": 20,
+  "tabs": [
+    {
+      "agent_status": "idle",
+      "focused": false,
+      "label": "1",
+      "number": 9,
+      "pane_count": 2,
+      "tab_id": "w1:t9",
+      "workspace_id": "w1"
+    },
+    {
+      "agent_status": "idle",
+      "focused": false,
+      "label": "1",
+      "number": 1,
+      "pane_count": 2,
+      "tab_id": "w2:t1",
+      "workspace_id": "w2"
+    },
+    {
+      "agent_status": "idle",
+      "focused": false,
+      "label": "mobile+https",
+      "number": 2,
+      "pane_count": 3,
+      "tab_id": "w6:t2",
+      "workspace_id": "w6"
+    },
+    {
+      "agent_status": "idle",
+      "focused": false,
+      "label": "1",
+      "number": 1,
+      "pane_count": 2,
+      "tab_id": "wB:t1",
+      "workspace_id": "wB"
+    },
+    {
+      "agent_status": "working",
+      "focused": true,
+      "label": "1",
+      "number": 1,
+      "pane_count": 1,
+      "tab_id": "wE:t1",
+      "workspace_id": "wE"
+    }
+  ],
+  "version": "0.8.2",
+  "workspaces": [
+    {
+      "active_tab_id": "w1:t9",
+      "agent_status": "idle",
+      "focused": false,
+      "label": "lit",
+      "number": 1,
+      "pane_count": 2,
+      "tab_count": 1,
+      "workspace_id": "w1"
+    },
+    {
+      "active_tab_id": "w2:t1",
+      "agent_status": "idle",
+      "focused": false,
+      "label": "jzi",
+      "number": 2,
+      "pane_count": 2,
+      "tab_count": 1,
+      "workspace_id": "w2"
+    },
+    {
+      "active_tab_id": "w6:t2",
+      "agent_status": "idle",
+      "focused": false,
+      "label": "private",
+      "number": 3,
+      "pane_count": 3,
+      "tab_count": 1,
+      "workspace_id": "w6"
+    },
+    {
+      "active_tab_id": "wB:t1",
+      "agent_status": "idle",
+      "focused": false,
+      "label": "cpbl-dev-ai-agent",
+      "number": 4,
+      "pane_count": 2,
+      "tab_count": 1,
+      "workspace_id": "wB"
+    },
+    {
+      "active_tab_id": "wE:t1",
+      "agent_status": "working",
+      "focused": true,
+      "label": "herdr-web",
+      "number": 5,
+      "pane_count": 1,
+      "tab_count": 1,
+      "workspace_id": "wE"
+    }
+  ]
+}

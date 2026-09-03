@@ -3,24 +3,25 @@ module.exports = {
   forbidden: [
     {
       name: "web-only-contract",
-      comment: "src/web は src/contract 以外のサーバーコードを import しない",
+      comment:
+        "src/web は src/contract 以外のサーバーコードを import しない（Hono RPC の AppType のみ type-only import を許可）",
       severity: "error",
       from: { path: "^src/web" },
-      to: { path: "^src/(server|cli)" },
+      to: { path: "^src/(server|cli)", dependencyTypesNot: ["type-only"] },
     },
     {
       name: "cli-only-contract",
-      comment: "src/cli は src/contract 以外を import しない",
+      comment: "src/cli は src/contract 以外を import しない（type-only import を除く）",
       severity: "error",
       from: { path: "^src/cli" },
-      to: { path: "^src/(server|web)" },
+      to: { path: "^src/(server|web)", dependencyTypesNot: ["type-only"] },
     },
     {
       name: "contract-is-leaf",
-      comment: "src/contract は他の src を import しない",
+      comment: "src/contract は他の src を import しない（type-only import を除く）",
       severity: "error",
       from: { path: "^src/contract" },
-      to: { path: "^src/(server|web|cli)" },
+      to: { path: "^src/(server|web|cli)", dependencyTypesNot: ["type-only"] },
     },
     {
       name: "review-domain-pure",
@@ -37,9 +38,10 @@ module.exports = {
     },
     {
       name: "review-usecases-no-adapters",
-      comment: "usecases は adapters と他モジュールの実装を import しない",
+      comment:
+        "usecases は adapters と他モジュールの実装を import しない（*.test.ts はフェイク実装を使うため対象外）",
       severity: "error",
-      from: { path: "^src/server/review/usecases" },
+      from: { path: "^src/server/review/usecases", pathNot: "\\.test\\.ts$" },
       to: { path: "^src/", pathNot: "^src/(contract|server/review/(domain|ports|usecases))" },
     },
     {

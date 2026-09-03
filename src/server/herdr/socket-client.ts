@@ -1,0 +1,286 @@
+import * as net from "node:net";
+import * as v from "valibot";
+import {
+  AgentPromptedResultSchema,
+  HERDR_AGENT_PROMPT_ERROR_CODES,
+  HERDR_SUBSCRIPTIONS,
+  HerdrEventEnvelopeSchema,
+  PaneInfoSchema,
+  PingResultSchema,
+  SessionSnapshotSchema,
+  type HerdrEventEnvelope,
+  type PaneInfo,
+  type PingResult,
+  type SessionSnapshot,
+} from "../../contract/herdr";
+import type { AgentPromptOutcome, HerdrGateway, HerdrStatus } from "./gateway";
+
+export type Logger = Pick<typeof console, "error" | "warn" | "info">;
+
+export interface HerdrSocketClientOptions {
+  socketPath: string;
+  logger?: Logger;
+  /** Per-request timeout (ms), covering connect + response. Default 10s. */
+  requestTimeoutMs?: number;
+  /** Reconnect backoff for the subscribe connection: starts here, doubles, caps at `backoffMaxMs`. Default 500ms. */
+  backoffInitialMs?: number;
+  /** Default 10s. */
+  backoffMaxMs?: number;
+}
+
+type WireError = { code: string; message: string };
+
+class HerdrRequestError extends Error {
+  code: string;
+  constructor(body: WireError) {
+    super(`herdr: ${body.code}: ${body.message}`);
+    this.code = body.code;
+  }
+}
+
+/** Frames NDJSON off a socket's `data` events, calling `onLine` per complete line. */
+function ndjsonReader(onLine: (line: string) => void): (chunk: Buffer) => void {
+  let buf = "";
+  return (chunk: Buffer) => {
+    buf += chunk.toString("utf8");
+    let idx: number;
+    while ((idx = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, idx);
+      buf = buf.slice(idx + 1);
+      if (line.trim().length > 0) onLine(line);
+    }
+  };
+}
+
+/**
+ * Real `HerdrGateway` over herdr's unix-domain-socket NDJSON API (protocol 20).
+ *
+ * herdr's socket transport is **one request per connection**: per the
+ * socket-api docs ("Event subscriptions keep the connection open after the
+ * initial response" — implying plain requests do not) and confirmed live
+ * against a running herdr 0.8.2 (a `ping` request's connection receives its
+ * response and is then closed by the server), every `request()` call here
+ * opens a fresh ephemeral connection, writes one line, reads the matching
+ * response, and lets the connection close. `events.subscribe` is the one
+ * exception: a single long-lived connection dedicated to it (plan.md §10),
+ * reconnected with exponential backoff (500ms -> 10s cap by default) when the
+ * socket is missing or drops. On every (re)connect of that subscribe
+ * connection we also run an ephemeral `ping` to record the protocol and emit
+ * connectivity status (so status naturally goes false while herdr is down and
+ * true again once both the socket and `ping` succeed, satisfying N4).
+ */
+export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGateway {
+  const logger = opts.logger ?? console;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? 10_000;
+  const backoffInitialMs = opts.backoffInitialMs ?? 500;
+  const backoffMaxMs = opts.backoffMaxMs ?? 10_000;
+
+  let status: HerdrStatus = { connected: false, protocol: null };
+  const statusListeners = new Set<(s: HerdrStatus) => void>();
+  const eventHandlers = new Set<(e: HerdrEventEnvelope) => void>();
+
+  let closed = false;
+  let nextId = 1;
+
+  function setStatus(next: HerdrStatus): void {
+    if (status.connected === next.connected && status.protocol === next.protocol) return;
+    status = next;
+    for (const cb of statusListeners) {
+      try {
+        cb(status);
+      } catch (err) {
+        logger.error("herdr status listener threw", err);
+      }
+    }
+  }
+
+  /** One ephemeral connection: write one request, resolve on the matching response, then it closes. */
+  function request<T>(method: string, params: unknown): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const id = `hw-${nextId++}`;
+      const sock = net.createConnection(opts.socketPath);
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        sock.destroy();
+        reject(new Error(`herdr: request ${method} timed out after ${requestTimeoutMs}ms`));
+      }, requestTimeoutMs);
+
+      function finish(fn: () => void): void {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        fn();
+        sock.end();
+      }
+
+      sock.on("connect", () => {
+        sock.write(JSON.stringify({ id, method, params }) + "\n");
+      });
+      sock.on(
+        "data",
+        ndjsonReader((line) => {
+          let msg: unknown;
+          try {
+            msg = JSON.parse(line);
+          } catch (err) {
+            logger.error("herdr: malformed NDJSON response", err, line);
+            return;
+          }
+          const obj = msg as { id?: string; result?: unknown; error?: WireError };
+          if (obj.id !== id) return;
+          finish(() => {
+            if (obj.error) reject(new HerdrRequestError(obj.error));
+            else resolve(obj.result as T);
+          });
+        }),
+      );
+      sock.on("error", (err) => {
+        finish(() => reject(err));
+      });
+      sock.on("close", () => {
+        finish(() => reject(new Error(`herdr: connection closed before a response to ${method}`)));
+      });
+    });
+  }
+
+  async function pingAndSetStatus(): Promise<void> {
+    try {
+      const raw = await request<unknown>("ping", {});
+      const pong = v.parse(PingResultSchema, raw);
+      setStatus({ connected: true, protocol: pong.protocol });
+    } catch (err) {
+      logger.warn("herdr: ping failed", err instanceof Error ? err.message : err);
+      setStatus({ connected: false, protocol: null });
+    }
+  }
+
+  // --- subscribe connection: the one persistent connection ---------------------------------------------------
+  let subSocket: net.Socket | null = null;
+  let subBackoff = backoffInitialMs;
+
+  function connectSubscribeSocket(): void {
+    if (closed) return;
+    const sock = net.createConnection(opts.socketPath);
+    subSocket = sock;
+    sock.on("connect", () => {
+      subBackoff = backoffInitialMs;
+      void pingAndSetStatus();
+      const id = `hw-sub-${nextId++}`;
+      sock.write(
+        JSON.stringify({
+          id,
+          method: "events.subscribe",
+          params: { subscriptions: HERDR_SUBSCRIPTIONS },
+        }) + "\n",
+      );
+    });
+    sock.on(
+      "data",
+      ndjsonReader((line) => handleSubscribeLine(line)),
+    );
+    sock.on("error", (err) => {
+      logger.warn("herdr: subscribe socket error", err.message);
+    });
+    sock.on("close", () => {
+      subSocket = null;
+      setStatus({ connected: false, protocol: null });
+      if (!closed) {
+        setTimeout(() => connectSubscribeSocket(), subBackoff);
+        subBackoff = Math.min(subBackoff * 2, backoffMaxMs);
+      }
+    });
+  }
+
+  function handleSubscribeLine(line: string): void {
+    let msg: unknown;
+    try {
+      msg = JSON.parse(line);
+    } catch (err) {
+      logger.error("herdr: malformed NDJSON line on subscribe socket", err, line);
+      return;
+    }
+    const obj = msg as {
+      id?: string;
+      result?: unknown;
+      error?: WireError;
+      event?: string;
+      data?: unknown;
+    };
+    if (obj.error) {
+      logger.error("herdr: events.subscribe rejected", obj.error);
+      return;
+    }
+    if (obj.id) return; // the subscription_started ack; nothing to do
+    const parsed = v.safeParse(HerdrEventEnvelopeSchema, obj);
+    if (!parsed.success) {
+      logger.warn("herdr: unrecognized event frame, ignoring", obj);
+      return;
+    }
+    for (const handler of eventHandlers) {
+      try {
+        handler(parsed.output);
+      } catch (err) {
+        logger.error("herdr: event handler threw", err);
+      }
+    }
+  }
+
+  connectSubscribeSocket();
+
+  return {
+    async ping(): Promise<PingResult> {
+      const raw = await request<unknown>("ping", {});
+      return v.parse(PingResultSchema, raw);
+    },
+    async snapshot(): Promise<SessionSnapshot> {
+      const raw = await request<{ snapshot: unknown }>("session.snapshot", {});
+      return v.parse(SessionSnapshotSchema, raw.snapshot);
+    },
+    async paneGet(paneId: string): Promise<PaneInfo> {
+      const raw = await request<{ pane: unknown }>("pane.get", { pane_id: paneId });
+      return v.parse(PaneInfoSchema, raw.pane);
+    },
+    async paneFocus(paneId: string): Promise<PaneInfo> {
+      const raw = await request<{ pane: unknown }>("pane.focus", { pane_id: paneId });
+      return v.parse(PaneInfoSchema, raw.pane);
+    },
+    async workspaceFocus(workspaceId: string): Promise<void> {
+      await request<unknown>("workspace.focus", { workspace_id: workspaceId });
+    },
+    async agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome> {
+      try {
+        const raw = await request<unknown>("agent.prompt", { target: paneId, text });
+        const parsed = v.parse(AgentPromptedResultSchema, raw);
+        return { status: "sent", agent: parsed.agent };
+      } catch (err) {
+        if (
+          err instanceof HerdrRequestError &&
+          (HERDR_AGENT_PROMPT_ERROR_CODES as readonly string[]).includes(err.code)
+        ) {
+          return { status: err.code as "agent_blocked" | "agent_prompt_stalled" };
+        }
+        throw err;
+      }
+    },
+    subscribe(handler: (event: HerdrEventEnvelope) => void): () => void {
+      eventHandlers.add(handler);
+      return () => eventHandlers.delete(handler);
+    },
+    status(): HerdrStatus {
+      return status;
+    },
+    onStatus(cb: (status: HerdrStatus) => void): () => void {
+      statusListeners.add(cb);
+      return () => statusListeners.delete(cb);
+    },
+    close(): void {
+      closed = true;
+      subSocket?.destroy();
+      statusListeners.clear();
+      eventHandlers.clear();
+    },
+  };
+}
