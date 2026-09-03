@@ -157,6 +157,31 @@ server.listen(config.port, config.host, () => {
   );
 });
 
+// ブラウザの `localhost` は macOS では ::1 に解決されることが多い。127.0.0.1 だけに
+// bind していると `localhost:<port>` は別プロセス（Docker 等）に届いたり拒否されたりする。
+// 本番は ::1 にも同じハンドラで listen する。開発時は Vite HMR が 1 つの http.Server に
+// しか付けられないので、警告だけ出して 127.0.0.1 を案内する。
+if (config.host === "127.0.0.1") {
+  const v6 = createServer();
+  v6.on("request", (req, res) => server.emit("request", req, res));
+  v6.on("upgrade", (req, socket, head) => server.emit("upgrade", req, socket, head));
+  v6.on("error", (err) => {
+    const code = (err as NodeJS.ErrnoException).code;
+    console.warn(
+      `herdr-web: ::1:${config.port} を使えません（${code ?? err.message}）。ブラウザでは http://127.0.0.1:${config.port} を開いてください（localhost は ::1 に解決されることがあります）`,
+    );
+  });
+  if (isProd) {
+    v6.listen(config.port, "::1", () => {
+      console.log(`herdr-web also listening on http://[::1]:${config.port}`);
+    });
+  } else {
+    console.warn(
+      `herdr-web: 開発モードでは 127.0.0.1 のみ listen します。ブラウザでは http://127.0.0.1:${config.port} を開いてください（localhost:${config.port} は ::1 に向くことがあります）`,
+    );
+  }
+}
+
 function shutdown() {
   // Stop pollers/wiring before closing the DB, so nothing tries to write to a
   // closed handle mid-shutdown; a DB close failure shouldn't block exit either.
