@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { ResultAsync } from "neverthrow";
 import { join } from "node:path";
@@ -117,14 +118,22 @@ export function createRuntime(deps: RuntimeDeps) {
   // poller "missing" classification.
   const unsubscribeWorktreeRemoved = gateway.subscribe((event) => {
     if (event.data.type !== "worktree_removed") return;
-    const path = event.data.worktree.path;
-    for (const cb of worktreeMissingListeners) {
-      try {
-        cb(path);
-      } catch (err) {
-        logger.error("worktree-missing listener threw", err);
+    const rawPath = event.data.worktree.path;
+    void (async () => {
+      // Item 11: herdr reports its own (possibly non-realpath'd) path, but a
+      // review's `worktreeRoot` is always stored realpath'd (git/resolve.ts) —
+      // on macOS $TMPDIR is itself a /tmp -> /private/tmp symlink, so comparing
+      // the raw path against a review's worktreeRoot would silently match
+      // nothing. Fall back to the raw path if realpath fails (e.g. already gone).
+      const path = await realpath(rawPath).catch(() => rawPath);
+      for (const cb of worktreeMissingListeners) {
+        try {
+          cb(path);
+        } catch (err) {
+          logger.error("worktree-missing listener threw", err);
+        }
       }
-    }
+    })().catch((err) => logger.error("worktree_removed handling failed", err));
   });
 
   return {
@@ -218,13 +227,20 @@ export function attachReviewToRuntime(
 export function attachWorktreeMissingToReview(
   runtime: Pick<Runtime, "onWorktreeMissing">,
   review: {
-    outdateWorktree: (input: { worktreeRoot: string }) => ResultAsync<unknown, never>;
+    outdateWorktree: (input: { worktreeRoot: string }) => ResultAsync<unknown[], never>;
   },
-  logger: Pick<typeof console, "error"> = console,
+  logger: Pick<typeof console, "error" | "info"> = console,
 ): () => void {
   return runtime.onWorktreeMissing((root) => {
     void (async () => {
-      await review.outdateWorktree({ worktreeRoot: root });
+      const result = await review.outdateWorktree({ worktreeRoot: root });
+      // Item 11: 0 matched reviews is often a sign the path herdr reported
+      // doesn't line up with what a review has stored as `worktreeRoot` (e.g.
+      // a /tmp vs /private/tmp realpath mismatch) — surface it instead of
+      // silently doing nothing.
+      if (result.isOk() && result.value.length === 0) {
+        logger.info(`worktree missing but matched 0 reviews root=${root}`);
+      }
     })().catch((err) => logger.error("outdate worktree after removal failed", err));
   });
 }

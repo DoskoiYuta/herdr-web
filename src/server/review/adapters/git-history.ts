@@ -1,8 +1,6 @@
 import { runGit } from "../../git/run";
 import type { GitHistory } from "../ports";
 
-const RENAME_LINE_RE = /^R\d+\t(.+)\t(.+)$/;
-
 /** GitHistory ポートの git CLI 実装。すべて読み取り専用。 */
 export function createGitHistory(): GitHistory {
   return {
@@ -35,14 +33,35 @@ export function createGitHistory(): GitHistory {
       return stdout.split("\n").filter(Boolean);
     },
     async renamedPath(root, sinceHead, path) {
+      // F4: compare `sinceHead` against the worktree (no second rev), not
+      // `sinceHead..HEAD` — a `git diff <rev> --` walks the tree straight to
+      // the on-disk files (bypassing the index for the comparison itself), so
+      // it sees a `git mv` the moment it's staged, not only once committed.
+      // `-z` gives us NUL-separated `status\0old\0new\0...` tokens that are
+      // unambiguous regardless of path contents (unlike the tab-delimited
+      // non-`-z` form).
       const { stdout, code } = await runGit(
-        ["diff", "--name-status", "-M", `${sinceHead}`, "HEAD", "--"],
-        { cwd: root, okCodes: [0, 128] },
+        ["diff", "--name-status", "-M", "-z", sinceHead, "--"],
+        {
+          cwd: root,
+          okCodes: [0, 128],
+        },
       );
       if (code !== 0) return null;
-      for (const line of stdout.split("\n")) {
-        const m = RENAME_LINE_RE.exec(line);
-        if (m && m[1] === path) return m[2]!;
+      const tokens = stdout.split("\0").filter((t) => t.length > 0);
+      let i = 0;
+      while (i < tokens.length) {
+        const status = tokens[i]!;
+        // Renames (R###) and copies (C###) carry two path tokens; every other
+        // status (A/M/D/T/U/X...) carries exactly one.
+        if (status.startsWith("R") || status.startsWith("C")) {
+          const oldPath = tokens[i + 1];
+          const newPath = tokens[i + 2];
+          if (status.startsWith("R") && oldPath === path && newPath) return newPath;
+          i += 3;
+        } else {
+          i += 2;
+        }
       }
       return null;
     },

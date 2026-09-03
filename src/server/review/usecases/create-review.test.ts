@@ -112,4 +112,48 @@ describe("createReviewUsecase", () => {
     expect(afterCreateCalls).toEqual(["id-1"]);
     expect((await repository.get("id-1"))?.target).toEqual({ kind: "commit", hash: "commit-now" });
   });
+
+  // item 9: afterCreate must run BEFORE `created` is emitted and BEFORE
+  // scheduleNotify is called — otherwise clients see a worktree-bound `created`
+  // immediately followed by a `reanchored`, and the notifier is handed the
+  // pre-afterCreate (stale) review, losing the commit for the via-commit
+  // candidate path.
+  test("created is emitted (and notify scheduled) with the post-afterCreate final review, not the pre-afterCreate one", async () => {
+    const repository = new FakeReviewRepository();
+    const events = new FakeReviewEvents();
+    const clock = new ManualClock("2026-01-01T00:00:00.000Z");
+    const scheduled: Awaited<ReturnType<typeof repository.get>>[] = [];
+    const order: string[] = [];
+
+    const usecase = createReviewUsecase({
+      repository,
+      events,
+      clock,
+      scheduleNotify: (review) => {
+        order.push("scheduleNotify");
+        scheduled.push(review);
+      },
+      generateId: () => "id-1",
+      afterCreate: async (review) => {
+        order.push("afterCreate");
+        await repository.save({ ...review, target: { kind: "commit", hash: "commit-now" } });
+      },
+    });
+
+    const result = await usecase(makeInput({ createdAtHead: "stale-head" }));
+    const review = result._unsafeUnwrap();
+
+    // afterCreate ran strictly before scheduleNotify (and thus before `created`
+    // was emitted, since emit happens immediately before scheduleNotify below).
+    expect(order).toEqual(["afterCreate", "scheduleNotify"]);
+
+    expect(events.events).toEqual([{ type: "review", event: "created", review }]);
+    // the emitted/returned/scheduled review all reflect the final, commit-bound state
+    expect(review.target).toEqual({ kind: "commit", hash: "commit-now" });
+    expect((events.events[0] as { review: typeof review }).review.target).toEqual({
+      kind: "commit",
+      hash: "commit-now",
+    });
+    expect(scheduled[0]?.target).toEqual({ kind: "commit", hash: "commit-now" });
+  });
 });

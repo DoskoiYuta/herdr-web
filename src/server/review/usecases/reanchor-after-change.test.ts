@@ -219,4 +219,45 @@ describe("reanchorAfterChange — commit-bound reviews (rebase/squash)", () => {
     expect(changed._unsafeUnwrap()).toHaveLength(0);
     expect((await repository.get("r1"))?.target).toEqual({ kind: "commit", hash: "c1" });
   });
+
+  // Missing-test (a): F2's cell "prevHead non-null, commit unreachable from HEAD
+  // AND unreachable from prevHead too" — never ours to rebase-detect, so it must
+  // be skipped (left untouched) exactly like the prevHead === null case.
+  test("prevHead non-null but commit unreachable from both prevHead and head -> skipped", async () => {
+    const review = makeReview({ target: { kind: "commit", hash: "c1" } });
+    await repository.save(review);
+    // c1 is not reachable from head0 (prevHead) nor head1 (head) — this
+    // worktree never had c1 reachable, so a squash/rebase elsewhere is not
+    // this worktree's business.
+    gitHistory.ancestryOf.set("c1", new Set());
+
+    const changed = await usecase()({
+      repo: "/repo",
+      worktreeRoot: "/repo",
+      prevHead: "head0",
+      head: "head1",
+    });
+    expect(changed._unsafeUnwrap()).toHaveLength(0);
+    expect((await repository.get("r1"))?.target).toEqual({ kind: "commit", hash: "c1" });
+    // never even asked the finder to look for a content match
+    expect(finder.results.size).toBe(0);
+  });
+
+  // F6: a status-only tick (prevHead === head, e.g. a dirty-worktree status
+  // change with HEAD unmoved) must not run a single isAncestor check per
+  // commit-bound review — nothing about their reachability could have changed.
+  test("a status-only tick (prevHead === head) skips the commit-bound ancestry loop entirely", async () => {
+    const review = makeReview({ target: { kind: "commit", hash: "c1" } });
+    await repository.save(review);
+    gitHistory.ancestryOf.set("c1", new Set(["head0"]));
+
+    const changed = await usecase()({
+      repo: "/repo",
+      worktreeRoot: "/repo",
+      prevHead: "head0",
+      head: "head0",
+    });
+    expect(changed._unsafeUnwrap()).toHaveLength(0);
+    expect(gitHistory.isAncestorCalls).toBe(0);
+  });
 });

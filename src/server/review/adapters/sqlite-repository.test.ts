@@ -84,6 +84,52 @@ describe("createSqliteReviewRepository", () => {
     expect(got?.thread[1]).toMatchObject({ author: "agent", body: "done" });
   });
 
+  // item 1: updateNotify must touch only the three notify columns — every other
+  // field (including a concurrent thread/status change) is left exactly as-is.
+  test("updateNotify writes only the notify columns, leaving thread/status/anchor untouched", async () => {
+    const repo = createSqliteReviewRepository(db);
+    const review = makeReview({ status: "replied" });
+    await repo.save(review);
+
+    // simulate a concurrent write landing between get() and updateNotify()
+    const concurrentlyUpdated: Review = {
+      ...review,
+      status: "resolved",
+      thread: [
+        ...review.thread,
+        {
+          seq: 1,
+          author: "agent",
+          body: "concurrent",
+          at: "2026-01-03T00:00:00.000Z",
+          agentSession: null,
+        },
+      ],
+      updatedAt: "2026-01-03T00:00:00.000Z",
+    };
+    await repo.save(concurrentlyUpdated);
+
+    await repo.updateNotify(review.id, {
+      state: "sent",
+      pane: "p1",
+      at: "2026-01-04T00:00:00.000Z",
+    });
+
+    const got = await repo.get(review.id);
+    expect(got?.notify).toEqual({ state: "sent", pane: "p1", at: "2026-01-04T00:00:00.000Z" });
+    // everything else still reflects the concurrent write, not the stale `review` snapshot
+    expect(got?.status).toBe("resolved");
+    expect(got?.thread).toHaveLength(2);
+    expect(got?.updatedAt).toBe("2026-01-03T00:00:00.000Z");
+  });
+
+  test("updateNotify on an unknown id is a no-op (does not throw)", async () => {
+    const repo = createSqliteReviewRepository(db);
+    await expect(
+      repo.updateNotify("missing", { state: "sent", pane: null, at: "2026-01-01T00:00:00.000Z" }),
+    ).resolves.toBeUndefined();
+  });
+
   test("list filters by repo, status, targetKind, worktreeRoot, commit, path", async () => {
     const repo = createSqliteReviewRepository(db);
     await repo.save(makeReview({ id: "r1", status: "open" }));

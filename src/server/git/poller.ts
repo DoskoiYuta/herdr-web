@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { runGit } from "./run";
 
 function hash(input: string): string {
@@ -11,23 +12,42 @@ interface Snapshot {
   head: string;
 }
 
-async function snapshot(root: string): Promise<Snapshot> {
+async function snapshot(root: string, bin?: string): Promise<Snapshot> {
   const [status, refs, head] = await Promise.all([
-    runGit(["status", "--porcelain=v2", "-z"], { cwd: root }),
-    runGit(["for-each-ref"], { cwd: root }),
-    runGit(["rev-parse", "HEAD"], { cwd: root, okCodes: [0, 128] }),
+    runGit(["status", "--porcelain=v2", "-z"], { cwd: root, bin }),
+    runGit(["for-each-ref"], { cwd: root, bin }),
+    runGit(["rev-parse", "HEAD"], { cwd: root, okCodes: [0, 128], bin }),
   ]);
   return { status: hash(status.stdout), refs: hash(refs.stdout), head: hash(head.stdout) };
 }
 
-async function currentHead(root: string): Promise<string | null> {
+async function currentHead(root: string, bin?: string): Promise<string | null> {
   try {
-    const { stdout, code } = await runGit(["rev-parse", "HEAD"], { cwd: root, okCodes: [0, 128] });
+    const { stdout, code } = await runGit(["rev-parse", "HEAD"], {
+      cwd: root,
+      okCodes: [0, 128],
+      bin,
+    });
     if (code !== 0) return null;
     const head = stdout.trim();
     return head.length === 0 ? null : head;
   } catch {
     return null;
+  }
+}
+
+/**
+ * F2: does the worktree root itself still exist? This is checked independently
+ * of whatever error git produced — a git spawn failure (binary not on PATH) or
+ * a transient ENOENT mid `git worktree remove` + re-add must never be conflated
+ * with the root actually being gone.
+ */
+async function rootExists(root: string): Promise<boolean> {
+  try {
+    await stat(root);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -42,16 +62,16 @@ export interface ChangedInfo {
 /** F6: classifies a poller failure so callers can tell "the worktree root is gone" from anything else. */
 export type PollerErrorKind = "missing" | "other";
 
-function classifyPollerError(message: string): PollerErrorKind {
-  if (/ENOENT/i.test(message) || /not a git repository/i.test(message)) return "missing";
-  return "other";
-}
+/** F2: consecutive ticks the root must be observed gone (via fs.stat) before classifying "missing". */
+const MISSING_STREAK_THRESHOLD = 2;
 
 export interface CreateWorktreePollerOptions {
   root: string;
   intervalMs?: number;
   onChanged?: (info: ChangedInfo) => void;
   onStatus?: (info: { error: string | null; kind?: PollerErrorKind }) => void;
+  /** Git binary to spawn (default "git"). Test hook for spawn-failure scenarios. */
+  bin?: string;
 }
 
 export interface WorktreePoller {
@@ -69,9 +89,12 @@ export function createWorktreePoller({
   intervalMs = 1000,
   onChanged,
   onStatus,
+  bin,
 }: CreateWorktreePollerOptions): WorktreePoller {
   let prev: Snapshot | null = null;
   let error: string | null = null;
+  let lastKind: PollerErrorKind | undefined;
+  let missingStreak = 0;
   let inFlight = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
@@ -80,13 +103,19 @@ export function createWorktreePoller({
     if (inFlight) return;
     inFlight = true;
     try {
-      const snap = await snapshot(root);
+      // F2: the "is the root itself gone" signal comes from fs.stat, never from
+      // parsing git's error text — a git spawn failure (binary not on PATH) or a
+      // transient ENOENT mid `git worktree remove` + re-add must not count.
+      missingStreak = (await rootExists(root)) ? 0 : missingStreak + 1;
+
+      const snap = await snapshot(root, bin);
       if (error !== null) {
         error = null;
+        lastKind = undefined;
         onStatus?.({ error: null });
       }
       if (prev) {
-        const head = await currentHead(root);
+        const head = await currentHead(root, bin);
         if (prev.refs !== snap.refs) {
           onChanged?.({ root, reason: "refs", head });
         } else if (prev.head !== snap.head) {
@@ -99,9 +128,11 @@ export function createWorktreePoller({
       prev = snap;
     } catch (err) {
       const message = String(err instanceof Error ? err.message : err).split("\n")[0] ?? "";
-      if (message !== error) {
+      const kind: PollerErrorKind = missingStreak >= MISSING_STREAK_THRESHOLD ? "missing" : "other";
+      if (message !== error || kind !== lastKind) {
         error = message;
-        onStatus?.({ error: message, kind: classifyPollerError(message) });
+        lastKind = kind;
+        onStatus?.({ error: message, kind });
       }
     } finally {
       inFlight = false;

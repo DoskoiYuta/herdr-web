@@ -47,6 +47,7 @@ function gatedRepository(inner: FakeReviewRepository) {
       if (gate) await gate;
       await inner.save(review);
     },
+    updateNotify: inner.updateNotify.bind(inner),
     upsertRepo: inner.upsertRepo.bind(inner),
     getRepo: inner.getRepo.bind(inner),
     listRepos: inner.listRepos.bind(inner),

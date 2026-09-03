@@ -1,13 +1,13 @@
-import type { Review } from "../../../contract/review";
+import type { Notify, NotifyState, Review } from "../../../contract/review";
 import type {
   AgentNotifier,
   Clock,
-  NotifyResult,
   ReviewEvents,
   ReviewRepository,
   Timer,
   TimerHandle,
 } from "../ports";
+import { createLocks, type Locks } from "./locks";
 
 export type NotifySchedulerDeps = {
   notifier: AgentNotifier;
@@ -17,6 +17,15 @@ export type NotifySchedulerDeps = {
   timer: Timer;
   debounceMs?: number;
   logger?: Pick<typeof console, "info" | "error">;
+  /** F4/item-1: serializes notify persistence against reply/resolve/reanchor on the same review. */
+  locks?: Locks;
+  /**
+   * item 3: whether herdr is currently connected. Defaults to always-connected.
+   * `fire()` checks this before ever attempting a notify — while disconnected it
+   * keeps the batch's reviews `pending` and reschedules with backoff instead of
+   * persisting `no_target` (which would never be retried).
+   */
+  isConnected?: () => boolean;
 };
 
 export type NotifyScheduler = {
@@ -33,28 +42,89 @@ export type NotifyScheduler = {
   drainPending(): Promise<void>;
 };
 
-type PendingEntry = { commit: string | null; reviewIds: Set<string>; handle: TimerHandle };
+type PendingEntry = {
+  commit: string | null;
+  reviewIds: Set<string>;
+  handle: TimerHandle;
+  /** item 3: current backoff delay while herdr stays disconnected. */
+  backoffMs?: number;
+  /** item 3: how many disconnected-retry attempts this batch has made. */
+  attempts?: number;
+};
 
-async function persistNotify(
-  repository: ReviewRepository,
-  review: Review,
-  state: NotifyResult,
-  pane: string | null,
-  at: string,
-): Promise<void> {
-  await repository.save({ ...review, notify: { state, pane, at } });
-}
+/** item 3: cap on the backoff delay between disconnected retries. */
+const MAX_BACKOFF_MS = 60_000;
+/** item 3: give up rescheduling (but leave reviews `pending` for drainPending on next start) after this many attempts. */
+const MAX_RECONNECT_ATTEMPTS = 20;
 
 /** レビュー作成時の通知を worktreeRoot 単位で debounceMs だけまとめて `agent.prompt` する */
 export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifyScheduler {
   const debounceMs = deps.debounceMs ?? 10_000;
   const logger = deps.logger ?? console;
+  const locks = deps.locks ?? createLocks();
+  const isConnected = deps.isConnected ?? (() => true);
   const pending = new Map<string, PendingEntry>();
+
+  // item 1: the ONLY way this module ever persists a notify result — always
+  // through `updateNotify` (which touches just the three notify columns, never
+  // the whole row) and always under the review's lock, so a concurrent
+  // reply/reanchor writing the rest of the row can never be clobbered.
+  async function persistNotify(
+    id: string,
+    state: NotifyState,
+    pane: string | null,
+    at: string,
+  ): Promise<void> {
+    const notify: Notify = { state, pane, at };
+    await locks.withLock(`review:${id}`, () => deps.repository.updateNotify(id, notify));
+  }
+
+  function scheduleTimer(
+    worktreeRoot: string,
+    entry: Omit<PendingEntry, "handle">,
+    ms: number,
+  ): void {
+    const handle = deps.timer.setTimeout(() => {
+      void fire(worktreeRoot);
+    }, ms);
+    pending.set(worktreeRoot, { ...entry, handle });
+  }
+
+  // item 3: herdr isn't connected — leave every review in this batch `pending`
+  // (nothing to persist) and retry later with exponential backoff, capped.
+  function rescheduleDisconnected(worktreeRoot: string, entry: PendingEntry): void {
+    const attempts = (entry.attempts ?? 0) + 1;
+    if (attempts > MAX_RECONNECT_ATTEMPTS) {
+      logger.error(
+        `notify: root=${worktreeRoot} giving up after ${attempts - 1} disconnected retries; ` +
+          `reviews stay pending and will be retried by drainPending on next startup`,
+      );
+      return;
+    }
+    const backoffMs = Math.min((entry.backoffMs ?? debounceMs) * 2, MAX_BACKOFF_MS);
+    logger.info(
+      `notify: root=${worktreeRoot} herdr not connected — retry ${attempts} in ${backoffMs}ms`,
+    );
+    scheduleTimer(
+      worktreeRoot,
+      { commit: entry.commit, reviewIds: entry.reviewIds, backoffMs, attempts },
+      backoffMs,
+    );
+  }
 
   async function fire(worktreeRoot: string): Promise<void> {
     const entry = pending.get(worktreeRoot);
     if (!entry) return;
     pending.delete(worktreeRoot);
+
+    if (!isConnected()) {
+      rescheduleDisconnected(worktreeRoot, entry);
+      return;
+    }
+
+    // item 7: track which ids this call has ALREADY persisted, so a later
+    // failure never re-touches (and stomps) one that already landed correctly.
+    const persistedIds = new Set<string>();
 
     try {
       // F5: re-check status right before prompting — a review resolved/outdated
@@ -62,8 +132,14 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
       const candidates: Review[] = [];
       for (const id of entry.reviewIds) {
         const review = await deps.repository.get(id);
-        if (review && (review.status === "open" || review.status === "replied")) {
+        if (!review) continue;
+        if (review.status === "open" || review.status === "replied") {
           candidates.push(review);
+        } else {
+          // item 8: excluded from this batch — must not stay "pending" forever.
+          const at = deps.clock.now().toISOString();
+          await persistNotify(id, "none", null, at);
+          persistedIds.add(id);
         }
       }
       if (candidates.length === 0) return;
@@ -75,7 +151,8 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
       });
       const at = deps.clock.now().toISOString();
       for (const review of candidates) {
-        await persistNotify(deps.repository, review, result, pane, at);
+        await persistNotify(review.id, result, pane, at);
+        persistedIds.add(review.id);
         deps.events.emit({ type: "review-notify", reviewId: review.id, result, pane });
       }
       logger.info(
@@ -84,9 +161,8 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
     } catch (err) {
       const at = deps.clock.now().toISOString();
       for (const id of entry.reviewIds) {
-        const review = await deps.repository.get(id).catch(() => null);
-        if (review)
-          await persistNotify(deps.repository, review, "unknown", null, at).catch(() => {});
+        if (persistedIds.has(id)) continue; // item 7: already persisted — don't stomp it
+        await persistNotify(id, "unknown", null, at).catch(() => {});
         deps.events.emit({ type: "review-notify", reviewId: id, result: "unknown", pane: null });
       }
       logger.error("notify: fire failed", err);
@@ -104,10 +180,7 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
       return;
     }
 
-    const handle = deps.timer.setTimeout(() => {
-      void fire(worktreeRoot);
-    }, debounceMs);
-    pending.set(worktreeRoot, { commit, reviewIds: new Set([review.id]), handle });
+    scheduleTimer(worktreeRoot, { commit, reviewIds: new Set([review.id]) }, debounceMs);
   }
 
   return {
@@ -130,11 +203,11 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
           reviewIds: [reviewId],
         });
         const at = deps.clock.now().toISOString();
-        await persistNotify(deps.repository, review, result, pane, at);
+        await persistNotify(reviewId, result, pane, at);
         deps.events.emit({ type: "review-notify", reviewId, result, pane });
       } catch (err) {
         const at = deps.clock.now().toISOString();
-        await persistNotify(deps.repository, review, "unknown", null, at).catch(() => {});
+        await persistNotify(reviewId, "unknown", null, at).catch(() => {});
         deps.events.emit({ type: "review-notify", reviewId, result: "unknown", pane: null });
         logger.error("notify: resend failed", err);
       }

@@ -43,6 +43,13 @@ export type ReviewRuntimeDeps = {
   timer?: Timer;
   onEvent: (e: ReviewEvent) => void;
   logger?: Pick<typeof console, "info" | "warn" | "error">;
+  /**
+   * item 3: whether herdr is currently connected — the notify scheduler checks
+   * this before firing so it never persists `no_target` (unretryable) while
+   * disconnected. Defaults to `herdr.gateway.status().connected` when `herdr`
+   * is provided, else always-connected (matches the fallback no-op notifier).
+   */
+  isConnected?: () => boolean;
 };
 
 export const realTimer: Timer = {
@@ -82,6 +89,16 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
         })
       : { notify: async () => ({ result: "no_target", pane: null }) });
 
+  // F4: a single shared lock registry, so a reply/resolve/manual-reanchor can never
+  // race a concurrent reanchorAfterChange and lose one side's update (per-review
+  // locks), and two concurrent reanchorAfterChange passes on the same root serialize
+  // instead of duplicating work (per-root lock). Also used by the notify scheduler
+  // (item 1) so it can never overwrite a concurrent reply's write.
+  const locks = createLocks();
+
+  const isConnected: () => boolean =
+    deps.isConnected ?? (deps.herdr ? () => deps.herdr!.gateway.status().connected : () => true);
+
   const notifyScheduler = createNotifyScheduler({
     notifier,
     events,
@@ -90,13 +107,9 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
     timer,
     debounceMs: deps.config.notify.debounceMs,
     logger,
+    locks,
+    isConnected,
   });
-
-  // F4: a single shared lock registry, so a reply/resolve/manual-reanchor can never
-  // race a concurrent reanchorAfterChange and lose one side's update (per-review
-  // locks), and two concurrent reanchorAfterChange passes on the same root serialize
-  // instead of duplicating work (per-root lock).
-  const locks = createLocks();
 
   const reanchorAfterChange = reanchorAfterChangeUsecase({
     repository,
@@ -109,7 +122,7 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
     logger,
   });
 
-  const outdateWorktree = outdateWorktreeUsecase({ repository, clock, events, logger });
+  const outdateWorktree = outdateWorktreeUsecase({ repository, clock, events, locks, logger });
 
   return {
     repository,

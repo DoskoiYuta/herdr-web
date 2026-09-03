@@ -103,6 +103,12 @@ export class FakeReviewRepository implements ReviewRepository {
     this.reviews.set(review.id, review);
   }
 
+  async updateNotify(id: string, notify: Review["notify"]): Promise<void> {
+    const existing = this.reviews.get(id);
+    if (!existing) return;
+    this.reviews.set(id, { ...existing, notify });
+  }
+
   async upsertRepo(repo: RepoRecord): Promise<void> {
     const existing = this.repos.get(repo.key);
     this.repos.set(repo.key, existing ? { ...repo, firstSeenAt: existing.firstSeenAt } : repo);
@@ -168,12 +174,16 @@ export class FakeGitHistory implements GitHistory {
   /** null を明示的に入れると revRange が「無効な rev」(F9) を返す */
   ranges = new Map<string, string[] | null>();
   renames = new Map<string, string | null>();
+  /** F6: how many times isAncestor was called — used to assert a status-only
+   * tick (prevHead === head) skips the commit-bound ancestry check entirely. */
+  isAncestorCalls = 0;
 
   async headOf(root: string): Promise<string | null> {
     return this.heads.get(root) ?? null;
   }
 
   async isAncestor(_root: string, ancestor: string, descendant: string): Promise<boolean> {
+    this.isAncestorCalls++;
     if (ancestor === descendant) return true;
     return this.ancestryOf.get(ancestor)?.has(descendant) ?? false;
   }

@@ -152,6 +152,18 @@ export function createSqliteReviewRepository(db: Db): ReviewRepository {
       });
     },
 
+    async updateNotify(id, notify) {
+      // item 1: only the three notify columns — never the whole row — so a
+      // concurrent reply/reanchor's write can never be clobbered by a stale
+      // in-memory review snapshot the scheduler is holding.
+      db.transaction((tx) => {
+        tx.update(reviews)
+          .set({ notifyState: notify.state, notifyPane: notify.pane, notifyAt: notify.at })
+          .where(eq(reviews.id, id))
+          .run();
+      });
+    },
+
     async upsertRepo(repo: RepoRecord) {
       await db
         .insert(repos)

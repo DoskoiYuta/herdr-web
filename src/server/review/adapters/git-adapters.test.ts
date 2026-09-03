@@ -108,6 +108,19 @@ describe("createGitHistory", () => {
     expect(await h.renamedPath(root, since, "a.txt")).toBe("b.txt");
     expect(await h.renamedPath(root, since, "nonexistent.txt")).toBeNull();
   });
+
+  // F4/item-4: a rename that's only `git mv`'d (staged, not yet committed) must
+  // still be found — the old `diff sinceHead HEAD` form only ever sees committed
+  // renames. Comparing against the worktree (no HEAD arg) picks up staged and
+  // even unstaged renames.
+  test("renamedPath finds a staged (uncommitted) rename since sinceHead", async () => {
+    const root = await makeRepo();
+    const h = createGitHistory();
+    const since = (await h.headOf(root))!;
+    await exec("git", ["mv", "a.txt", "b.txt"], { cwd: root });
+    // deliberately NOT committed
+    expect(await h.renamedPath(root, since, "a.txt")).toBe("b.txt");
+  });
 });
 
 describe("createWorktreeFileReader", () => {

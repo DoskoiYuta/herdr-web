@@ -155,7 +155,13 @@ export function reanchorAfterChangeUsecase(deps: ReanchorAfterChangeDeps) {
           });
         }
 
-        for (const listed of commitReviews) {
+        // F6: a status-only tick (prevHead === head — e.g. a dirty-worktree
+        // status change with HEAD unmoved) can't have changed any commit's
+        // reachability, so skip the whole commit-bound ancestry loop rather
+        // than spending one isAncestor call per commit-bound review for nothing.
+        const statusOnlyTick = input.prevHead !== null && input.prevHead === input.head;
+
+        for (const listed of statusOnlyTick ? [] : commitReviews) {
           if (handledIds.has(listed.id)) continue;
           if (listed.target.kind !== "commit") continue;
 

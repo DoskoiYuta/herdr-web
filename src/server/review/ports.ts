@@ -1,4 +1,4 @@
-import type { RepoRecord, Review, ReviewStatus } from "../../contract/review";
+import type { Notify, RepoRecord, Review, ReviewStatus } from "../../contract/review";
 
 export type { Clock } from "./domain/clock";
 
@@ -15,6 +15,14 @@ export interface ReviewRepository {
   get(id: string): Promise<Review | null>;
   list(filter: ListFilter): Promise<Review[]>;
   save(review: Review): Promise<void>;
+  /**
+   * item 1: updates ONLY the notify columns of an existing review row, leaving
+   * everything else (thread, status, anchor, ...) untouched. Used everywhere the
+   * notify scheduler persists a result, so it can never clobber a concurrent
+   * reply/reanchor by writing back a stale full-review snapshot. A no-op if the
+   * review no longer exists (e.g. deleted between read and write in a test double).
+   */
+  updateNotify(id: string, notify: Notify): Promise<void>;
   upsertRepo(repo: RepoRecord): Promise<void>;
   getRepo(key: string): Promise<RepoRecord | null>;
   listRepos(): Promise<RepoRecord[]>;

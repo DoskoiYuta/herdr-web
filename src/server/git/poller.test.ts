@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -91,10 +91,11 @@ describe("createWorktreePoller", () => {
     expect(statuses.some((s) => s !== null)).toBe(true);
   });
 
-  // F6: a "not a git repository" failure must be classified as "missing" so
-  // bootstrap.ts can outdate that worktree's reviews, and any other failure
-  // must be classified as "other" so it's just logged, not treated as removal.
-  test("classifies a not-a-git-repo error as kind=missing", async () => {
+  // F2: only the worktree root itself actually being gone (fs.stat ENOENT/ENOTDIR,
+  // persisted for 2 consecutive ticks) counts as "missing". A directory that
+  // exists but isn't a git repo — or any other git failure — is "other": it must
+  // never cause bootstrap.ts to irreversibly outdate an open review.
+  test("classifies a not-a-git-repo error (dir exists) as kind=other, not missing", async () => {
     const notARepo = await mkdtemp(join(tmpdir(), "herdr-web-poller-kind-"));
     dirs.push(notARepo);
     const kinds: (string | undefined)[] = [];
@@ -106,13 +107,74 @@ describe("createWorktreePoller", () => {
       },
     });
     await poller.start();
+    await sleep(80); // several more ticks — still not "missing" even after 2+
     poller.stop();
     expect(kinds.length).toBeGreaterThan(0);
-    expect(kinds.every((k) => k === "missing")).toBe(true);
+    expect(kinds.every((k) => k === "other")).toBe(true);
   });
 
-  test("classifies a deleted worktree root (ENOENT) as kind=missing", async () => {
-    const dir = join(tmpdir(), `herdr-web-poller-gone-${Date.now()}`);
+  // F2: a git binary that can't be spawned (e.g. not on PATH) is a git spawn
+  // failure, not evidence the worktree root is gone — must classify "other".
+  test("classifies git-not-on-PATH as kind=other, not missing", async () => {
+    const dir = await makeRepo();
+    const kinds: (string | undefined)[] = [];
+    const poller = createWorktreePoller({
+      root: dir,
+      intervalMs: 20,
+      bin: "/nonexistent/git",
+      onStatus: (s) => {
+        if (s.error) kinds.push(s.kind);
+      },
+    });
+    await poller.start();
+    await sleep(80);
+    poller.stop();
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds.every((k) => k === "other")).toBe(true);
+  });
+
+  test("a deleted worktree root removed for only one tick then restored never reports missing", async () => {
+    const dir = await makeRepo();
+    const kinds: (string | undefined)[] = [];
+    const poller = createWorktreePoller({
+      root: dir,
+      intervalMs: 30,
+      onStatus: (s) => {
+        if (s.error) kinds.push(s.kind);
+      },
+    });
+    await poller.start();
+    await rm(dir, { recursive: true, force: true });
+    await sleep(35); // exactly ~one missed tick
+    // restore a valid repo at the same path before the second tick lands. The
+    // poller keeps ticking against this same path throughout (that's the point
+    // of the test), so its own concurrent `git status` can transiently race
+    // git's index.lock — retry these setup commands on that specific failure.
+    async function gitRetry(args: string[]): Promise<void> {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await execFileP("git", args, { cwd: dir });
+          return;
+        } catch (err) {
+          if (attempt >= 20 || !/index\.lock/.test(String(err))) throw err;
+          await sleep(10);
+        }
+      }
+    }
+    await mkdir(dir, { recursive: true });
+    await gitRetry(["init", "-q"]);
+    await gitRetry(["config", "user.name", "Test"]);
+    await gitRetry(["config", "user.email", "test@example.com"]);
+    await writeFile(join(dir, "a.txt"), "a\n");
+    await gitRetry(["add", "."]);
+    await gitRetry(["commit", "-q", "-m", "init"]);
+    await sleep(100);
+    poller.stop();
+    expect(kinds.every((k) => k !== "missing")).toBe(true);
+  });
+
+  test("a deleted worktree root persisting for 2+ ticks is classified missing", async () => {
+    const dir = await makeRepo();
     const kinds: (string | undefined)[] = [];
     const poller = createWorktreePoller({
       root: dir,
@@ -122,9 +184,10 @@ describe("createWorktreePoller", () => {
       },
     });
     await poller.start();
+    await rm(dir, { recursive: true, force: true });
+    await sleep(150); // several ticks with the root gone the whole time
     poller.stop();
-    expect(kinds.length).toBeGreaterThan(0);
-    expect(kinds.every((k) => k === "missing")).toBe(true);
+    expect(kinds.some((k) => k === "missing")).toBe(true);
   });
 });
 
