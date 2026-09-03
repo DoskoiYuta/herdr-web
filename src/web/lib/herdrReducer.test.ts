@@ -105,7 +105,7 @@ describe("reduceRepos: pane-updated", () => {
     expect(newRepo!.worktrees[0]!.panes).toEqual([row]);
   });
 
-  test("a pane with no resolvable worktree/repo is simply dropped from its old location", () => {
+  test("a pane with no resolvable worktree/repo lands in the その他 sentinel group", () => {
     const initial = [repo()];
     const row = pane({ cwd: null, foregroundCwd: null });
     const next = reduceRepos(initial, {
@@ -114,7 +114,34 @@ describe("reduceRepos: pane-updated", () => {
       worktreeRoot: null,
       repoKey: null,
     });
-    expect(next).toEqual([]);
+    // /repo's group is now empty and dropped; a new "other" sentinel group holds the pane.
+    expect(next).toHaveLength(1);
+    const other = next.find((r) => r.key === "other");
+    expect(other).toBeDefined();
+    expect(other!.name).toBe("その他");
+    expect(other!.worktrees[0]!.root).toBe("other");
+    expect(other!.worktrees[0]!.panes).toEqual([row]);
+  });
+
+  test("a second unresolvable pane joins the same その他 sentinel worktree", () => {
+    const initial = [repo()];
+    const rowA = pane({ paneId: "pane-a", cwd: null, foregroundCwd: null });
+    const rowB = pane({ paneId: "pane-b", cwd: null, foregroundCwd: null });
+    const afterA = reduceRepos(initial, {
+      type: "pane-updated",
+      row: rowA,
+      worktreeRoot: null,
+      repoKey: null,
+    });
+    const afterB = reduceRepos(afterA, {
+      type: "pane-updated",
+      row: rowB,
+      worktreeRoot: null,
+      repoKey: null,
+    });
+    const other = afterB.find((r) => r.key === "other");
+    expect(other!.worktrees).toHaveLength(1);
+    expect(other!.worktrees[0]!.panes.map((p) => p.paneId)).toEqual(["pane-a", "pane-b"]);
   });
 
   test("an empty worktree/repo left behind by a move is dropped", () => {

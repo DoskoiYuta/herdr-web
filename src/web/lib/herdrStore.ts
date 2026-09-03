@@ -20,12 +20,18 @@ export type ReviewEvent = ReviewMessage | ReviewNotifyMessage;
 
 const REVIEW_RING_SIZE = 50;
 
+export type RepoChangedEntry = { head: string | null; tick: number };
+
 export type HerdrStoreState = {
   repos: Repo[];
   focus: FocusMessage | null;
   herdr: { connected: boolean; protocol: number | null };
   connection: EventsSocketStatus;
-  repoChanged: { root: string; head: string | null; tick: number } | null;
+  /** Per-worktree-root `repo-changed` tick (keyed by `worktreeRoot`), so a
+   * `usePatch` consumer watching one repo's tick never has it reset by a
+   * `repo-changed` event for a *different* repo interleaving in between —
+   * each root's counter is independently monotonic. */
+  repoChanged: Record<string, RepoChangedEntry>;
 };
 
 export type HerdrStore = {
@@ -43,7 +49,7 @@ const INITIAL_STATE: HerdrStoreState = {
   focus: null,
   herdr: { connected: false, protocol: null },
   connection: "connecting",
-  repoChanged: null,
+  repoChanged: {},
 };
 
 export type CreateHerdrStoreOptions = {
@@ -82,11 +88,14 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
         return;
       }
       case "repo-changed": {
-        const prev = state.repoChanged;
-        const tick = prev && prev.root === message.worktreeRoot ? prev.tick + 1 : 1;
+        const prev = state.repoChanged[message.worktreeRoot];
+        const tick = (prev?.tick ?? 0) + 1;
         setState({
           ...state,
-          repoChanged: { root: message.worktreeRoot, head: message.head, tick },
+          repoChanged: {
+            ...state.repoChanged,
+            [message.worktreeRoot]: { head: message.head, tick },
+          },
         });
         return;
       }

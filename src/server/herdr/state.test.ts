@@ -159,6 +159,23 @@ describe("createHerdrState", () => {
     expect(store.get().panes.size).toBe(snapshot.panes.length - 1);
   });
 
+  test("patchPane merges the pane into the store and notifies a pane change", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const store = createHerdrState(gw);
+    await Promise.resolve();
+    await Promise.resolve();
+    const paneId = snapshot.panes[0]!.pane_id;
+    const existing = store.get().panes.get(paneId)!;
+
+    const changes: import("./state").StateChange[] = [];
+    store.onChange((c) => changes.push(c));
+
+    store.patchPane({ ...existing, foreground_cwd: "/patched/cwd" });
+
+    expect(store.get().panes.get(paneId)?.foreground_cwd).toBe("/patched/cwd");
+    expect(changes).toContainEqual({ kind: "pane", paneId });
+  });
+
   // Minor fix: on disconnect, the store must drop its snapshot immediately —
   // otherwise a notifier reading `state.get().panes` could target a pane that
   // no longer exists (a "ghost pane") until the next reconnect's snapshot.

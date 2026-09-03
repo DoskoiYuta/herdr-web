@@ -57,8 +57,8 @@ export function App() {
   const repoKey = state.focus?.repoKey ?? null;
 
   const repoChangedTick = useMemo(() => {
-    if (!worktreeRoot || !state.repoChanged || state.repoChanged.root !== worktreeRoot) return 0;
-    return state.repoChanged.tick;
+    if (!worktreeRoot) return 0;
+    return state.repoChanged[worktreeRoot]?.tick ?? 0;
   }, [worktreeRoot, state.repoChanged]);
 
   const persist = useCallback((next: Layout) => {
@@ -77,6 +77,12 @@ export function App() {
   const handlePinToggle = useCallback(() => {
     const next = !pinned;
     setPinned(next);
+    // Unpinning drops the manual open-path fallback too: it exists only to
+    // give a worktree to pin while herdr isn't connected/focused, and
+    // leaving it set after unpin would keep `worktreeRoot` pointing at it
+    // while `repoKey` (which only ever comes from `state.focus`) reverts to
+    // null — a worktree shown with no resolvable repo key.
+    if (!next) setManualWorktreeRoot(null);
     store.send({ type: "pin", worktreeRoot: next ? worktreeRoot : null });
   }, [pinned, worktreeRoot, store]);
 

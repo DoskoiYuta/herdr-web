@@ -9,6 +9,7 @@ const DEFAULT_ROWS = 24;
 
 export type CreateTermWssOptions = {
   spawn: (opts: SpawnHerdrOptions) => SpawnedTerminal;
+  logger?: Pick<typeof console, "info" | "warn">;
 };
 
 /**
@@ -17,6 +18,7 @@ export type CreateTermWssOptions = {
  */
 export function createTermWss(opts: CreateTermWssOptions): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
+  const logger = opts.logger ?? console;
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const query = new URL(req.url ?? "/", "http://localhost").searchParams;
@@ -25,12 +27,14 @@ export function createTermWss(opts: CreateTermWssOptions): WebSocketServer {
     const rows = parsePositiveInt(query.get("rows")) ?? DEFAULT_ROWS;
 
     const term = opts.spawn({ session, cols, rows });
+    logger.info(`term: spawn session=${session ?? "-"} cols=${cols} rows=${rows}`);
 
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
 
     term.onExit((event) => {
+      logger.warn(`term: exit session=${session ?? "-"} code=${event.exitCode}`);
       const msg = v.parse(TermExitMessageSchema, { type: "exit", code: event.exitCode });
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));

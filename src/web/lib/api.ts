@@ -10,12 +10,14 @@ import {
 } from "../../contract/git";
 import {
   type CreateReviewRequest,
+  ForDiffMatchSchema,
   type ForDiffRequest,
   type ListReviewQuery,
   type ReanchorRequest,
   type ReplyRequest,
   ReviewSchema,
 } from "../../contract/review";
+export type { ForDiffMatch } from "../../contract/review";
 
 /**
  * Hono RPC クライアント。`AppType` は type-only import のみ許可されている
@@ -89,14 +91,6 @@ export const gitApi = {
     return v.parse(CommitDetailSchema, await res.json());
   },
 };
-
-/** `{ review, line, confidence }[]` — the shape `POST /api/review/for-diff` resolves. */
-export const ForDiffMatchSchema = v.object({
-  review: ReviewSchema,
-  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-  confidence: v.picklist(["exact", "context", "line"]),
-});
-export type ForDiffMatch = v.InferOutput<typeof ForDiffMatchSchema>;
 
 function toQueryRecord(query: ListReviewQuery): Record<string, string> {
   const out: Record<string, string> = {};

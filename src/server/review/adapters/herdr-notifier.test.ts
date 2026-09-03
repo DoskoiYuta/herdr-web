@@ -88,6 +88,7 @@ describe("createHerdrNotifier", () => {
         focusedTabId: null,
       }),
       onChange: () => () => {},
+      patchPane: () => {},
     };
     const gateway = {
       agentPrompt: async () => {

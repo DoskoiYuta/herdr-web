@@ -11,6 +11,8 @@ export type SpawnHerdrOptions = {
   bin?: string;
   /** テスト用にコマンドライン引数を丸ごと差し替える（session 由来の args より優先） */
   argv?: string[];
+  /** 基本許可リストに加えて PTY へ渡す環境変数名（config.herdrEnvPassthrough 由来） */
+  envPassthrough?: string[];
 };
 
 export type SpawnedTerminal = {
@@ -21,11 +23,27 @@ export type SpawnedTerminal = {
   onExit(cb: (event: IExitEvent) => void): void;
 };
 
-function buildEnvPairs(): string[] {
+const BASE_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "TERM",
+  "COLORTERM",
+  "LANG",
+  "SHELL",
+  "USER",
+  "TMPDIR",
+]);
+const ALLOWED_PREFIXES = [/^LC_/, /^XDG_/];
+
+export function buildEnvPairs(envPassthrough: string[] = []): string[] {
+  const extra = new Set(envPassthrough);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
     if (key.startsWith("HERDR_")) continue;
+    const allowed =
+      BASE_ALLOWLIST.has(key) || ALLOWED_PREFIXES.some((re) => re.test(key)) || extra.has(key);
+    if (!allowed) continue;
     env[key] = value;
   }
   env.TERM = "xterm-256color";
@@ -48,12 +66,16 @@ export function spawnHerdr(opts: SpawnHerdrOptions): SpawnedTerminal {
   // 同様に無視される。そのため直接 herdr を起動する代わりに
   // `env -i <KEY=VALUE>... herdr ...` でラップし、`env` コマンド自身に
   // 完全にクリーンな環境を execve させることで HERDR_* を確実に落とす。
-  const pty: IPty = spawnPty("/usr/bin/env", ["-i", ...buildEnvPairs(), bin, ...args], {
-    name: "xterm-256color",
-    cols: opts.cols,
-    rows: opts.rows,
-    cwd: opts.cwd,
-  });
+  const pty: IPty = spawnPty(
+    "/usr/bin/env",
+    ["-i", ...buildEnvPairs(opts.envPassthrough ?? []), bin, ...args],
+    {
+      name: "xterm-256color",
+      cols: opts.cols,
+      rows: opts.rows,
+      cwd: opts.cwd,
+    },
+  );
 
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();

@@ -65,6 +65,7 @@ type TerminalSessionProps = Required<Pick<TerminalProps, "fontFamily">> &
 function TerminalSession({ session, className, fontFamily, onReconnect }: TerminalSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [exitCode, setExitCode] = useState<number | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -94,6 +95,7 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
     term.open(container);
     fit.fit();
     setDisconnected(false);
+    setExitCode(null);
     // StrictMode の二重実行で、破棄済みソケットの close が新しい接続の overlay を出さないようにする
     let cancelled = false;
 
@@ -103,8 +105,8 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
       {
         onOpen: () => sendResize(ws, term.cols, term.rows),
         onOutput: (data) => term.write(data),
-        onExit: () => {
-          /* close は onClose 側でハンドルする */
+        onExit: (code) => {
+          if (!cancelled) setExitCode(code);
         },
         onClose: () => {
           if (!cancelled) setDisconnected(true);
@@ -133,7 +135,15 @@ function TerminalSession({ session, className, fontFamily, onReconnect }: Termin
     <div className={cn("relative h-full w-full", className)}>
       <div ref={containerRef} className="h-full w-full" />
       {disconnected && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/80">
+          {exitCode !== null && (
+            <div className="flex flex-col items-center gap-1 text-center text-sm">
+              <p>終了しました (code {exitCode})</p>
+              {exitCode === 127 && (
+                <p className="text-muted-foreground">herdr が見つかりません（PATH を確認）</p>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className="rounded-md bg-primary px-4 py-2 text-primary-foreground"

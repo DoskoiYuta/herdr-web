@@ -157,6 +157,11 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     try {
       const raw = await request<unknown>("ping", {});
       const pong = v.parse(PingResultSchema, raw);
+      if (!status.connected) {
+        logger.info(`herdr: connected protocol=${pong.protocol}`);
+      }
+      // A real reconnect: allow the ENOENT warning to fire again on the next outage.
+      warnedEnoentSinceConnect = false;
       setStatus({ connected: true, protocol: pong.protocol });
     } catch (err) {
       logger.warn("herdr: ping failed", err instanceof Error ? err.message : err);
@@ -167,6 +172,9 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
   // --- subscribe connection: the one persistent connection ---------------------------------------------------
   let subSocket: net.Socket | null = null;
   let subBackoff = backoffInitialMs;
+  // Rate-limit the ENOENT "socket missing" warning to once per disconnect period, so a
+  // long herdr outage doesn't spam logs once per backoff attempt. Reset on reconnect.
+  let warnedEnoentSinceConnect = false;
 
   function connectSubscribeSocket(): void {
     if (closed) return;
@@ -189,6 +197,11 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
       ndjsonReader((line) => handleSubscribeLine(line)),
     );
     sock.on("error", (err) => {
+      const isEnoent = (err as NodeJS.ErrnoException).code === "ENOENT";
+      if (isEnoent) {
+        if (warnedEnoentSinceConnect) return;
+        warnedEnoentSinceConnect = true;
+      }
       logger.warn("herdr: subscribe socket error", err.message);
     });
     sock.on("close", () => {

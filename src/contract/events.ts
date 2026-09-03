@@ -5,6 +5,7 @@
  */
 import * as v from "valibot";
 import { AgentSessionInfoSchema, AgentStatusSchema } from "./herdr";
+import { ReviewSchema } from "./review";
 
 // ---------------------------------------------------------------------------
 // Sidebar tree row types (plan.md §6.6 / §9.2 Repo[])
@@ -102,11 +103,10 @@ export const RepoChangedMessageSchema = v.object({
 });
 export type RepoChangedMessage = v.InferOutput<typeof RepoChangedMessageSchema>;
 
-/** review payload shape is owned by the (not-yet-built) review module; kept opaque here. */
 export const ReviewMessageSchema = v.object({
   type: v.literal("review"),
   event: v.picklist(["created", "replied", "resolved", "reanchored", "outdated"]),
-  review: v.unknown(),
+  review: ReviewSchema,
 });
 export type ReviewMessage = v.InferOutput<typeof ReviewMessageSchema>;
 

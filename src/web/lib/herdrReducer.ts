@@ -71,19 +71,22 @@ function removePane(repos: Repo[], paneId: string): Repo[] {
 function applyPaneUpdated(repos: Repo[], msg: PaneUpdatedMessage): Repo[] {
   const withoutPane = removePane(repos, msg.row.paneId);
 
-  if (!msg.worktreeRoot || !msg.repoKey) {
-    // Pane no longer resolves to a repo/worktree (e.g. cwd outside any git repo
-    // and not covered by the "other" sentinel) — nothing left to insert.
-    return withoutPane;
-  }
+  // The server's incremental `pane-updated` sends worktreeRoot/repoKey as
+  // null when a pane's cwd doesn't resolve to a git repo, whereas the full
+  // `tree` snapshot (src/server/herdr/tree.ts) groups those same panes under
+  // the "other"/"その他" sentinel. Mirror that here so a pane doesn't
+  // silently disappear from the sidebar just because it arrived via an
+  // incremental update instead of the initial tree.
+  const repoKey = msg.repoKey ?? OTHER_REPO_KEY;
+  const worktreeRoot = msg.worktreeRoot ?? OTHER_REPO_KEY;
 
-  const repoIndex = withoutPane.findIndex((r) => r.key === msg.repoKey);
+  const repoIndex = withoutPane.findIndex((r) => r.key === repoKey);
   let repos2: Repo[];
   let repo: Repo;
   if (repoIndex === -1) {
     repo = {
-      key: msg.repoKey,
-      name: repoNameFromKey(msg.repoKey),
+      key: repoKey,
+      name: repoNameFromKey(repoKey),
       worktrees: [],
       counts: emptyCounts(),
     };
@@ -93,12 +96,12 @@ function applyPaneUpdated(repos: Repo[], msg: PaneUpdatedMessage): Repo[] {
     repo = repos2[repoIndex]!;
   }
 
-  const wtIndex = repo.worktrees.findIndex((w) => w.root === msg.worktreeRoot);
+  const wtIndex = repo.worktrees.findIndex((w) => w.root === worktreeRoot);
   let worktrees: WorktreeRow[];
   if (wtIndex === -1) {
     worktrees = [
       ...repo.worktrees,
-      { root: msg.worktreeRoot, branch: null, isMain: true, panes: [msg.row] },
+      { root: worktreeRoot, branch: null, isMain: true, panes: [msg.row] },
     ];
   } else {
     worktrees = repo.worktrees.map((w, i) =>

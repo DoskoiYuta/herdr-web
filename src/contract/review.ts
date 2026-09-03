@@ -166,3 +166,19 @@ export const RepoMoveRequestSchema = v.object({
   to: v.string(),
 });
 export type RepoMoveRequest = v.InferOutput<typeof RepoMoveRequestSchema>;
+
+/* ------------------------------------------------------------------ */
+/* API 境界: レスポンススキーマ                                        */
+/* ------------------------------------------------------------------ */
+
+/** `POST /api/review/for-diff` が解決する `{ review, line, confidence }[]` の要素形。 */
+export const ForDiffMatchSchema = v.object({
+  review: ReviewSchema,
+  line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  confidence: v.picklist(["exact", "context", "line"]),
+});
+export type ForDiffMatch = v.InferOutput<typeof ForDiffMatchSchema>;
+
+/** `POST /api/repo/move` のレスポンス（移動した repo / review の件数）。 */
+export const RepoMoveResultSchema = v.object({ repos: v.number(), reviews: v.number() });
+export type RepoMoveResult = v.InferOutput<typeof RepoMoveResultSchema>;

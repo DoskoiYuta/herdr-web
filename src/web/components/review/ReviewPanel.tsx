@@ -3,15 +3,21 @@
 // clicking a row jump ToolPane to the right diff comparison + location.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Review, ReviewStatus } from "@contract/review";
+import { gitApi } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
+import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { Button } from "@/components/ui/button";
 import type { DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { useReviewList } from "./hooks/useReviewList";
 
-export type ReviewNavigation = {
-  comparison: { from: string; to: string } | null;
-  location: DiffInitialLocation;
-};
+export type ReviewNavigation =
+  | { comparison: { from: string; to: string } | null; location: DiffInitialLocation }
+  /** A commit-target review whose commit has no parent (`${hash}^` doesn't
+   * resolve — see src/server/git/patch.ts's `assertCommitish`, and there's no
+   * client-facing way to request a diff against the empty tree for an
+   * arbitrary commit). There's no valid Diff view for it, so route to the
+   * Graph tab instead of navigating into a comparison the patch API rejects. */
+  | { routeToGraph: true };
 
 export interface ReviewPanelProps {
   repoKey: string | null;
@@ -38,6 +44,19 @@ function reviewNavigation(review: Review): ReviewNavigation {
     comparison,
     location: { path: review.path, line: review.anchor.lineHint, side: review.anchor.side },
   };
+}
+
+/** True if `hash` has no parent (a root commit) — `${hash}^` won't resolve
+ * for it. Best-effort: a lookup failure is treated as "not a root commit" so
+ * navigation still proceeds to the (possibly erroring) Diff tab rather than
+ * silently doing nothing. */
+async function isRootCommit(repoKey: string, hash: string): Promise<boolean> {
+  try {
+    const detail = await gitApi.commit({ repo: repoKey, hash });
+    return detail.parents.length === 0;
+  } catch {
+    return false;
+  }
 }
 
 export function ReviewPanel({
@@ -67,8 +86,25 @@ export function ReviewPanel({
   // 応答としての setState — effect 実行時に直接ではなく購読コールバック内で呼ぶ）。
   useEffect(() => {
     if (!subscribeReviewEvents) return;
-    return subscribeReviewEvents(() => setTick((t) => t + 1));
-  }, [subscribeReviewEvents]);
+    return subscribeReviewEvents((event) => {
+      if (reviewEventMatchesRepo(event, repoKey)) setTick((t) => t + 1);
+    });
+  }, [subscribeReviewEvents, repoKey]);
+
+  const handleClickReview = useCallback(
+    async (review: Review) => {
+      if (
+        repoKey &&
+        review.target.kind === "commit" &&
+        (await isRootCommit(repoKey, review.target.hash))
+      ) {
+        onNavigate({ routeToGraph: true });
+        return;
+      }
+      onNavigate(reviewNavigation(review));
+    },
+    [repoKey, onNavigate],
+  );
 
   const toggleStatus = useCallback((status: ReviewStatus) => {
     setStatusFilter((prev) => {
@@ -148,7 +184,7 @@ export function ReviewPanel({
                 type="button"
                 variant="ghost"
                 className="h-auto w-full flex-col items-start gap-0.5 rounded-none px-2 py-1.5 text-left"
-                onClick={() => onNavigate(reviewNavigation(review))}
+                onClick={() => void handleClickReview(review)}
               >
                 <div className="flex w-full items-center gap-2">
                   <span className="text-[10px] font-medium uppercase text-muted-foreground">

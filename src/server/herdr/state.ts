@@ -183,6 +183,14 @@ export function describeChange(envelope: HerdrEventEnvelope): StateChange {
 export interface HerdrStateStore {
   get(): HerdrState;
   onChange(cb: (change: StateChange) => void): () => void;
+  /**
+   * Merge fresh pane data into the store outside the normal event stream —
+   * used by the focus poller (§12-1) when it detects a `foreground_cwd`
+   * drift that herdr never announced via `pane_updated`. Notifies the same
+   * way a `pane_updated` event would, so other subscribers (tree, notifier)
+   * stay in sync too.
+   */
+  patchPane(pane: PaneInfo): void;
 }
 
 export type Logger = Pick<typeof console, "error" | "warn">;
@@ -244,6 +252,10 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
     onChange: (cb) => {
       listeners.add(cb);
       return () => listeners.delete(cb);
+    },
+    patchPane: (pane) => {
+      state = withPane(state, pane);
+      notify({ kind: "pane", paneId: pane.pane_id });
     },
   };
 }

@@ -187,3 +187,40 @@ test("auto-applies when the currently displayed diff is empty, even scrolled awa
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
   expect(screen.queryByText("変更があります")).not.toBeInTheDocument();
 });
+
+test("calls onInitialLocationConsumed once after jumping, and doesn't re-jump once the parent clears it", async () => {
+  const onInitialLocationConsumed = vi.fn();
+  const client = new QueryClient();
+  const { rerender } = render(
+    <QueryClientProvider client={client}>
+      <DiffPanel
+        repo="/repo"
+        repoChangedTick={0}
+        initialLocation={{ path: "a.txt", line: 1, side: "new" }}
+        onInitialLocationConsumed={onInitialLocationConsumed}
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+  await waitFor(() => expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1));
+
+  // Parent reacts to the callback by clearing initialLocation to null (as it
+  // must — see ToolPane's handleInitialLocationConsumed). A later poller
+  // refresh (bumping repoChangedTick, which changes `items`) must not
+  // re-trigger the jump.
+  fetchMock.mockImplementation(async () =>
+    jsonResponse(patch("h2", [{ name: "a.txt", contentLine: "hello" }])),
+  );
+  rerender(
+    <QueryClientProvider client={client}>
+      <DiffPanel
+        repo="/repo"
+        repoChangedTick={1}
+        initialLocation={null}
+        onInitialLocationConsumed={onInitialLocationConsumed}
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+  expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1);
+});

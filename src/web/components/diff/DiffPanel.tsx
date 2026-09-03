@@ -14,6 +14,7 @@ import type { ReviewTarget, Side } from "@contract/review";
 import { buildAnchor } from "@/lib/anchor";
 import { gitApi, reviewApi, type ForDiffMatch } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
+import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
 import { annotationSignature, withAnnotationRev } from "./annotationVersion";
 import Banners from "./Banners.tsx";
@@ -118,6 +119,10 @@ export interface DiffPanelProps {
   subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
   /** Review タブからのジャンプ先（F5-8）。一度消費したら親が null に戻す想定。 */
   initialLocation?: DiffInitialLocation | null;
+  /** ジャンプ先に一度スクロールしたら呼ばれる。親はこれを受けて `initialLocation`
+   * を null に戻すこと — さもないと、以降の poller 更新のたびに `items` が
+   * 変わるたび同じ場所へ再スクロールしてしまう。 */
+  onInitialLocationConsumed?: () => void;
 }
 
 export function DiffPanel({
@@ -128,6 +133,7 @@ export function DiffPanel({
   repoChangedTick,
   subscribeReviewEvents,
   initialLocation = null,
+  onInitialLocationConsumed,
 }: DiffPanelProps) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   useEffect(() => saveSettings(settings), [settings]);
@@ -335,18 +341,26 @@ export function DiffPanel({
   }, [repo, to]);
 
   // createdAtHead (plan §F5-1) — fetched once per repo/tick, best-effort.
+  // `headKnown` mirrors `headRef.current !== null` as state (same pattern as
+  // `hasEverApplied` above) so the composer can disable submit rather than
+  // send `createdAtHead: ""` while this is still in flight.
   const headRef = useRef<string | null>(null);
+  const [headKnown, setHeadKnown] = useState(false);
   useEffect(() => {
     headRef.current = null;
+    setHeadKnown(false);
     if (!repo) return;
     let cancelled = false;
     void gitApi
       .root(repo)
       .then((info) => {
-        if (!cancelled) headRef.current = info.head;
+        if (!cancelled) {
+          headRef.current = info.head;
+          setHeadKnown(true);
+        }
       })
       .catch(() => {
-        // best-effort: a create without a resolved head still gets "" (server can reject if it must be non-empty)
+        // best-effort: composer stays disabled (headKnown false) until this resolves
       });
     return () => {
       cancelled = true;
@@ -358,6 +372,15 @@ export function DiffPanel({
 
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
   const [matchesByPath, setMatchesByPath] = useState<Map<string, ForDiffMatch[]>>(new Map());
+
+  // `repo`/`from`/`to` changes remount this whole component (ToolPane keys
+  // DiffPanel on them), but `repoKey` can also resolve/change on its own
+  // (e.g. from null while herdr is still connecting) without a remount —
+  // drop stale inline review annotations rather than showing the wrong
+  // worktree/commit's threads until refreshMatches() catches up.
+  useEffect(() => {
+    setMatchesByPath(new Map());
+  }, [repoKey]);
 
   const forDiffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -400,12 +423,17 @@ export function DiffPanel({
 
   // F5-9: review / review-notify WS イベントで再フェッチする。ペイロードは
   // contract/events.ts では `v.unknown()`（review モジュールの型を web から
-  // import できないため opaque）なので、repo で絞り込まずデバウンス経由で
-  // 常に再フェッチする（コストは低い: forDiff はファイル単位で軽量）。
+  // import できないため opaque）なので `reviewEventMatchesRepo` で防御的に
+  // repo を読み取り、他リポジトリ向けのイベントでの再フェッチは間引く
+  // （repo を判別できないイベント — review-notify 等 — は素通しする）。
+  // refreshMatches 自体が forDiffTimerRef で 1 つのタイマーにデバウンスして
+  // いるため、patch 変化とイベント発火をまたいでも 200ms に 1 回にまとまる。
   useEffect(() => {
     if (!subscribeReviewEvents) return;
-    return subscribeReviewEvents(() => refreshMatches());
-  }, [subscribeReviewEvents, refreshMatches]);
+    return subscribeReviewEvents((event) => {
+      if (reviewEventMatchesRepo(event, repoKey)) refreshMatches();
+    });
+  }, [subscribeReviewEvents, refreshMatches, repoKey]);
 
   const composerTarget = useMemo(() => {
     if (!selection) return null;
@@ -524,7 +552,13 @@ export function DiffPanel({
       const meta = annotation.metadata;
       if (!meta) return null;
       if (meta.kind === "composer") {
-        return <ComposerAnnotation onCancel={cancelComposer} onSubmit={submitComposer} />;
+        return (
+          <ComposerAnnotation
+            onCancel={cancelComposer}
+            onSubmit={submitComposer}
+            disabled={!headKnown}
+          />
+        );
       }
       return (
         <ReviewsAnnotation
@@ -536,7 +570,15 @@ export function DiffPanel({
         />
       );
     },
-    [cancelComposer, submitComposer, handleReply, handleResolve, handleReanchor, handleResend],
+    [
+      cancelComposer,
+      submitComposer,
+      headKnown,
+      handleReply,
+      handleResolve,
+      handleReanchor,
+      handleResend,
+    ],
   );
 
   // F5-8: Review タブから該当ファイル/行へジャンプする。selectedId は
@@ -563,7 +605,8 @@ export function DiffPanel({
       initialLocation.line,
       initialLocation.side === "old" ? "deletions" : "additions",
     );
-  }, [initialLocation, items]);
+    onInitialLocationConsumed?.();
+  }, [initialLocation, items, onInitialLocationConsumed]);
 
   return (
     <div id="diff-panel" className="flex h-full min-h-0 flex-col">

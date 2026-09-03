@@ -90,9 +90,12 @@ describe("createFocusTracker", () => {
 
     gw.focusPane(other.pane_id);
     await settle();
-    // raw focus (pane/agent) tracks the new pane...
-    expect(tracker.get().pane).toBe(other.pane_id);
-    // ...but the pinned worktree root stays put.
+    // The newly-focused pane belongs to a *different* worktree than the pin, so
+    // its agent must not leak into the payload (Item 5) — the pinned worktree's
+    // own agent-bearing pane (the original `initial` pane) is used instead.
+    expect(tracker.get().pane).toBe(initial.pane_id);
+    expect(tracker.get().agent).toBe(initial.agent ?? null);
+    // ...and the pinned worktree root stays put.
     expect(tracker.get().worktreeRoot).toBe(initialCwd);
 
     tracker.pin(null);
@@ -123,6 +126,65 @@ describe("createFocusTracker", () => {
     await new Promise((r) => setTimeout(r, 60));
 
     expect(tracker.get().worktreeRoot).toBe(cwdB);
+    // The store itself must be patched too (Item 2) — not just this tracker's
+    // local payload — so other readers (routes/hw.ts whoami, the notifier,
+    // any future recompute() without a paneOverride) see the fresh pane.
+    expect(state.get().panes.get(paneId)?.foreground_cwd).toBe(cwdB);
     tracker.stop();
+  });
+
+  test("pinned root never attributes another worktree's agent to the payload", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const state = createHerdrState(gw);
+    await settle();
+
+    // Focused pane (wE:p1, worktree "herdr-web") has an agent of its own.
+    const focused = state.get().panes.get(state.get().focusedPaneId!)!;
+    const focusedCwd = focused.foreground_cwd ?? focused.cwd!;
+    expect(focused.agent).not.toBeNull();
+
+    // Pin a *different* worktree ("lesson-rebuild-planning", panes w1:p14/w1:p16)
+    // that also has agent-bearing panes.
+    const pinnedPane = state.get().panes.get("w1:p14")!;
+    const pinnedCwd = pinnedPane.foreground_cwd ?? pinnedPane.cwd!;
+    expect(pinnedPane.agent).not.toBeNull();
+    expect(pinnedCwd).not.toBe(focusedCwd);
+
+    const resolver = fakeResolver({
+      [focusedCwd]: {
+        root: focusedCwd,
+        commonDir: `${focusedCwd}/.git`,
+        branch: "main",
+        isMain: true,
+      },
+      [pinnedCwd]: {
+        root: pinnedCwd,
+        commonDir: `${pinnedCwd}/.git`,
+        branch: "main",
+        isMain: true,
+      },
+    });
+    const tracker = createFocusTracker({ state, gateway: gw, resolver, pollMs: 1_000_000 });
+    tracker.onChange(() => {});
+    await settle();
+
+    tracker.pin(pinnedCwd);
+    await settle();
+
+    const payload = tracker.get();
+    expect(payload.worktreeRoot).toBe(pinnedCwd);
+    // The agent must never be attributed to the focused pane's worktree (B)
+    // when it differs from the pinned worktree (A): either it's null, or it
+    // comes from a pane that itself resolves to the pinned root.
+    if (payload.agent !== null) {
+      expect(payload.pane).not.toBe(focused.pane_id);
+      expect(payload.pane).not.toBeNull();
+      expect([pinnedPane.pane_id, "w1:p16"]).toContain(payload.pane as string);
+      expect(payload.agentSession).toEqual(
+        (payload.pane === "w1:p16"
+          ? state.get().panes.get("w1:p16")!.agent_session
+          : pinnedPane.agent_session) ?? null,
+      );
+    }
   });
 });

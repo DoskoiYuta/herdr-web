@@ -167,6 +167,18 @@ describe("App", () => {
     expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: "/tmp/manual" });
   });
 
+  test("unpinning the manual open-path fallback clears it (no focus to fall back to, so repoKey and worktreeRoot don't drift apart)", async () => {
+    renderApp();
+    fireEvent.change(screen.getByLabelText("リポジトリのパスを開く"), {
+      target: { value: "/tmp/manual" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "開く" }));
+    await screen.findByText("manual");
+
+    fireEvent.click(screen.getByLabelText("ピン留めを解除"));
+    expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
+  });
+
   test("clicking a sidebar pane row sends focus-pane", () => {
     renderApp();
     emit({

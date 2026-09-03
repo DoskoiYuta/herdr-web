@@ -4,8 +4,9 @@ import type { Health } from "../contract/health";
 import { HealthSchema } from "../contract/health";
 import type { WhoamiResponse } from "../contract/hw";
 import { WhoamiResponseSchema } from "../contract/hw";
-import type { Review } from "../contract/review";
-import { ReviewSchema } from "../contract/review";
+import type { Review, RepoMoveResult } from "../contract/review";
+import { ReviewSchema, RepoMoveResultSchema } from "../contract/review";
+export type { RepoMoveResult } from "../contract/review";
 // `AppType` is a type-only import — src/cli may not import server runtime code
 // (see .dependency-cruiser.cjs `cli-only-contract`).
 import type { AppType } from "../server/app";
@@ -15,9 +16,6 @@ export type ClientError =
   | { kind: "http"; status: number; message: string };
 
 export type ClientResult<T> = { ok: true; value: T } | { ok: false; error: ClientError };
-
-const RepoMoveResultSchema = v.object({ repos: v.number(), reviews: v.number() });
-export type RepoMoveResult = v.InferOutput<typeof RepoMoveResultSchema>;
 
 export type ListReviewsParams = {
   repo?: string;

@@ -71,6 +71,25 @@ function quietLogger() {
   return { error: () => {}, warn: () => {}, info: () => {} };
 }
 
+/** A logger stub that records calls, for assertions on log content/count. */
+function recordingLogger() {
+  const calls = { error: [] as unknown[][], warn: [] as unknown[][], info: [] as unknown[][] };
+  return {
+    logger: {
+      error: (...args: unknown[]) => {
+        calls.error.push(args);
+      },
+      warn: (...args: unknown[]) => {
+        calls.warn.push(args);
+      },
+      info: (...args: unknown[]) => {
+        calls.info.push(args);
+      },
+    },
+    calls,
+  };
+}
+
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
   while (!predicate()) {
@@ -306,5 +325,44 @@ describe("createHerdrSocketClient", () => {
     await waitFor(() => received.length === 2);
     expect((received[0] as { event: string }).event).toBe("pane_focused");
     expect((received[1] as { event: string }).event).toBe("pane_updated");
+  });
+
+  test("logs a connected message with the protocol on first successful ping", async () => {
+    const server = new FakeHerdrServer(tmpSocketPath());
+    wireDefaultResponders(server);
+    await server.listen();
+    cleanups.push(() => server.stop());
+
+    const { logger, calls } = recordingLogger();
+    const client = createHerdrSocketClient({ socketPath: server.socketPath, logger });
+    cleanups.push(() => client.close());
+    await waitFor(() => client.status().connected);
+
+    const connectedLogs = calls.info.filter(
+      (args) => typeof args[0] === "string" && /connected/.test(args[0]) && /20/.test(args[0]),
+    );
+    expect(connectedLogs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("rate-limits the ENOENT subscribe-socket warning to once per disconnect period", async () => {
+    // Point at a socket path that never exists: every reconnect attempt on the
+    // subscribe connection fails with ENOENT, exercising the backoff loop.
+    const socketPath = tmpSocketPath();
+    const { logger, calls } = recordingLogger();
+    const client = createHerdrSocketClient({
+      socketPath,
+      logger,
+      backoffInitialMs: 15,
+      backoffMaxMs: 30,
+    });
+    cleanups.push(() => client.close());
+
+    // Let several reconnect attempts happen within this one disconnect period.
+    await new Promise((r) => setTimeout(r, 200));
+
+    const subscribeErrorWarnings = calls.warn.filter(
+      (args) => args[0] === "herdr: subscribe socket error",
+    );
+    expect(subscribeErrorWarnings.length).toBe(1);
   });
 });

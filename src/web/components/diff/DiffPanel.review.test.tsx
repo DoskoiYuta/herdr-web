@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Review } from "@contract/review";
+import type { ReviewEvent } from "@/lib/herdrStore";
 
 // Same minimal CodeView stand-in as DiffPanel.test.tsx / DiffView.test.tsx,
 // extended to (a) let a test fire a line selection and (b) render whatever
@@ -190,4 +191,100 @@ test("a line-confidence match is dimmed with a 位置は推定 note", async () =
   renderPanel();
 
   await waitFor(() => expect(screen.getByText("位置は推定")).toBeInTheDocument());
+});
+
+test("composer submit is disabled with a hint until createdAtHead resolves", async () => {
+  forDiffMock.mockResolvedValue([]);
+  const { gitApi } = await import("@/lib/api");
+  let resolveRoot!: (v: Awaited<ReturnType<typeof gitApi.root>>) => void;
+  vi.mocked(gitApi.root).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveRoot = resolve;
+      }),
+  );
+  renderPanel();
+
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+  fireEvent.click(screen.getByTestId("select-new-line-2"));
+  await screen.findByPlaceholderText("コメントを追加");
+
+  expect(screen.getByRole("button", { name: "コメント" })).toBeDisabled();
+  expect(screen.getByText(/HEAD を解決できていません/)).toBeInTheDocument();
+
+  resolveRoot({
+    root: "/repo",
+    commonDir: "/repo/.git",
+    branch: "main",
+    isMain: true,
+    head: "headHash",
+    rootCommit: "headHash",
+  });
+  await waitFor(() =>
+    expect(screen.queryByText(/HEAD を解決できていません/)).not.toBeInTheDocument(),
+  );
+  fireEvent.change(screen.getByPlaceholderText("コメントを追加"), {
+    target: { value: "please double-check" },
+  });
+  expect(screen.getByRole("button", { name: "コメント" })).not.toBeDisabled();
+});
+
+test("a review WS event for a different repo does not trigger a for-diff refetch", async () => {
+  forDiffMock.mockResolvedValue([]);
+  const client = new QueryClient();
+  let emit: ((event: ReviewEvent) => void) | undefined;
+  const subscribeReviewEvents = vi.fn((cb: (event: ReviewEvent) => void) => {
+    emit = cb;
+    return () => {};
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <DiffPanel
+        repo="/repo"
+        repoKey="/repo/.git"
+        repoChangedTick={0}
+        subscribeReviewEvents={subscribeReviewEvents}
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+  await waitFor(() => expect(forDiffMock).toHaveBeenCalledTimes(1));
+
+  emit?.({
+    type: "review",
+    event: "created",
+    review: review({ repo: "/other-repo/.git" }),
+  });
+  // No new call should be scheduled — give the 200ms debounce window time to
+  // pass and confirm it stayed quiet.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  expect(forDiffMock).toHaveBeenCalledTimes(1);
+
+  emit?.({ type: "review", event: "created", review: review({ repo: "/repo/.git" }) });
+  await waitFor(() => expect(forDiffMock).toHaveBeenCalledTimes(2));
+});
+
+test("stale inline annotations are dropped when repoKey changes, not left showing a different repo's thread", async () => {
+  const match = { review: review(), line: 2, confidence: "exact" as const };
+  forDiffMock.mockResolvedValue([match]);
+  const client = new QueryClient();
+  const { rerender } = render(
+    <QueryClientProvider client={client}>
+      <DiffPanel repo="/repo" repoKey="/repo/.git" repoChangedTick={0} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("please double-check")).toBeInTheDocument());
+
+  // Simulate the repoKey resolving to a different repository while `repo`
+  // (the worktree path) stays the same — should clear stale annotations
+  // immediately rather than keep showing the old repo's review thread until
+  // the new forDiff call resolves.
+  forDiffMock.mockImplementation(() => new Promise(() => {}));
+  rerender(
+    <QueryClientProvider client={client}>
+      <DiffPanel repo="/repo" repoKey="/other-repo/.git" repoChangedTick={0} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.queryByText("please double-check")).not.toBeInTheDocument());
 });

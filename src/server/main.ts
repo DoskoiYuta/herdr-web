@@ -7,7 +7,12 @@ import { Hono } from "hono";
 import { createApp } from "./app";
 import { serveEmbedded } from "./static";
 import type { WebAssets } from "./web-assets";
-import { attachReviewToRuntime, attachWorktreeMissingToReview, createRuntime } from "./bootstrap";
+import {
+  attachReviewToRuntime,
+  attachWorktreeMissingToReview,
+  createRuntime,
+  herdrSocketPath,
+} from "./bootstrap";
 import { applyEnvOverrides, loadConfig, resolveDbPath } from "./config";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
 import { spawnHerdr } from "./terminal/pty";
@@ -34,6 +39,33 @@ if (config.host !== "127.0.0.1" && config.host !== "localhost" && config.host !=
 const dbPath = resolveDbPath(config);
 await mkdir(dirname(dbPath), { recursive: true });
 const reviewDb = openReviewDb(dbPath);
+
+// Structured startup log: one readable block covering everything needed to debug
+// "why won't this instance talk to herdr / where's it reading from" without
+// re-deriving paths by hand.
+{
+  let gitVersion = "missing";
+  try {
+    const proc = Bun.spawn(["git", "--version"], { stdout: "pipe", stderr: "pipe" });
+    const exitCode = await proc.exited;
+    if (exitCode === 0) {
+      gitVersion = (await new Response(proc.stdout).text()).trim();
+    }
+  } catch {
+    gitVersion = "missing";
+  }
+  console.log(
+    [
+      "herdr-web: startup",
+      `  config path:      ${loaded.path}`,
+      `  db path:          ${dbPath}`,
+      `  herdr socket:     ${herdrSocketPath(config)}`,
+      `  herdr bin:        ${config.herdrBin}`,
+      `  allowed roots:    ${JSON.stringify(config.allowedRoots)}`,
+      `  git --version:    ${gitVersion}`,
+    ].join("\n"),
+  );
+}
 
 const runtime = createRuntime({ config });
 
@@ -98,10 +130,22 @@ upgradeRouter.add(
         ...opts,
         bin: config.herdrBin,
         session: opts.session ?? config.herdrSession ?? undefined,
+        envPassthrough: config.herdrEnvPassthrough,
       }),
   }),
 );
 upgradeRouter.add("/ws/events", runtime.eventsWss);
+
+server.on("error", (err) => {
+  if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
+    console.error(
+      `herdr-web: port ${config.port} is already in use on ${config.host} — is another instance running?`,
+    );
+  } else {
+    console.error("herdr-web: server error", err);
+  }
+  process.exit(1);
+});
 
 server.listen(config.port, config.host, () => {
   console.log(
@@ -110,7 +154,14 @@ server.listen(config.port, config.host, () => {
 });
 
 function shutdown() {
+  // Stop pollers/wiring before closing the DB, so nothing tries to write to a
+  // closed handle mid-shutdown; a DB close failure shouldn't block exit either.
   runtime.stop();
+  try {
+    reviewDb.$client.close();
+  } catch (err) {
+    console.error("herdr-web: error closing db during shutdown", err);
+  }
   server.close();
   process.exit(0);
 }

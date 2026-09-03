@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { ResultAsync } from "neverthrow";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Config } from "../contract/config";
 import { createEventHub, wireHerdrToHub, type WiredHerdr } from "./events/broadcast";
 import { createEventsWss } from "./events/ws";
@@ -99,11 +99,26 @@ export function createRuntime(deps: RuntimeDeps) {
 
   // フォーカス中（またはピン留め中）の worktree だけをポーリングする（plan F3-4）
   let watchedRoot: string | null = null;
+  const rootWatchedListeners = new Set<(root: string) => void>();
   const unsubscribeFocus = focus.onChange((payload) => {
     const next = payload.worktreeRoot;
     if (next === watchedRoot) return;
     if (watchedRoot) pollers.unwatch(watchedRoot);
-    if (next) pollers.watch(next);
+    if (next) {
+      pollers.watch(next);
+      // Item 1: a review created while `next` was unwatched never gets a
+      // repo-changed tick to reconcile against — the poller's first tick after
+      // watch() just seeds its cache, it never fires onChanged. Give listeners
+      // (attachReviewToRuntime) a chance to reconcile against the CURRENT head
+      // right away instead of waiting for the next actual change.
+      for (const cb of rootWatchedListeners) {
+        try {
+          cb(next);
+        } catch (err) {
+          logger.error("root-watched listener threw", err);
+        }
+      }
+    }
     watchedRoot = next;
   });
 
@@ -125,7 +140,15 @@ export function createRuntime(deps: RuntimeDeps) {
       // on macOS $TMPDIR is itself a /tmp -> /private/tmp symlink, so comparing
       // the raw path against a review's worktreeRoot would silently match
       // nothing. Fall back to the raw path if realpath fails (e.g. already gone).
-      const path = await realpath(rawPath).catch(() => rawPath);
+      //
+      // Item 8: by the time `worktree_removed` fires, the worktree directory
+      // itself is already deleted — realpath'ing rawPath directly would almost
+      // always ENOENT and silently fall back to the raw (possibly
+      // symlink-un-resolved) path, defeating the point. realpath the PARENT
+      // directory instead (which still exists) and rejoin the basename.
+      const path = await realpath(dirname(rawPath))
+        .then((realParent) => join(realParent, basename(rawPath)))
+        .catch(() => rawPath);
       for (const cb of worktreeMissingListeners) {
         try {
           cb(path);
@@ -148,6 +171,11 @@ export function createRuntime(deps: RuntimeDeps) {
     onRepoChanged(cb: (info: ChangedInfo) => void): () => void {
       repoChangedListeners.add(cb);
       return () => repoChangedListeners.delete(cb);
+    },
+    /** Item 1: fires with a root right after it newly becomes the watched (focused/pinned) worktree. */
+    onRootWatched(cb: (root: string) => void): () => void {
+      rootWatchedListeners.add(cb);
+      return () => rootWatchedListeners.delete(cb);
     },
     /** F6: fires with a worktree root that just disappeared (poller ENOENT, or herdr's `worktree_removed`). */
     onWorktreeMissing(cb: (root: string) => void): () => void {
@@ -190,7 +218,7 @@ export function createRuntimeWithFakeHerdr(
  * 温床になっていた。
  */
 export function attachReviewToRuntime(
-  runtime: Pick<Runtime, "onRepoChanged" | "resolver">,
+  runtime: Pick<Runtime, "onRepoChanged" | "onRootWatched" | "resolver">,
   review: {
     reanchorAfterChange: (input: {
       repo: string;
@@ -198,11 +226,12 @@ export function attachReviewToRuntime(
       prevHead: string | null;
       head: string;
     }) => ResultAsync<unknown, never>;
+    gitHistory: { headOf: (root: string) => Promise<string | null> };
   },
   logger: Pick<typeof console, "error"> = console,
 ): () => void {
   const lastHead = new Map<string, string>();
-  return runtime.onRepoChanged((info) => {
+  const unsubscribeRepoChanged = runtime.onRepoChanged((info) => {
     void (async () => {
       const head = info.head;
       if (!head) return; // unborn branch: 何も記録しない
@@ -218,6 +247,35 @@ export function attachReviewToRuntime(
       });
     })().catch((err) => logger.error("reanchor after repo-changed failed", err));
   });
+
+  // Item 1: a review created while its worktree root was unwatched never gets
+  // a repo-changed tick to reconcile against — the poller's first tick after
+  // watch() only seeds its cache, it never fires onChanged. As soon as a root
+  // newly becomes watched, immediately reconcile against the CURRENT head.
+  // `prevHead: null` is deliberate here (matches the "unobserved root"
+  // convention above): we have no remembered previous head for a root that
+  // was never watched before, so this must skip rebase-detection and just
+  // re-check anchors/commit-binding against the current head.
+  const unsubscribeRootWatched = runtime.onRootWatched((root) => {
+    void (async () => {
+      const wt = await runtime.resolver.resolve(root).catch(() => null);
+      if (!wt) return;
+      const head = await review.gitHistory.headOf(root);
+      if (!head) return;
+      lastHead.set(root, head);
+      await review.reanchorAfterChange({
+        repo: wt.commonDir,
+        worktreeRoot: root,
+        prevHead: null,
+        head,
+      });
+    })().catch((err) => logger.error("reanchor after root-watched failed", err));
+  });
+
+  return () => {
+    unsubscribeRepoChanged();
+    unsubscribeRootWatched();
+  };
 }
 
 /**

@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import * as v from "valibot";
 import snapshotFixture from "../../contract/__fixtures__/snapshot.json" with { type: "json" };
 import { SessionSnapshotSchema } from "../../contract/herdr";
-import type { ServerEventMessage } from "../../contract/events";
+import { ServerEventMessageSchema, type ServerEventMessage } from "../../contract/events";
+import type { Review } from "../../contract/review";
 import { createFakeHerdr } from "../herdr/fake";
 import { createHerdrState } from "../herdr/state";
 import { createFocusTracker } from "../herdr/focus";
@@ -22,6 +23,55 @@ function collectingSink(): Sink & { messages: ServerEventMessage[] } {
     send(m) {
       messages.push(m);
     },
+  };
+}
+
+/** A `Sink` that parses every received message with `ServerEventMessageSchema`,
+ * throwing (and failing the test) on the first message that doesn't validate. */
+function validatingSink(): Sink & { messages: ServerEventMessage[] } {
+  const messages: ServerEventMessage[] = [];
+  return {
+    messages,
+    send(m) {
+      v.parse(ServerEventMessageSchema, m);
+      messages.push(m);
+    },
+  };
+}
+
+/** Minimal `Review` fixture satisfying `ReviewSchema` (src/contract/review.ts), used to
+ * prove a review-shaped ws payload round-trips through `ServerEventMessageSchema` now
+ * that `ReviewMessageSchema.review` is typed instead of `v.unknown()` (item 6a). */
+function reviewFixture(): Review {
+  return {
+    id: "review-1",
+    repo: "/repo/.git",
+    target: { kind: "worktree", root: "/repo" },
+    worktreeRoot: "/repo",
+    path: "src/foo.ts",
+    anchor: {
+      side: "new",
+      line: "const x = 1;",
+      before: [],
+      after: [],
+      lineHint: 1,
+      hash: "deadbeef",
+    },
+    createdAtHead: "abc123",
+    viewedAs: { from: "HEAD", to: "WORKTREE" },
+    status: "open",
+    thread: [
+      {
+        seq: 0,
+        author: "user",
+        body: "looks off",
+        at: "2026-01-01T00:00:00.000Z",
+        agentSession: null,
+      },
+    ],
+    notify: { state: "pending", pane: null, at: null },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
   };
 }
 
@@ -179,5 +229,56 @@ describe("wireHerdrToHub", () => {
     await settle();
     expect(state.get().focusedWorkspaceId).toBe(otherWorkspacePane.workspace_id);
     expect(state.get().focusedPaneId).toBe(otherWorkspacePane.pane_id);
+  });
+});
+
+describe("ServerEventMessageSchema conformance", () => {
+  test("every message wireHerdrToHub emits (attach, pane-updated, pane-removed, focus, herdr) parses with ServerEventMessageSchema", async () => {
+    const { hub, gw, state } = await setup();
+    const sink = validatingSink();
+    // attach itself sends `tree`, `focus`, `herdr` — validated as they arrive.
+    hub.attach(sink);
+    await settle();
+
+    const paneId = [...state.get().panes.keys()][0]!;
+    gw.setForegroundCwd(paneId, "/tmp/changed"); // -> pane-updated
+    await settle();
+
+    const other = [...state.get().panes.values()].find(
+      (p) => p.pane_id !== state.get().focusedPaneId,
+    );
+    if (other) {
+      gw.focusPane(other.pane_id); // -> focus
+      await settle();
+    }
+
+    gw.setStatus({ connected: false, protocol: null }); // -> herdr (+ tree, since reset)
+    await settle();
+
+    gw.closePane(paneId); // -> pane-removed
+    await settle();
+
+    // Every message that reached the sink was already parsed in `send`; this just
+    // confirms the pipeline actually exercised more than the initial attach batch.
+    const types = new Set(sink.messages.map((m) => m.type));
+    expect(types.has("tree")).toBe(true);
+    expect(types.has("focus")).toBe(true);
+    expect(types.has("herdr")).toBe(true);
+    expect(types.has("pane-updated")).toBe(true);
+    expect(types.has("pane-removed")).toBe(true);
+  });
+
+  test("a review-shaped message broadcast on the hub parses with ServerEventMessageSchema", () => {
+    const hub = createEventHub();
+    const sink = validatingSink();
+    hub.attach(sink);
+
+    const review = reviewFixture();
+    // Constructing the full review/runtime.ts wiring is out of scope here; broadcasting
+    // directly onto the hub is sufficient to prove `ReviewMessageSchema.review` (item 6a)
+    // now accepts (and requires) a real `Review`, not `v.unknown()`.
+    hub.broadcast({ type: "review", event: "created", review });
+
+    expect(sink.messages).toContainEqual({ type: "review", event: "created", review });
   });
 });

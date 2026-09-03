@@ -56,6 +56,43 @@ describe("spawnHerdr", () => {
     }
   });
 
+  test("does not pass through non-allowlisted env vars", async () => {
+    process.env.SOME_RANDOM_SECRET = "x";
+    try {
+      const term = spawnHerdr({ bin: "/bin/sh", argv: ["-c", "env"], cols: 80, rows: 24 });
+      const { getOutput, done } = collectUntilExit(term);
+      await done;
+      expect(getOutput()).not.toContain("SOME_RANDOM_SECRET");
+    } finally {
+      delete process.env.SOME_RANDOM_SECRET;
+    }
+  });
+
+  test("passes through PATH", async () => {
+    const term = spawnHerdr({ bin: "/bin/sh", argv: ["-c", "env"], cols: 80, rows: 24 });
+    const { getOutput, done } = collectUntilExit(term);
+    await done;
+    expect(getOutput()).toContain("PATH=");
+  });
+
+  test("passes through vars listed in envPassthrough option even if not in the base allowlist", async () => {
+    process.env.SOME_RANDOM_SECRET = "should-pass-via-option";
+    try {
+      const term = spawnHerdr({
+        bin: "/bin/sh",
+        argv: ["-c", "env"],
+        cols: 80,
+        rows: 24,
+        envPassthrough: ["SOME_RANDOM_SECRET"],
+      });
+      const { getOutput, done } = collectUntilExit(term);
+      await done;
+      expect(getOutput()).toContain("SOME_RANDOM_SECRET=should-pass-via-option");
+    } finally {
+      delete process.env.SOME_RANDOM_SECRET;
+    }
+  });
+
   test("kill terminates the process", async () => {
     const term = spawnHerdr({ bin: "/bin/sh", argv: ["-c", "sleep 5"], cols: 80, rows: 24 });
     const exited = new Promise<void>((resolve) => term.onExit(() => resolve()));

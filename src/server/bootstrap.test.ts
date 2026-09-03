@@ -1,11 +1,14 @@
-import { mkdtemp, realpath as realpathAsync, rm, symlink } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, realpath as realpathAsync, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, test } from "bun:test";
 import { okAsync, type ResultAsync } from "neverthrow";
 import * as v from "valibot";
 import { ConfigSchema } from "../contract/config";
 import type { Anchor } from "../contract/review";
+import { resolveWorktree } from "./git/resolve";
 import type { ChangedInfo } from "./git/poller";
 import {
   attachReviewToRuntime,
@@ -17,6 +20,22 @@ import { openDb } from "./db/client";
 import { applyMigrations } from "./db/migrate";
 import { createReviewRuntime } from "./review/runtime";
 import type { WorktreeResolver } from "./herdr/tree";
+
+const execFileAsync = promisify(execFile);
+
+async function git(cwd: string, ...args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, {
+    cwd,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@example.com",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@example.com",
+    },
+  });
+  return stdout.trim();
+}
 
 function fakeResolver(map: Record<string, string>): WorktreeResolver {
   return {
@@ -41,6 +60,11 @@ function fakeOnRepoChanged(): {
       for (const cb of listeners) cb(info);
     },
   };
+}
+
+/** A no-op onRootWatched — most attachReviewToRuntime tests don't exercise this path. */
+function noopOnRootWatched(): Pick<Runtime, "onRootWatched">["onRootWatched"] {
+  return () => () => {};
 }
 
 async function flush(): Promise<void> {
@@ -73,12 +97,13 @@ describe("attachReviewToRuntime", () => {
     const resolver = fakeResolver({ "/repo": "/repo/.git" });
 
     attachReviewToRuntime(
-      { onRepoChanged, resolver },
+      { onRepoChanged, onRootWatched: noopOnRootWatched(), resolver },
       {
         reanchorAfterChange: (input) => {
           calls.push({ prevHead: input.prevHead, head: input.head });
           return okAsync([]) as ResultAsync<unknown, never>;
         },
+        gitHistory: { headOf: async () => null },
       },
     );
 
@@ -99,12 +124,13 @@ describe("attachReviewToRuntime", () => {
     const resolver = fakeResolver({ "/repo": "/repo/.git" });
 
     attachReviewToRuntime(
-      { onRepoChanged, resolver },
+      { onRepoChanged, onRootWatched: noopOnRootWatched(), resolver },
       {
         reanchorAfterChange: (input) => {
           calls.push({ prevHead: input.prevHead, head: input.head });
           return okAsync([]) as ResultAsync<unknown, never>;
         },
+        gitHistory: { headOf: async () => null },
       },
     );
 
@@ -204,11 +230,21 @@ describe("createRuntime: worktree_removed gateway event", () => {
   // macOS $TMPDIR is itself a /tmp -> /private/tmp symlink, so without
   // realpath'ing the incoming event path here, `outdateWorktree` would compare
   // against the wrong string and match nothing.
-  test("realpath's the worktree_removed path before forwarding it as missing", async () => {
-    const real = await mkdtemp(join(tmpdir(), "hw-bootstrap-real-"));
+  //
+  // Item 8: by the time `worktree_removed` fires, the worktree directory is
+  // usually already deleted, so realpath'ing the leaf path itself would
+  // ENOENT. Model the real $TMPDIR-style scenario instead: an ANCESTOR
+  // directory is a symlink, and the worktree directory under it still
+  // exists (not yet cleaned up) at event time — the fix must resolve the
+  // symlinked parent and rejoin the (still-real) leaf.
+  test("realpath's the worktree_removed path's parent before forwarding it as missing", async () => {
+    const realParent = await mkdtemp(join(tmpdir(), "hw-bootstrap-real-"));
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(realParent, "wt"));
     const linkParent = await mkdtemp(join(tmpdir(), "hw-bootstrap-linkdir-"));
-    const link = join(linkParent, "wt");
-    await symlink(real, link);
+    const link = join(linkParent, "link");
+    await symlink(realParent, link);
+    const rawPath = join(link, "wt");
 
     const config = v.parse(ConfigSchema, {});
     const { runtime, fake } = createRuntimeWithFakeHerdr(config, {
@@ -230,7 +266,7 @@ describe("createRuntime: worktree_removed gateway event", () => {
         workspace_id: "w1",
         workspace: null,
         worktree: {
-          path: link,
+          path: rawPath,
           is_bare: false,
           is_detached: false,
           is_prunable: false,
@@ -243,13 +279,69 @@ describe("createRuntime: worktree_removed gateway event", () => {
       },
     });
 
-    const expectedReal = await realpathAsync(real);
+    const expectedReal = join(await realpathAsync(realParent), "wt");
     await waitUntil(async () => missing.length > 0);
     runtime.stop();
 
     expect(missing).toEqual([expectedReal]);
 
-    await rm(real, { recursive: true, force: true });
+    await rm(realParent, { recursive: true, force: true });
+    await rm(linkParent, { recursive: true, force: true });
+  });
+
+  // Item 8: the worktree directory itself no longer exists at event time (the
+  // common case — herdr fires `worktree_removed` after deleting it). realpath
+  // must still resolve through a symlinked PARENT directory even though the
+  // leaf (already-deleted) path can never itself be realpath'd.
+  test("resolves through a symlinked parent even when the worktree leaf no longer exists", async () => {
+    const realParent = await mkdtemp(join(tmpdir(), "hw-bootstrap-real-"));
+    const linkParent = await mkdtemp(join(tmpdir(), "hw-bootstrap-linkdir-"));
+    const link = join(linkParent, "link");
+    await symlink(realParent, link);
+    // "some-worktree-name" is never created — it's already gone by the time
+    // worktree_removed fires.
+    const rawPath = join(link, "some-worktree-name");
+
+    const config = v.parse(ConfigSchema, {});
+    const { runtime, fake } = createRuntimeWithFakeHerdr(config, {
+      version: "1",
+      protocol: 20,
+      workspaces: [],
+      tabs: [],
+      panes: [],
+      agents: [],
+    });
+
+    const missing: string[] = [];
+    runtime.onWorktreeMissing((root) => missing.push(root));
+
+    fake.emit({
+      event: "worktree_removed",
+      data: {
+        type: "worktree_removed",
+        workspace_id: "w1",
+        workspace: null,
+        worktree: {
+          path: rawPath,
+          is_bare: false,
+          is_detached: false,
+          is_prunable: false,
+          is_linked_worktree: true,
+          label: "l",
+          branch: null,
+          open_workspace_id: null,
+        },
+        forced: false,
+      },
+    });
+
+    const expectedReal = join(await realpathAsync(realParent), "some-worktree-name");
+    await waitUntil(async () => missing.length > 0);
+    runtime.stop();
+
+    expect(missing).toEqual([expectedReal]);
+
+    await rm(realParent, { recursive: true, force: true });
     await rm(linkParent, { recursive: true, force: true });
   });
 
@@ -318,5 +410,125 @@ describe("createRuntime: worktree_removed gateway event", () => {
     expect((await review.repository.get(reviewId))?.status).toBe("outdated");
 
     await rm(real, { recursive: true, force: true });
+  });
+});
+
+// Item 1: a review created while its worktree is NOT the focused/pinned root
+// never gets a repo-changed tick to reconcile against, because the poller
+// only polls watched roots and its first tick after watch() just seeds its
+// cache (never fires onChanged). Focusing a pane on that root must itself
+// trigger an immediate reconciliation against the current HEAD.
+describe("Item 1: onRootWatched reconciles a newly-watched worktree", () => {
+  test("commit-binds a worktree review once its root becomes focused, without waiting for a poll tick", async () => {
+    // realpath'd up front (as git/resolve.ts's WorktreeInfo.root always is, via
+    // `git rev-parse --show-toplevel`) so it matches what the resolver / focus
+    // tracker will report, and what a real review's `worktreeRoot` would be.
+    const root = await realpathAsync(await mkdtemp(join(tmpdir(), "hw-bootstrap-onrootwatched-")));
+    await git(root, "init", "-q", "-b", "main");
+    await writeFile(join(root, "a.txt"), "one\ntwo\nthree\n");
+    await git(root, "add", ".");
+    await git(root, "commit", "-q", "-m", "init");
+    const head0 = await git(root, "rev-parse", "HEAD");
+
+    const wt = await resolveWorktree(root);
+    if (!wt) throw new Error("resolveWorktree failed to resolve the temp repo");
+
+    const config = v.parse(ConfigSchema, {});
+    // No pane is focused initially, so createRuntime never watches `root` —
+    // matching the "review created on an unwatched worktree" scenario.
+    const { runtime, fake } = createRuntimeWithFakeHerdr(config, {
+      version: "1",
+      protocol: 20,
+      workspaces: [
+        {
+          workspace_id: "w1",
+          number: 1,
+          label: "w1",
+          focused: false,
+          pane_count: 1,
+          tab_count: 1,
+          active_tab_id: "t1",
+          agent_status: "idle",
+        },
+      ],
+      tabs: [
+        {
+          tab_id: "t1",
+          workspace_id: "w1",
+          number: 1,
+          label: "t1",
+          focused: false,
+          pane_count: 1,
+          agent_status: "idle",
+        },
+      ],
+      panes: [
+        {
+          pane_id: "p1",
+          terminal_id: "term1",
+          workspace_id: "w1",
+          tab_id: "t1",
+          focused: false,
+          agent_status: "idle",
+          revision: 1,
+          cwd: root,
+          foreground_cwd: root,
+        },
+      ],
+      agents: [],
+    });
+
+    const db = openDb(":memory:");
+    applyMigrations(db);
+    const review = createReviewRuntime({ config, db, onEvent: () => {} });
+
+    // Draft change: "four" is already in the worktree but not yet committed.
+    await writeFile(join(root, "a.txt"), "one\ntwo\nthree\nfour\n");
+    const anchor: Anchor = {
+      side: "new",
+      line: "four",
+      before: ["three"],
+      after: [],
+      lineHint: 4,
+      hash: "h",
+    };
+    const created = await review.routes.createReview({
+      repo: wt.commonDir,
+      worktreeRoot: root,
+      target: { kind: "worktree", root },
+      path: "a.txt",
+      anchor,
+      createdAtHead: head0,
+      viewedAs: { from: "WORKTREE", to: "WORKTREE" },
+      body: "why?",
+    });
+    const reviewId = created._unsafeUnwrap().id;
+    expect((await review.repository.get(reviewId))?.target).toEqual({ kind: "worktree", root });
+
+    const detach = attachReviewToRuntime(runtime, review);
+
+    // The draft change lands as a real commit while `root` is still unwatched
+    // (no pane is focused on it) — the poller never sees this happen.
+    await git(root, "commit", "-qam", "add four");
+    const head1 = await git(root, "rev-parse", "HEAD");
+    expect(head1).not.toBe(head0);
+
+    // Wait for the initial session.snapshot load (async) before focusing —
+    // otherwise focusPane's event could race ahead of it and be clobbered.
+    await waitUntil(async () => runtime.state.get().panes.size > 0);
+
+    // Now the pane on `root` becomes focused: createRuntime's focus.onChange
+    // handler watches `root` and (Item 1's fix) fires onRootWatched, which
+    // attachReviewToRuntime must use to reconcile immediately.
+    fake.focusPane("p1");
+
+    await waitUntil(async () => (await review.repository.get(reviewId))?.target.kind === "commit");
+    detach();
+    runtime.stop();
+
+    const finalReview = await review.repository.get(reviewId);
+    expect(finalReview?.target).toEqual({ kind: "commit", hash: head1 });
+
+    await rm(root, { recursive: true, force: true });
   });
 });

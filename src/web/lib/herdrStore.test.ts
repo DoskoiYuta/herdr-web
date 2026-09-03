@@ -1,5 +1,25 @@
 import { describe, expect, test, vi } from "vitest";
+import type { Review } from "@contract/review";
 import { createHerdrStore } from "./herdrStore";
+
+function review(overrides: Partial<Review> = {}): Review {
+  return {
+    id: "r1",
+    repo: "/repo/.git",
+    target: { kind: "worktree", root: "/repo" },
+    worktreeRoot: "/repo",
+    path: "a.txt",
+    anchor: { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" },
+    createdAtHead: "abc",
+    viewedAs: { from: "HEAD", to: "WORKTREE" },
+    status: "open",
+    thread: [{ seq: 0, author: "user", body: "check this", at: "t", agentSession: null }],
+    notify: { state: "pending", pane: null, at: null },
+    createdAt: "t",
+    updatedAt: "t",
+    ...overrides,
+  };
+}
 
 class FakeWebSocket {
   static OPEN = 1;
@@ -133,22 +153,43 @@ describe("createHerdrStore", () => {
     expect(store.getState().herdr).toEqual({ connected: true, protocol: 20 });
   });
 
-  test("repo-changed increments tick per worktree, resets for a different worktree", () => {
+  test("repo-changed increments tick per worktree root independently", () => {
     const { store, socket } = createStore();
     socket.simulateMessage(
       JSON.stringify({ type: "repo-changed", worktreeRoot: "/a", reason: "head", head: "aaa" }),
     );
-    expect(store.getState().repoChanged).toEqual({ root: "/a", head: "aaa", tick: 1 });
+    expect(store.getState().repoChanged).toEqual({ "/a": { head: "aaa", tick: 1 } });
 
     socket.simulateMessage(
       JSON.stringify({ type: "repo-changed", worktreeRoot: "/a", reason: "status", head: "bbb" }),
     );
-    expect(store.getState().repoChanged).toEqual({ root: "/a", head: "bbb", tick: 2 });
+    expect(store.getState().repoChanged).toEqual({ "/a": { head: "bbb", tick: 2 } });
 
     socket.simulateMessage(
       JSON.stringify({ type: "repo-changed", worktreeRoot: "/b", reason: "head", head: "ccc" }),
     );
-    expect(store.getState().repoChanged).toEqual({ root: "/b", head: "ccc", tick: 1 });
+    expect(store.getState().repoChanged).toEqual({
+      "/a": { head: "bbb", tick: 2 },
+      "/b": { head: "ccc", tick: 1 },
+    });
+  });
+
+  test("repo-changed on a different root doesn't reset an earlier root's tick (monotonic per root)", () => {
+    const { store, socket } = createStore();
+    socket.simulateMessage(
+      JSON.stringify({ type: "repo-changed", worktreeRoot: "/a", reason: "head", head: "a1" }),
+    );
+    socket.simulateMessage(
+      JSON.stringify({ type: "repo-changed", worktreeRoot: "/b", reason: "head", head: "b1" }),
+    );
+    socket.simulateMessage(
+      JSON.stringify({ type: "repo-changed", worktreeRoot: "/a", reason: "head", head: "a2" }),
+    );
+    // /a's tick keeps climbing (2, not reset to 1) despite /b interleaving —
+    // a `usePatch` consumer that already saw tick 1 for /a must see this as
+    // a genuinely new value, not one it's seen before.
+    expect(store.getState().repoChanged["/a"]).toEqual({ head: "a2", tick: 2 });
+    expect(store.getState().repoChanged["/b"]).toEqual({ head: "b1", tick: 1 });
   });
 
   test("review / review-notify messages feed the ring buffer and subscribers, without touching main state", () => {
@@ -156,9 +197,7 @@ describe("createHerdrStore", () => {
     const events: unknown[] = [];
     store.subscribeReviewEvents((e) => events.push(e));
 
-    socket.simulateMessage(
-      JSON.stringify({ type: "review", event: "created", review: { id: "r1" } }),
-    );
+    socket.simulateMessage(JSON.stringify({ type: "review", event: "created", review: review() }));
     socket.simulateMessage(
       JSON.stringify({ type: "review-notify", reviewId: "r1", result: "sent", pane: "p1" }),
     );

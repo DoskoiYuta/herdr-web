@@ -11,15 +11,19 @@ import { Textarea } from "@/components/ui/textarea";
 export function ComposerAnnotation({
   onCancel,
   onSubmit,
+  disabled = false,
 }: {
   onCancel: () => void;
   onSubmit: (body: string) => void | Promise<void>;
+  /** F5-1: `createdAtHead` hasn't resolved yet (gitApi.root() in flight) —
+   * disable submit rather than sending an anchor with `createdAtHead: ""`. */
+  disabled?: boolean;
 }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!body.trim() || busy) return;
+    if (!body.trim() || busy || disabled) return;
     setBusy(true);
     try {
       await onSubmit(body.trim());
@@ -41,6 +45,11 @@ export function ComposerAnnotation({
         }}
         className="min-h-12 text-sm"
       />
+      {disabled && (
+        <p className="text-xs text-muted-foreground">
+          HEAD を解決できていません（少し待ってから再度お試しください）
+        </p>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
           キャンセル
@@ -49,7 +58,7 @@ export function ComposerAnnotation({
           type="button"
           size="sm"
           onClick={() => void submit()}
-          disabled={busy || !body.trim()}
+          disabled={busy || disabled || !body.trim()}
         >
           コメント
         </Button>

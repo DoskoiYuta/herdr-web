@@ -98,22 +98,52 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
 
     let worktreeRoot = info?.root ?? null;
     let repoKey = info?.commonDir ?? null;
+
+    // Default: agent fields describe the focused pane, same as unpinned.
+    let agentPaneId = pane?.pane_id ?? paneId;
+    let agent = pane?.agent ?? null;
+    let agentStatus = pane?.agent_status ?? null;
+    let agentSession = pane?.agent_session ?? null;
+
     if (pinnedRoot !== null) {
       worktreeRoot = pinnedRoot;
       const pinnedInfo = await resolveCached(pinnedRoot);
       repoKey = pinnedInfo?.commonDir ?? repoKey;
+
+      // The focused pane may belong to an entirely different worktree than the
+      // pin. `agent`/`agentStatus`/`agentSession`/`pane` must never describe a
+      // worktree other than `pinnedRoot`, so re-derive them from whichever
+      // agent-bearing pane (if any) actually resolves to the pinned root.
+      if (worktreeRoot !== info?.root) {
+        agentPaneId = null;
+        agent = null;
+        agentStatus = null;
+        agentSession = null;
+        for (const candidate of s.panes.values()) {
+          if (!candidate.agent) continue;
+          const candidateCwd = effectiveCwd(candidate);
+          const candidateInfo = candidateCwd ? await resolveCached(candidateCwd) : null;
+          if (candidateInfo?.root === pinnedRoot) {
+            agentPaneId = candidate.pane_id;
+            agent = candidate.agent;
+            agentStatus = candidate.agent_status;
+            agentSession = candidate.agent_session ?? null;
+            break;
+          }
+        }
+      }
     }
 
     const next: FocusPayload = {
-      pane: pane?.pane_id ?? paneId,
+      pane: agentPaneId,
       workspace: workspaceId ?? null,
       cwd: pane?.cwd ?? null,
       foregroundCwd: pane?.foreground_cwd ?? null,
       worktreeRoot,
       repoKey,
-      agent: pane?.agent ?? null,
-      agentStatus: pane?.agent_status ?? null,
-      agentSession: pane?.agent_session ?? null,
+      agent,
+      agentStatus,
+      agentSession,
     };
     // 同じ内容なら通知しない（herdr の focus 系イベントは高頻度）
     if (JSON.stringify(next) === JSON.stringify(payload) && notifiedOnce) return;
@@ -142,7 +172,12 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
       const fresh = await gateway.paneGet(paneId);
       const cwd = effectiveCwd(fresh);
       if (paneId !== lastKnownPaneId || cwd !== lastKnownCwd) {
-        recompute(fresh);
+        // Write the fresh pane back into the shared store first, so every
+        // reader (routes/hw.ts whoami, the notifier, any future recompute()
+        // call without a paneOverride) sees it — not just this tracker's
+        // local payload.
+        state.patchPane(fresh);
+        recompute();
       }
     } catch (err) {
       logger.error("focus: poll failed", err);

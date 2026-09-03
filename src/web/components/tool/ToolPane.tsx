@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gitApi } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
+import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 
 export type CommitRange = { from: string; to: string } | null;
 
@@ -139,6 +140,20 @@ export function ToolPane({
   const [activeTab, setActiveTab] = useState("diff");
   const [initialLocation, setInitialLocation] = useState<DiffInitialLocation | null>(null);
 
+  // A commit comparison picked in one worktree's Graph tab is meaningless
+  // (and can even reference a hash the new worktree doesn't have) once focus
+  // moves to a different worktree — drop back to the working tree comparison.
+  // Adjusted during render (React's documented "state that depends on a
+  // prop changing" pattern — see DiffPanel.tsx's `prevItemsForSelection` /
+  // `prevInitialLocation`), not in an effect: an effect here would setState
+  // synchronously on every worktreeRoot change and force an extra commit.
+  const [prevWorktreeRoot, setPrevWorktreeRoot] = useState(worktreeRoot);
+  if (worktreeRoot !== prevWorktreeRoot) {
+    setPrevWorktreeRoot(worktreeRoot);
+    if (comparison !== null) setComparison(null);
+    if (initialLocation !== null) setInitialLocation(null);
+  }
+
   const handleSelectCommit = useCallback((range: CommitRange) => {
     setComparison(range);
   }, []);
@@ -147,7 +162,15 @@ export function ToolPane({
     setComparison(null);
   }, []);
 
+  const handleInitialLocationConsumed = useCallback(() => {
+    setInitialLocation(null);
+  }, []);
+
   const handleReviewNavigate = useCallback((nav: ReviewNavigation) => {
+    if ("routeToGraph" in nav) {
+      setActiveTab("graph");
+      return;
+    }
     setComparison(nav.comparison);
     setInitialLocation(nav.location);
     setActiveTab("diff");
@@ -166,8 +189,10 @@ export function ToolPane({
 
   useEffect(() => {
     if (!subscribeReviewEvents) return;
-    return subscribeReviewEvents(() => setReviewTick((t) => t + 1));
-  }, [subscribeReviewEvents]);
+    return subscribeReviewEvents((event) => {
+      if (reviewEventMatchesRepo(event, repoKey)) setReviewTick((t) => t + 1);
+    });
+  }, [subscribeReviewEvents, repoKey]);
 
   if (!worktreeRoot) {
     return (
@@ -224,6 +249,7 @@ export function ToolPane({
             </div>
           )}
           <DiffPanel
+            key={`${worktreeRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
             repo={worktreeRoot}
             repoKey={repoKey}
             from={comparison?.from}
@@ -231,6 +257,7 @@ export function ToolPane({
             repoChangedTick={repoChangedTick}
             subscribeReviewEvents={subscribeReviewEvents}
             initialLocation={initialLocation}
+            onInitialLocationConsumed={handleInitialLocationConsumed}
           />
         </TabsContent>
 
