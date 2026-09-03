@@ -18,6 +18,7 @@ import {
   type ReplyRequest,
   ReviewSchema,
 } from "../../contract/review";
+import { WorkspaceInfoSchema } from "../../contract/herdr";
 export type { ForDiffMatch } from "../../contract/review";
 
 /**
@@ -153,6 +154,41 @@ export const reviewApi = {
   async notify(id: string) {
     const res = await client.api.review[":id"].notify.$post({ param: { id } });
     if (!res.ok) throw new Error(`POST /api/review/:id/notify failed: ${res.status}`);
+    return (await res.json()) as { ok: true };
+  },
+};
+
+const WorkspaceCreateResponseSchema = v.object({ workspaceId: v.string() });
+const WorkspaceRenameResponseSchema = v.object({ workspace: WorkspaceInfoSchema });
+
+export const herdrApi = {
+  async createWorkspace(params: { cwd: string; label?: string; focus?: boolean }) {
+    const res = await client.api.herdr.workspace.$post({
+      json: {
+        cwd: params.cwd,
+        ...(params.label !== undefined ? { label: params.label } : {}),
+        ...(params.focus !== undefined ? { focus: params.focus } : {}),
+      },
+    });
+    if (!res.ok) throw new Error(`POST /api/herdr/workspace failed: ${res.status}`);
+    return v.parse(WorkspaceCreateResponseSchema, await res.json());
+  },
+
+  async renameWorkspace(id: string, label: string) {
+    const res = await client.api.herdr.workspace[":id"].rename.$post({
+      param: { id },
+      json: { label },
+    });
+    if (!res.ok) throw new Error(`POST /api/herdr/workspace/:id/rename failed: ${res.status}`);
+    return v.parse(WorkspaceRenameResponseSchema, await res.json());
+  },
+
+  async closeWorkspace(id: string, opts: { confirm: true }) {
+    const res = await client.api.herdr.workspace[":id"].close.$post({
+      param: { id },
+      json: opts,
+    });
+    if (!res.ok) throw new Error(`POST /api/herdr/workspace/:id/close failed: ${res.status}`);
     return (await res.json()) as { ok: true };
   },
 };

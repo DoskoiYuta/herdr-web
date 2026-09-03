@@ -8,6 +8,8 @@ import {
   PaneInfoSchema,
   PingResultSchema,
   SessionSnapshotSchema,
+  WorkspaceCreatedResultSchema,
+  WorkspaceInfoResultSchema,
   type HerdrEventEnvelope,
   type PaneInfo,
   type PingResult,
@@ -269,6 +271,26 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     },
     async workspaceFocus(workspaceId: string): Promise<void> {
       await request<unknown>("workspace.focus", { workspace_id: workspaceId });
+    },
+    async workspaceCreate(params: { cwd: string | null; label?: string | null; focus?: boolean }) {
+      const raw = await request<unknown>("workspace.create", {
+        cwd: params.cwd,
+        label: params.label ?? null,
+        focus: params.focus ?? false,
+      });
+      const parsed = v.parse(WorkspaceCreatedResultSchema, raw);
+      return parsed.workspace;
+    },
+    async workspaceRename(workspaceId: string, label: string) {
+      const raw = await request<unknown>("workspace.rename", {
+        workspace_id: workspaceId,
+        label,
+      });
+      const parsed = v.parse(WorkspaceInfoResultSchema, raw);
+      return parsed.workspace;
+    },
+    async workspaceClose(workspaceId: string): Promise<void> {
+      await request<unknown>("workspace.close", { workspace_id: workspaceId });
     },
     async agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome> {
       try {

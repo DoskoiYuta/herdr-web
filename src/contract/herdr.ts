@@ -316,6 +316,28 @@ export const AgentPromptedResultSchema = v.looseObject({
 export type AgentPromptedResult = v.InferOutput<typeof AgentPromptedResultSchema>;
 
 /**
+ * `workspace.create`'s successful result, verified live against herdr 0.8.2:
+ * `{ type: "workspace_created", workspace, tab, root_pane }`.
+ */
+export const WorkspaceCreatedResultSchema = v.looseObject({
+  type: v.literal("workspace_created"),
+  workspace: WorkspaceInfoSchema,
+  tab: TabInfoSchema,
+  root_pane: PaneInfoSchema,
+});
+export type WorkspaceCreatedResult = v.InferOutput<typeof WorkspaceCreatedResultSchema>;
+
+/**
+ * `workspace.rename`'s successful result, verified live against herdr 0.8.2:
+ * `{ type: "workspace_info", workspace }`.
+ */
+export const WorkspaceInfoResultSchema = v.looseObject({
+  type: v.literal("workspace_info"),
+  workspace: WorkspaceInfoSchema,
+});
+export type WorkspaceInfoResult = v.InferOutput<typeof WorkspaceInfoResultSchema>;
+
+/**
  * herdr's error codes are untyped strings (`ErrorBody.code`). The two we treat
  * specially per plan.md §3: `agent.prompt` rejects with `agent_blocked` before
  * sending anything when the agent is at an approval/question UI, and with

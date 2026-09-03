@@ -1,6 +1,3 @@
-import { realpath as realpathAsync } from "node:fs/promises";
-import { homedir } from "node:os";
-import { sep } from "node:path";
 import { vValidator } from "@hono/valibot-validator";
 import { Hono } from "hono";
 import {
@@ -17,41 +14,15 @@ import { resolveFiles } from "../git/files";
 import { buildGraph } from "../git/graph";
 import { InvalidComparisonError, generatePatch } from "../git/patch";
 import { resolveWorktree } from "../git/resolve";
+import { isAllowedRoot, pathExists } from "./allowed-roots";
 
 export interface GitRoutesDeps {
   /** Absolute paths repos are allowed to live under, in addition to $HOME. */
   allowedRoots?: string[];
 }
 
-async function isAllowed(repo: string, allowedRoots: string[]): Promise<boolean> {
-  let realRepo: string;
-  try {
-    realRepo = await realpathAsync(repo);
-  } catch {
-    return false;
-  }
-  const roots = [homedir(), ...allowedRoots];
-  for (const root of roots) {
-    let realRoot: string;
-    try {
-      realRoot = await realpathAsync(root);
-    } catch {
-      continue;
-    }
-    if (realRepo === realRoot || realRepo.startsWith(realRoot + sep)) return true;
-  }
-  return false;
-}
-
-/** True when `path` exists (via `realpath`) so a 403 can be distinguished from a plain 404. */
-async function exists(path: string): Promise<boolean> {
-  try {
-    await realpathAsync(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
+const isAllowed = isAllowedRoot;
+const exists = pathExists;
 
 export function gitRoutes(deps: GitRoutesDeps = {}) {
   const allowedRoots = deps.allowedRoots ?? [];

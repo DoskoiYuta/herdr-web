@@ -3,6 +3,7 @@ import type {
   PaneInfo,
   PingResult,
   SessionSnapshot,
+  WorkspaceInfo,
 } from "../../contract/herdr";
 import type { AgentPromptOutcome, HerdrGateway, HerdrStatus } from "./gateway";
 
@@ -41,6 +42,7 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
   let focusedTabId = initial.focused_tab_id ?? null;
   let status: HerdrStatus = { connected: true, protocol: 20 };
   const blockedPanes = new Set<string>();
+  let nextWorkspaceNumber = workspaces.size + 1;
 
   const subscribers = new Set<(event: HerdrEventEnvelope) => void>();
   const statusListeners = new Set<(status: HerdrStatus) => void>();
@@ -93,6 +95,83 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
       emit({
         event: "workspace_focused",
         data: { type: "workspace_focused", workspace_id: workspaceId },
+      });
+    },
+    async workspaceCreate(params: {
+      cwd: string | null;
+      label?: string | null;
+      focus?: boolean;
+    }): Promise<WorkspaceInfo> {
+      const number = nextWorkspaceNumber++;
+      const workspaceId = `fw${number}`;
+      const tabId = `${workspaceId}:t1`;
+      const paneId = `${workspaceId}:p1`;
+      const workspace: WorkspaceInfo = {
+        workspace_id: workspaceId,
+        number,
+        label: params.label ?? `${number}`,
+        focused: params.focus ?? false,
+        pane_count: 1,
+        tab_count: 1,
+        active_tab_id: tabId,
+        agent_status: "unknown",
+      };
+      const tab = {
+        tab_id: tabId,
+        workspace_id: workspaceId,
+        number: 1,
+        label: "1",
+        focused: params.focus ?? false,
+        pane_count: 1,
+        agent_status: "unknown" as const,
+      };
+      const pane: PaneInfo = {
+        pane_id: paneId,
+        terminal_id: `fterm-${paneId}`,
+        workspace_id: workspaceId,
+        tab_id: tabId,
+        focused: params.focus ?? false,
+        agent_status: "unknown",
+        revision: 0,
+        cwd: params.cwd,
+        foreground_cwd: params.cwd,
+      };
+      workspaces.set(workspaceId, workspace);
+      tabs.set(tabId, tab);
+      panes.set(paneId, pane);
+      if (params.focus) {
+        focusedWorkspaceId = workspaceId;
+        focusedTabId = tabId;
+        focusedPaneId = paneId;
+      }
+      emit({ event: "workspace_created", data: { type: "workspace_created", workspace } });
+      return workspace;
+    },
+    async workspaceRename(workspaceId: string, label: string): Promise<WorkspaceInfo> {
+      const existing = workspaces.get(workspaceId);
+      if (!existing) throw new Error(`fake herdr: unknown workspace ${workspaceId}`);
+      const next = { ...existing, label };
+      workspaces.set(workspaceId, next);
+      emit({
+        event: "workspace_renamed",
+        data: { type: "workspace_renamed", workspace_id: workspaceId, label },
+      });
+      return next;
+    },
+    async workspaceClose(workspaceId: string): Promise<void> {
+      const existing = workspaces.get(workspaceId);
+      if (!existing) throw new Error(`fake herdr: unknown workspace ${workspaceId}`);
+      for (const [id, pane] of panes) {
+        if (pane.workspace_id === workspaceId) panes.delete(id);
+      }
+      for (const [id, tab] of tabs) {
+        if (tab.workspace_id === workspaceId) tabs.delete(id);
+      }
+      workspaces.delete(workspaceId);
+      if (focusedWorkspaceId === workspaceId) focusedWorkspaceId = null;
+      emit({
+        event: "workspace_closed",
+        data: { type: "workspace_closed", workspace_id: workspaceId, workspace: existing },
       });
     },
     async agentPrompt(paneId: string, _text: string): Promise<AgentPromptOutcome> {

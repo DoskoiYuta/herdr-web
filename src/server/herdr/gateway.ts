@@ -3,6 +3,7 @@ import type {
   PingResult,
   SessionSnapshot,
   HerdrEventEnvelope,
+  WorkspaceInfo,
 } from "../../contract/herdr";
 
 export type HerdrStatus = { connected: boolean; protocol: number | null };
@@ -31,6 +32,19 @@ export interface HerdrGateway {
   paneGet(paneId: string): Promise<PaneInfo>;
   paneFocus(paneId: string): Promise<PaneInfo>;
   workspaceFocus(workspaceId: string): Promise<void>;
+  /** `workspace.create`: creates a workspace rooted at `cwd`, optionally labeled and focused. */
+  workspaceCreate(params: {
+    cwd: string | null;
+    label?: string | null;
+    focus?: boolean;
+  }): Promise<WorkspaceInfo>;
+  /** `workspace.rename`. */
+  workspaceRename(workspaceId: string, label: string): Promise<WorkspaceInfo>;
+  /**
+   * `workspace.close`. Kills the workspace's panes (and any agents running in
+   * them) — callers must confirm with the user before calling this.
+   */
+  workspaceClose(workspaceId: string): Promise<void>;
   agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome>;
   /** Subscribe to herdr events. Returns an unsubscribe function. Handlers are never allowed to throw out. */
   subscribe(handler: (event: HerdrEventEnvelope) => void): () => void;

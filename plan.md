@@ -19,7 +19,7 @@
 | 全体を見渡す・移動する（リポジトリ単位のサイドバー、フォーカス切り替え）、成果を見る・判断する・返す（diff、graph、レビュー） | Web UI                 |
 | herdr の CLI と Web UI の CLI（`hw`）を叩いて両者をつなぐ                                                                     | エージェント自身       |
 
-Web UI は herdr の状態を **読む** ことを基本とし、worktree の作成や pane の起動は行わない。Web UI から herdr への「書き込み」は、サイドバーからのフォーカス切り替え（`workspace.focus` / `pane.focus`）と、レビュー通知としての `agent.prompt` の 2 種のみ。
+Web UI は herdr の状態を **読む** ことを基本とし、worktree の作成や pane の起動は行わない。Web UI から herdr への「書き込み」は、サイドバーからのフォーカス切り替え（`workspace.focus` / `pane.focus`）、サイドバーからのワークスペース作成・改名・削除（`workspace.create` / `workspace.rename` / `workspace.close`）、レビュー通知としての `agent.prompt` の 3 種のみ。
 
 ## 3. 前提・背景
 
@@ -59,7 +59,7 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 ### 含む
 
 - ブラウザから herdr TUI へ attach（入力・出力・リサイズ・再接続）
-- リポジトリ単位でグルーピングしたサイドバー（workspace / worktree / pane / agent 状態、フォーカス切り替え）
+- リポジトリ単位でグルーピングしたサイドバー（workspace / worktree / pane / agent 状態、フォーカス切り替え）。サイドバーからのワークスペース作成（リポジトリ見出しの「+」→ label 入力 → その main worktree root を cwd に `workspace.create`）と、ワークスペース行の右クリックメニューからの改名（`workspace.rename`）・削除（`workspace.close`、pane/agent 終了の確認あり）
 - フォーカス pane の `foreground_cwd` の追跡と git ルートの解決（ピン留め可）
 - 内蔵 diff ビューア（作業ツリー / ステージ / 任意コミット間）とファイルツリー（tdiff から移植するため含める）
 - 内蔵 git graph（コミットグラフ、ブランチ、コミット選択 → diff 連携）
@@ -73,7 +73,7 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 
 - herdr 自身のサイドバーの制御
 - 外部 Web アプリの iframe 埋め込み、リンク集、ブラウザ機能
-- worktree の作成・削除
+- worktree の作成・削除（ワークスペースの作成・改名・削除はサイドバーから可能。§2, §7 F8 参照）
 - herdr の内部 render socket への直接接続
 - 認証・公開運用（アクセス制御は Tailscale の ACL に委ねる）
 - git の書き込み操作（stage / commit / checkout / fetch / pull）
@@ -306,6 +306,8 @@ src/cli                      → contract のみ
 - F8-5. グループ折りたたみ、表示モード切替、フォーカス / ピン留めのハイライト。
 - F8-6. herdr イベントでリアルタイム更新。未接続時は「herdr 未接続」。
 - F8-7. サイドバーは折りたたみ可能で幅はドラッグで変更できる。
+- F8-8. リポジトリ見出しに「ワークスペースを作成」ボタンを出す。開くインラインフォームの label 初期値はリポジトリ名、cwd はそのリポジトリの main worktree root。`workspace.create({ cwd, label, focus: true })` を呼ぶ（`POST /api/herdr/workspace`、cwd は git ルートと同じ allowed-roots 検査を通す）。
+- F8-9. workspace 行を右クリックすると「名前を変更」「削除」を持つカスタムコンテキストメニューを出す（キーボードの Shift+F10 / コンテキストメニューキーでも開ける）。「名前を変更」は現在の label を初期値にしたダイアログから `workspace.rename`、「削除」は pane / agent がすべて終了する旨を明示した確認ダイアログから `workspace.close`（`confirm: true` 必須）を呼ぶ。
 
 ## 8. 非機能要件
 
@@ -370,14 +372,15 @@ src/cli                      → contract のみ
 
 ### 9.5 herdr socket API の利用一覧
 
-| 用途       | メソッド / イベント                        |
-| ---------- | ------------------------------------------ |
-| 接続確認   | `ping`                                     |
-| 初期状態   | `session.snapshot`                         |
-| 購読       | `events.subscribe`                         |
-| pane 情報  | `pane.get`                                 |
-| フォーカス | `pane.focus`（必要なら `workspace.focus`） |
-| 通知       | `agent.prompt`                             |
+| 用途               | メソッド / イベント                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| 接続確認           | `ping`                                                                                             |
+| 初期状態           | `session.snapshot`                                                                                 |
+| 購読               | `events.subscribe`                                                                                 |
+| pane 情報          | `pane.get`                                                                                         |
+| フォーカス         | `pane.focus`（必要なら `workspace.focus`）                                                         |
+| 通知               | `agent.prompt`                                                                                     |
+| ワークスペース管理 | `workspace.create` / `workspace.rename` / `workspace.close`（サイドバー、`/api/herdr/workspace*`） |
 
 ## 10. 実装上の注意
 

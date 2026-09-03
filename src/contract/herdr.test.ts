@@ -6,6 +6,8 @@ import {
   PaneInfoSchema,
   PingResultSchema,
   SessionSnapshotSchema,
+  WorkspaceCreatedResultSchema,
+  WorkspaceInfoResultSchema,
 } from "./herdr";
 
 describe("SessionSnapshotSchema", () => {
@@ -84,5 +86,63 @@ describe("HerdrEventEnvelopeSchema", () => {
       data: { type: "something_new" },
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("WorkspaceCreatedResultSchema", () => {
+  test("parses workspace.create's result observed live against herdr 0.8.2", () => {
+    const r = v.safeParse(WorkspaceCreatedResultSchema, {
+      type: "workspace_created",
+      workspace: {
+        workspace_id: "wF",
+        number: 6,
+        label: "hw-test",
+        focused: false,
+        pane_count: 1,
+        tab_count: 1,
+        active_tab_id: "wF:t1",
+        agent_status: "unknown",
+      },
+      tab: {
+        tab_id: "wF:t1",
+        workspace_id: "wF",
+        number: 1,
+        label: "1",
+        focused: false,
+        pane_count: 1,
+        agent_status: "unknown",
+      },
+      root_pane: {
+        pane_id: "wF:p1",
+        terminal_id: "term_65a902e07bf0e26",
+        workspace_id: "wF",
+        tab_id: "wF:t1",
+        focused: false,
+        cwd: "/Users/yuta/github.com/DoskoiYuta/herdr-web",
+        foreground_cwd: "/Users/yuta/github.com/DoskoiYuta/herdr-web",
+        agent_status: "unknown",
+        revision: 0,
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+});
+
+describe("WorkspaceInfoResultSchema", () => {
+  test("parses workspace.rename's result observed live against herdr 0.8.2", () => {
+    const r = v.safeParse(WorkspaceInfoResultSchema, {
+      type: "workspace_info",
+      workspace: {
+        workspace_id: "wF",
+        number: 6,
+        label: "hw-test-renamed",
+        focused: false,
+        pane_count: 1,
+        tab_count: 1,
+        active_tab_id: "wF:t1",
+        agent_status: "unknown",
+      },
+    });
+    expect(r.success).toBe(true);
   });
 });

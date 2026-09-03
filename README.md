@@ -4,7 +4,7 @@
 
 ## 構成
 
-- **サイドバー**: herdr の pane を `repository > worktree > pane` に組み替えて表示。クリックでフォーカス切り替え。
+- **サイドバー**: herdr の pane を `repository > workspace` に組み替えて表示。クリックでフォーカス切り替え。リポジトリ見出しの「+」ボタンからそのリポジトリの main worktree root を cwd にワークスペースを作成でき、ワークスペース行を右クリックすると「名前を変更」「削除」の操作ができる（削除は pane / agent がすべて終了する旨を確認してから実行）。
 - **ターミナル**: herdr の TUI を PTY 経由で xterm.js に描画。
 - **ツール領域**: フォーカス pane の `foreground_cwd` に追従して diff / graph / review を表示。ピン留め可。
 - **`hw` CLI**: pane 内のエージェントがレビューを読み・返答する。
