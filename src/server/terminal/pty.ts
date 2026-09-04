@@ -82,7 +82,11 @@ export function spawnHerdr(opts: SpawnHerdrOptions): SpawnedTerminal {
 
   return {
     write(data) {
-      pty.write(typeof data === "string" ? data : decoder.decode(data));
+      const text = typeof data === "string" ? data : decoder.decode(data);
+      // bun-pty passes the buffer pointer to FFI; a zero-length buffer has no
+      // pointer and throws, so an empty write must never reach it.
+      if (text.length === 0) return;
+      pty.write(text);
     },
     resize(cols, rows) {
       pty.resize(cols, rows);

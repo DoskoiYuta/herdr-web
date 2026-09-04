@@ -74,6 +74,22 @@ describe("createTermWss (/ws/term integration)", () => {
     await closed;
   });
 
+  test("an empty binary message does not kill the session or the process", async () => {
+    const port = await start();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/term?session=default&cols=80&rows=24`);
+    await waitFor(ws, "open");
+
+    const sawHi = new Promise<void>((resolve) => {
+      ws.on("message", (data, isBinary) => {
+        if (isBinary && data.toString().includes("hi-after-empty")) resolve();
+      });
+    });
+    ws.send(new Uint8Array(0));
+    ws.send(new TextEncoder().encode("echo hi-after-empty\n"));
+    await sawHi;
+    ws.close();
+  });
+
   test("kills the PTY when the client closes first", async () => {
     const port = await start();
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/term`);

@@ -44,7 +44,12 @@ export function createTermWss(opts: CreateTermWssOptions): WebSocketServer {
 
     ws.on("message", (data, isBinary) => {
       if (isBinary) {
-        term.write(new Uint8Array(data as Buffer));
+        try {
+          term.write(new Uint8Array(data as Buffer));
+        } catch (err) {
+          // an exception escaping a ws handler takes the whole server down
+          logger.warn(`term: write failed session=${session ?? "-"}`, err);
+        }
         return;
       }
       const parsed = safeJsonParse(data.toString());
