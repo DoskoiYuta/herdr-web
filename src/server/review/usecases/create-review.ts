@@ -7,19 +7,15 @@ export type CreateReviewDeps = {
   repository: ReviewRepository;
   events: ReviewEvents;
   clock: Clock;
-  /** 通知は debounce されるため、ユースケースはスケジュールするだけ */
-  scheduleNotify: (review: Review) => void;
   /** テスト用に id 生成を差し替えられるようにする。既定は Bun.randomUUIDv7() */
   generateId?: () => string;
   /**
    * F3/item-9: `createdAtHead` が古い（poller が commit を見逃した／作成前に既に
    * 進んでいた）場合に即座に commit-bind を試みるためのフック。
    * `review/runtime.ts` が `reanchorAfterChange` を `prevHead: null` で呼ぶよう配線する。
-   * 保存の後、`created` を emit する前に呼ぶ — かつ `created` イベントと
-   * `scheduleNotify` は afterCreate 完了後に再取得した最終状態の review を使う。
-   * そうしないと、クライアントは worktree-bound な `created` を先に受け取ってから
-   * すぐ `reanchored` を受け取ることになり、かつ notifyScheduler が
-   * via-commit candidate の commit を見失う。
+   * 保存の後、`created` を emit する前に呼ぶ — `created` イベントは afterCreate
+   * 完了後に再取得した最終状態の review を使う。そうしないと、クライアントは
+   * worktree-bound な `created` を先に受け取ってからすぐ `reanchored` を受け取ることになる。
    */
   afterCreate?: (review: Review) => Promise<void>;
 };
@@ -64,7 +60,6 @@ export function createReviewUsecase(deps: CreateReviewDeps) {
         // the notifier both see the final, settled state in one shot.
         const final = (await deps.repository.get(review.id)) ?? review;
         deps.events.emit({ type: "review", event: "created", review: final });
-        deps.scheduleNotify(final);
         return final;
       })(),
     );

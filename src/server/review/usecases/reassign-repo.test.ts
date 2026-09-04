@@ -4,7 +4,7 @@ import { FakeReviewRepository } from "../testing/fakes";
 import { createReview } from "../domain/transitions";
 import { reassignRepoUsecase } from "./reassign-repo";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 
 describe("reassignRepoUsecase", () => {
   test("delegates to repository.moveRepo and returns the counts", async () => {

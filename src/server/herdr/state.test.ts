@@ -32,6 +32,36 @@ describe("applyEvent", () => {
     expect(state.panes.get(paneId)?.foreground_cwd).toBe(snapshot.panes[0]!.foreground_cwd);
   });
 
+  test("pane_updated without agent_session and with agent_status unknown keeps the agent fields the store already has", () => {
+    // herdr's pane.updated payload omits agent_session and reports agent_status
+    // "unknown" even while pane.get says idle + session (observed with herdr 0.8.2).
+    const state = stateFromSnapshot(snapshot);
+    const base = snapshot.panes.find((p) => p.agent)!;
+    const seeded = applyEvent(state, {
+      event: "pane_updated",
+      data: {
+        type: "pane_updated",
+        pane: {
+          ...base,
+          agent_status: "idle",
+          agent_session: { source: "herdr:claude", agent: "claude", kind: "id", value: "sess-1" },
+        },
+      },
+    });
+    const { agent_session: _omitted, ...partial } = base;
+    const next = applyEvent(seeded, {
+      event: "pane_updated",
+      data: {
+        type: "pane_updated",
+        pane: { ...partial, agent_status: "unknown", label: "renamed" },
+      },
+    });
+    const pane = next.panes.get(base.pane_id)!;
+    expect(pane.label).toBe("renamed");
+    expect(pane.agent_status).toBe("idle");
+    expect(pane.agent_session?.value).toBe("sess-1");
+  });
+
   test("pane_closed removes the pane and clears focus if it was focused", () => {
     const state = stateFromSnapshot(snapshot);
     const paneId = snapshot.focused_pane_id!;
@@ -79,6 +109,59 @@ describe("applyEvent", () => {
       data: { type: "tab_renamed", tab_id: "does-not-exist", workspace_id: "nope", label: "x" },
     });
     expect(next).toEqual(state);
+  });
+
+  test("pane_agent_detected with agent null clears the pane's agent and session", () => {
+    const state = stateFromSnapshot(snapshot);
+    const pane = snapshot.panes[0]!;
+    const next = applyEvent(state, {
+      event: "pane_agent_detected",
+      data: {
+        type: "pane_agent_detected",
+        pane_id: pane.pane_id,
+        workspace_id: pane.workspace_id,
+        agent: null,
+        final_status: "unknown",
+        released: true,
+      },
+    });
+    const updated = next.panes.get(pane.pane_id)!;
+    expect(updated.agent).toBeNull();
+    expect(updated.agent_session).toBeNull();
+    expect(updated.agent_status).toBe("unknown");
+  });
+
+  test("pane_agent_detected for an unknown pane is a no-op", () => {
+    const state = stateFromSnapshot(snapshot);
+    const next = applyEvent(state, {
+      event: "pane_agent_detected",
+      data: {
+        type: "pane_agent_detected",
+        pane_id: "does-not-exist",
+        workspace_id: "nope",
+        agent: null,
+        released: true,
+      },
+    });
+    expect(next).toEqual(state);
+  });
+
+  test("pane_agent_status_changed updates agent_status and, when carried, agent", () => {
+    const state = stateFromSnapshot(snapshot);
+    const pane = snapshot.panes[0]!;
+    const next = applyEvent(state, {
+      event: "pane_agent_status_changed",
+      data: {
+        type: "pane_agent_status_changed",
+        pane_id: pane.pane_id,
+        workspace_id: pane.workspace_id,
+        agent_status: "blocked",
+        agent: null,
+      },
+    });
+    const updated = next.panes.get(pane.pane_id)!;
+    expect(updated.agent_status).toBe("blocked");
+    expect(updated.agent).toBeNull();
   });
 });
 
@@ -157,6 +240,31 @@ describe("createHerdrState", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(store.get().panes.size).toBe(snapshot.panes.length - 1);
+  });
+
+  test("an agent lifecycle event re-reads the pane from herdr, so fields the event omits (session, status) still land", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const store = createHerdrState(gw);
+    await Promise.resolve();
+    await Promise.resolve();
+    const pane = snapshot.panes[0]!;
+    gw.setPaneSilently(pane.pane_id, {
+      agent: "claude",
+      agent_status: "idle",
+      agent_session: { source: "herdr:claude", agent: "claude", kind: "id", value: "sess-1" },
+    });
+
+    gw.emit({
+      event: "pane_agent_status_changed",
+      data: {
+        type: "pane_agent_status_changed",
+        pane_id: pane.pane_id,
+        workspace_id: pane.workspace_id,
+        agent_status: "idle",
+      },
+    });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(store.get().panes.get(pane.pane_id)?.agent_session?.value).toBe("sess-1");
   });
 
   test("patchPane merges the pane into the store and notifies a pane change", async () => {

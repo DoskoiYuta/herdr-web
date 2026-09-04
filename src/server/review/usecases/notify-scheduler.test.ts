@@ -8,32 +8,36 @@ import {
   ManualClock,
   ManualTimer,
 } from "../testing/fakes";
-import { createReview } from "../domain/transitions";
+import { createReview, send } from "../domain/transitions";
 import { createLocks } from "./locks";
 import { createNotifyScheduler } from "./notify-scheduler";
 import { replyToReviewUsecase } from "./reply-to-review";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 const CLOCK = new ManualClock("2026-01-01T00:00:00.000Z");
 
+/**
+ * notifyScheduler only ever deals with reviews that have been sent (drafts are
+ * notify.state "none" and never scheduled) — build one already past `send()`,
+ * exactly like a real `POST /api/review/send` would have left it.
+ */
 function makeReview(overrides: Partial<Review> = {}): Review {
-  return {
-    ...createReview(
-      {
-        id: overrides.id ?? "r1",
-        repo: "/repo",
-        target: { kind: "worktree", root: "/repo" },
-        worktreeRoot: "/repo",
-        path: "a.ts",
-        anchor: ANCHOR,
-        createdAtHead: "head0",
-        viewedAs: { from: "WORKTREE", to: "WORKTREE" },
-        body: "why?",
-      },
-      CLOCK,
-    ),
-    ...overrides,
-  };
+  const created = createReview(
+    {
+      id: overrides.id ?? "r1",
+      repo: "/repo",
+      target: { kind: "worktree", root: "/repo" },
+      worktreeRoot: "/repo",
+      path: "a.ts",
+      anchor: ANCHOR,
+      createdAtHead: "head0",
+      viewedAs: { from: "WORKTREE", to: "WORKTREE" },
+      body: "why?",
+    },
+    CLOCK,
+  );
+  const sent = send(created, CLOCK)._unsafeUnwrap();
+  return { ...sent, ...overrides };
 }
 
 let repository: FakeReviewRepository;
@@ -112,6 +116,49 @@ describe("createNotifyScheduler", () => {
     const byRoot = new Map(notifier.calls.map((c) => [c.worktreeRoot, c.reviewIds]));
     expect(byRoot.get("/repo-a")).toEqual(["r1"]);
     expect(byRoot.get("/repo-b")).toEqual(["r2"]);
+  });
+
+  // without this test, send-drafts's "notify the sending worktree" behaviour could
+  // regress to always notifying the review's own worktreeRoot, silently sending the
+  // agent prompt to the wrong pane.
+  test("schedule's explicit worktreeRoot overrides the review's own worktreeRoot", async () => {
+    const scheduler = createNotifyScheduler({
+      notifier,
+      events,
+      repository,
+      clock: CLOCK,
+      timer,
+      debounceMs: 10_000,
+    });
+
+    const r1 = makeReview({ id: "r1", worktreeRoot: "/a" });
+    await repository.save(r1);
+    scheduler.schedule(r1, "/b");
+    timer.advance(10_000);
+    await flushMicrotasks();
+
+    expect(notifier.calls).toEqual([{ worktreeRoot: "/b", reviewIds: ["r1"] }]);
+  });
+
+  // without this test, send-drafts's chosen pane could be silently dropped between
+  // `schedule` and the batched `notifier.notify` call.
+  test("schedule's pane is threaded through to notifier.notify", async () => {
+    const scheduler = createNotifyScheduler({
+      notifier,
+      events,
+      repository,
+      clock: CLOCK,
+      timer,
+      debounceMs: 10_000,
+    });
+
+    const r1 = makeReview({ id: "r1", worktreeRoot: "/a" });
+    await repository.save(r1);
+    scheduler.schedule(r1, "/a", "pane-2");
+    timer.advance(10_000);
+    await flushMicrotasks();
+
+    expect(notifier.calls).toEqual([{ worktreeRoot: "/a", reviewIds: ["r1"], pane: "pane-2" }]);
   });
 
   test("emits review-notify per review id with the notifier's result and pane", async () => {
@@ -211,6 +258,7 @@ describe("createNotifyScheduler", () => {
     const errors: unknown[] = [];
     const scheduler = createNotifyScheduler({
       notifier: {
+        targetsAt: async () => [],
         notify: async () => {
           throw new Error("herdr socket exploded");
         },
@@ -274,7 +322,7 @@ describe("createNotifyScheduler", () => {
     });
 
     await scheduler.resend("r1");
-    expect(notifier.calls).toEqual([{ worktreeRoot: "/repo", commit: null, reviewIds: ["r1"] }]);
+    expect(notifier.calls).toEqual([{ worktreeRoot: "/repo", reviewIds: ["r1"] }]);
     expect(events.events).toEqual([
       { type: "review-notify", reviewId: "r1", result: "sent", pane: "pane-1" },
     ]);
@@ -310,6 +358,7 @@ describe("createNotifyScheduler", () => {
       releaseNotify = r;
     });
     const slowNotifier: AgentNotifier = {
+      targetsAt: async () => [],
       notify: async () => {
         notifyCalled();
         await notifyGate;
@@ -426,6 +475,7 @@ describe("createNotifyScheduler", () => {
       get: repository.get.bind(repository),
       list: repository.list.bind(repository),
       save: repository.save.bind(repository),
+      delete: repository.delete.bind(repository),
       upsertRepo: repository.upsertRepo.bind(repository),
       getRepo: repository.getRepo.bind(repository),
       listRepos: repository.listRepos.bind(repository),

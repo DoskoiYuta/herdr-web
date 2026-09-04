@@ -45,6 +45,7 @@ export const reviewEntries = sqliteTable(
     body: text("body").notNull(),
     at: text("at").notNull(),
     agentSession: text("agent_session"),
+    draft: integer("draft").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.reviewId, t.seq] })],
 );

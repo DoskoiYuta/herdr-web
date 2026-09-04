@@ -7,7 +7,7 @@ import { createLocks } from "./locks";
 import { outdateWorktreeUsecase } from "./outdate-worktree";
 import { replyToReviewUsecase } from "./reply-to-review";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 const CLOCK = new ManualClock("2026-01-01T00:00:00.000Z");
 
 function makeReview(): Review {
@@ -44,6 +44,7 @@ function listGatedRepository(inner: ReviewRepository, gate: Promise<void>): Revi
     },
     save: (review) => inner.save(review),
     updateNotify: (id, notify) => inner.updateNotify(id, notify),
+    delete: (id) => inner.delete(id),
     upsertRepo: (repo) => inner.upsertRepo(repo),
     getRepo: (key) => inner.getRepo(key),
     listRepos: () => inner.listRepos(),

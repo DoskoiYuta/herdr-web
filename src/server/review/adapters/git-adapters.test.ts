@@ -141,7 +141,7 @@ describe("createGitIntroducingCommitFinder", () => {
     const since = (await h.headOf(root))!;
     // 未コミットの追加行にアンカー
     await writeFile(join(root, "a.txt"), "one\ntwo\nnew line\nthree\n");
-    const anchor = buildAnchor(["one", "two", "new line", "three"], 2, "new");
+    const anchor = buildAnchor(["one", "two", "new line", "three"], 2, 2, "new");
     const review = reviewWith(anchor, root, since);
     const finder = createGitIntroducingCommitFinder(h);
     expect(await finder.find(root, review, since)).toBeNull(); // まだコミットされていない
@@ -154,7 +154,7 @@ describe("createGitIntroducingCommitFinder", () => {
     const root = await makeRepo();
     const h = createGitHistory();
     const since = (await h.headOf(root))!;
-    const anchor = buildAnchor(["one", "two", "three"], 1, "new");
+    const anchor = buildAnchor(["one", "two", "three"], 1, 1, "new");
     const review = reviewWith(anchor, root, since);
     await writeFile(join(root, "a.txt"), "one\ntwo\nthree\nfour\n");
     await git(root, "commit", "-qam", "unrelated");
@@ -165,7 +165,7 @@ describe("createGitIntroducingCommitFinder", () => {
     const root = await makeRepo();
     const h = createGitHistory();
     const since = (await h.headOf(root))!;
-    const anchor = buildAnchor(["one", "two", "three"], 1, "old");
+    const anchor = buildAnchor(["one", "two", "three"], 1, 1, "old");
     const review = reviewWith(anchor, root, since);
     await writeFile(join(root, "a.txt"), "one\nthree\n");
     const finder = createGitIntroducingCommitFinder(h);

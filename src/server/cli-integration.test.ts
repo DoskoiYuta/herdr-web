@@ -76,6 +76,10 @@ describe("hw CLI against a real server", () => {
           revision: 1,
           foreground_cwd: repo.root,
           cwd: repo.root,
+          // POST /api/review/send only sends when there's an agent pane at the
+          // worktree root (see herdr-notifier's targetsAt) — this fixture is the
+          // agent this whole suite's flows notify.
+          agent: "claude",
         },
       ],
       tabs: [],
@@ -115,7 +119,7 @@ describe("hw CLI against a real server", () => {
         path: "foo.txt",
         anchor: {
           side: "new",
-          line: "line2",
+          lines: ["line2"],
           before: ["line1"],
           after: ["line3"],
           lineHint: 2,
@@ -129,6 +133,15 @@ describe("hw CLI against a real server", () => {
     expect(res.status).toBe(201);
     const created = (await res.json()) as Review;
     seededId = created.id;
+
+    // Reviews are created as drafts and are invisible to the agent (and to `hw`)
+    // until sent — send it now so the rest of this suite sees it as `hw` would.
+    const sendRes = await fetch(`${baseUrl}/api/review/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repo: repo.repoKey, worktreeRoot: repo.root }),
+    });
+    expect(sendRes.status).toBe(200);
   });
 
   afterEach(async () => {
@@ -195,7 +208,7 @@ describe("hw CLI against a real server", () => {
     test("hw review list (human output)", async () => {
       const result = await runCli(["review", "list"], deps);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(seededId.slice(0, 8));
+      expect(result.stdout).toContain(seededId.slice(-8));
       expect(result.stdout).toContain("open");
       expect(result.stdout).toContain("foo.txt:2");
       expect(result.stdout).toContain("please double check this line");

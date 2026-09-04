@@ -11,7 +11,7 @@ function sampleReview(): Record<string, unknown> {
     path: "src/a.ts",
     anchor: {
       side: "new",
-      line: "const a = 1;",
+      lines: ["const a = 1;"],
       before: [],
       after: [],
       lineHint: 3,
@@ -21,7 +21,14 @@ function sampleReview(): Record<string, unknown> {
     viewedAs: { from: "WORKTREE", to: "WORKTREE" },
     status: "open",
     thread: [
-      { seq: 0, author: "user", body: "why?", at: new Date().toISOString(), agentSession: null },
+      {
+        seq: 0,
+        author: "user",
+        body: "why?",
+        at: new Date().toISOString(),
+        agentSession: null,
+        draft: false,
+      },
     ],
     notify: { state: "none", pane: null, at: null },
     createdAt: new Date().toISOString(),
@@ -79,7 +86,7 @@ describe("CreateReviewRequestSchema", () => {
       path: "a.ts",
       anchor: {
         side: "old",
-        line: "x",
+        lines: ["x"],
         before: ["a", "b"],
         after: ["c"],
         lineHint: 1,

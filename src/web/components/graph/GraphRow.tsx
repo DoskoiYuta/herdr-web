@@ -1,7 +1,9 @@
+import { MessageSquare } from "lucide-react";
 import type { LayoutRow } from "./layout/layout";
 import { GEOM, nodeCenter, segmentPath } from "./layout/path";
 import { PALETTE } from "./layout/colors";
 import type { Commit, Ref } from "@contract/git";
+import type { ReviewCount } from "@contract/review";
 import RefBadge from "./RefBadge";
 import CommitDetail from "./CommitDetail";
 
@@ -40,11 +42,50 @@ export interface GraphRowProps {
   /** Note shown in the expanded detail block, e.g. for a root commit. */
   detailNote?: string;
   now?: number;
+  /** review 件数バッジ用（F5-10）。unresolved/drafts が両方 0 なら何も出さない。 */
+  reviewCount?: ReviewCount;
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
   /** 「diff を見る」/ 行のダブルクリック。未指定なら出さない。 */
   onOpenDiff?(hash: string): void;
+}
+
+function ReviewCountBadge({ count, onOpenDiff }: { count: ReviewCount; onOpenDiff?(): void }) {
+  if (count.unresolved <= 0 && count.drafts <= 0) return null;
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {count.unresolved > 0 && (
+        <button
+          type="button"
+          className="flex items-center gap-0.5 rounded bg-primary/15 px-1 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/25"
+          aria-label={`未解決レビュー ${count.unresolved} 件`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDiff?.();
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <MessageSquare className="size-3" aria-hidden="true" />
+          {count.unresolved}
+        </button>
+      )}
+      {count.drafts > 0 && (
+        <button
+          type="button"
+          className="rounded border border-border px-1 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted"
+          aria-label={`下書きレビュー ${count.drafts} 件`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDiff?.();
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          下書き {count.drafts}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function GraphRow({
@@ -58,6 +99,7 @@ export default function GraphRow({
   repo = "",
   detailNote,
   now,
+  reviewCount,
   onSelect,
   onOpenDiff,
 }: GraphRowProps) {
@@ -66,6 +108,11 @@ export default function GraphRow({
   const { cx, cy } = nodeCenter(row);
   const width = Math.max(1, laneCount) * GEOM.laneWidth;
   const nodeColor = PALETTE[row.color % PALETTE.length];
+  // Shared by the row's double-click and its review-count badge (「行の
+  // ダブルクリックと同じ挙動」) — a root/uncommitted row has no valid diff to open.
+  const triggerOpenDiff = () => {
+    if (!isUncommitted && commit.parents.length > 0) onOpenDiff?.(row.hash);
+  };
 
   return (
     <>
@@ -76,9 +123,7 @@ export default function GraphRow({
         role="row"
         data-hash={row.hash}
         onClick={(e) => onSelect(row.hash, { shiftKey: e.shiftKey })}
-        onDoubleClick={() => {
-          if (!isUncommitted && commit.parents.length > 0) onOpenDiff?.(row.hash);
-        }}
+        onDoubleClick={triggerOpenDiff}
         style={{ height: GEOM.rowHeight }}
       >
         <svg
@@ -116,6 +161,7 @@ export default function GraphRow({
             {isUncommitted ? "(uncommitted changes)" : commit.subject}
           </span>
         </div>
+        {reviewCount && <ReviewCountBadge count={reviewCount} onOpenDiff={triggerOpenDiff} />}
         <div className="w-24 shrink-0 truncate text-muted-foreground">{commit.author}</div>
         <div className="w-16 shrink-0 text-right text-muted-foreground">
           {isUncommitted ? "" : formatRelative(commit.authorDate, now)}

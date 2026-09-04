@@ -4,7 +4,7 @@ import { FakeReviewEvents, FakeReviewRepository, ManualClock } from "../testing/
 import { createReview } from "../domain/transitions";
 import { resolveReviewUsecase } from "./resolve-review";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 
 async function seedReview(
   repository: FakeReviewRepository,

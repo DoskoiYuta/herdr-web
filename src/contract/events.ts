@@ -107,7 +107,21 @@ export type RepoChangedMessage = v.InferOutput<typeof RepoChangedMessageSchema>;
 
 export const ReviewMessageSchema = v.object({
   type: v.literal("review"),
-  event: v.picklist(["created", "replied", "resolved", "reanchored", "outdated"]),
+  /**
+   * created: 下書き review が作られた / replied: エントリが追加された（user なら下書き） /
+   * draft-updated: 下書き本文の編集または削除 / deleted: 下書きしか無かった review が消えた /
+   * sent: 下書きが送信された
+   */
+  event: v.picklist([
+    "created",
+    "replied",
+    "draft-updated",
+    "deleted",
+    "sent",
+    "resolved",
+    "reanchored",
+    "outdated",
+  ]),
   review: ReviewSchema,
 });
 export type ReviewMessage = v.InferOutput<typeof ReviewMessageSchema>;

@@ -31,6 +31,8 @@ const ALL_STATUSES: ReviewStatus[] = ["open", "replied", "resolved", "outdated"]
  * commit 確定済みで worktree の HEAD から到達可能なレビューのうち open/replied を返す。
  * オプションで挙動を変える: all / commit / since / uncommitted / unreachable。
  */
+export type ListVisibleUsecase = ReturnType<typeof listVisibleUsecase>;
+
 export function listVisibleUsecase(deps: ListVisibleDeps) {
   return function listVisibleFn(input: ListVisibleInput): ResultAsync<Review[], DomainError> {
     return ResultAsync.fromSafePromise(

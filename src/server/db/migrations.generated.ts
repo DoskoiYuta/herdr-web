@@ -25,4 +25,10 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "06fb4d3dc7c77b0d8be70d0ae5130560b0a23e68a616552a0dea5836a232d945",
     bps: true,
   },
+  {
+    sql: ["ALTER TABLE `review_entries` ADD `draft` integer DEFAULT 0 NOT NULL;"],
+    folderMillis: 1788513031319,
+    hash: "757640d65b660d3124fc81665fa401ce29e7359f73b84219af9a5c7de22669e7",
+    bps: true,
+  },
 ];

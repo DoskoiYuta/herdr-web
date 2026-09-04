@@ -177,6 +177,59 @@ describe("createHerdrSocketClient", () => {
     expect(b.pane_id).toBe("p2");
   });
 
+  test("unwraps the pane.layout / pane.read result envelopes herdr sends", async () => {
+    const server = new FakeHerdrServer(tmpSocketPath());
+    server.onLine = (socket, line) => {
+      if (line.method === "ping") {
+        server.send(socket, {
+          id: line.id,
+          result: { type: "pong", version: "0.8.2", protocol: 20 },
+        });
+      } else if (line.method === "events.subscribe") {
+        server.send(socket, { id: line.id, result: { type: "subscription_started" } });
+      } else if (line.method === "pane.layout") {
+        server.send(socket, {
+          id: line.id,
+          result: {
+            type: "pane_layout",
+            layout: {
+              workspace_id: "w1",
+              tab_id: "t1",
+              zoomed: false,
+              area: { x: 0, y: 1, width: 80, height: 40 },
+              focused_pane_id: "p1",
+              panes: [
+                { pane_id: "p1", focused: true, rect: { x: 0, y: 1, width: 80, height: 40 } },
+              ],
+              splits: [],
+            },
+          },
+        });
+      } else if (line.method === "pane.read") {
+        server.send(socket, {
+          id: line.id,
+          result: {
+            type: "pane_read",
+            read: { pane_id: "p1", text: "last line", truncated: false },
+          },
+        });
+      }
+    };
+    await server.listen();
+    cleanups.push(() => server.stop());
+
+    const client: HerdrGateway = createHerdrSocketClient({
+      socketPath: server.socketPath,
+      logger: quietLogger(),
+    });
+    cleanups.push(() => client.close());
+    await waitFor(() => client.status().connected);
+
+    const layout = await client.paneLayout("p1");
+    expect(layout.panes.map((p) => p.pane_id)).toEqual(["p1"]);
+    expect(await client.paneRead("p1", 5)).toBe("last line");
+  });
+
   test("a request times out when the server never responds", async () => {
     const server = new FakeHerdrServer(tmpSocketPath());
     server.onLine = (socket, line) => {

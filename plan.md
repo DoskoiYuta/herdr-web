@@ -63,9 +63,9 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 - フォーカス pane の `foreground_cwd` の追跡と git ルートの解決（ピン留め可）
 - 内蔵 diff ビューア（作業ツリー / ステージ / 任意コミット間）とファイルツリー（tdiff から移植するため含める）
 - 内蔵 git graph（コミットグラフ、ブランチ、コミット選択 → diff 連携）
-- diff へのレビュー（worktree / コミットへの紐付け、内容アンカー、スレッド、状態管理）と、エージェント向け CLI `hw`
-- レビュー作成時の `agent.prompt` によるエージェント通知
-- レビューの一覧ビュー
+- diff へのレビュー（worktree / コミットへの紐付け、内容アンカー、スレッド、下書き + 送信、状態管理）と、エージェント向け CLI `hw`
+- 送信操作による `agent.prompt` エージェント通知
+- git graph 上のコミットごとのレビュー件数バッジ
 - 単一プロセス・単一コマンドでの開発起動、単一バイナリへのビルド
 - `127.0.0.1` バインドのまま `tailscale serve` 経由で tailnet から利用できること
 
@@ -174,13 +174,13 @@ Claude Code ── hw review list / show / reply ──▶ Web UI サーバー
 
 のうち `open` / `replied` を返す。レビュー対応をコミットしても、以前の commit に付いた未解決レビューは HEAD の祖先である限り出続ける。消えるのは resolve されたときだけ。
 
-**通知先**: 作成時に、そのレビューの worktree（commit 付きの場合は、その commit を HEAD に含む worktree）を `foreground_cwd` に持つ pane を探し、フォーカス pane が含まれればそこへ、無ければ最初のエージェント pane へ `agent.prompt` する。無ければ「未通知」。通知先は保存せず、再送時に再解決する。
+**通知先**: 送信操作（下書きの一括送信）を受けたときに、そのレビューの worktree（commit 付きの場合は、その commit を HEAD に含む worktree）を `foreground_cwd` に持つ pane を探し、フォーカス pane が含まれればそこへ、無ければ最初のエージェント pane へ `agent.prompt` する。無ければ「未通知」。通知先は保存せず、再送時に再解決する。
 
 **壊れ方**
 
 | 事象                                            | 結果                                                                                                |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| worktree が削除された                           | 未コミットのレビューは `outdated`。一覧ビューにだけ残る                                             |
+| worktree が削除された                           | 未コミットのレビューは `outdated`。git graph のバッジ集計にだけ残る                                 |
 | 変更を破棄 / stash した                         | 再アンカーで行が見つからず `outdated`。戻せば再アンカーで復活                                       |
 | commit 確定後に対応コミットで行が書き換えられた | commit 付きレビューは **`outdated` にしない**。元 commit の diff に表示され続ける                   |
 | rebase / squash で commit が到達不能になった    | 再アンカー時に内容一致で新 commit を探し直す。見つからなければ `outdated`。`--unreachable` で引ける |
@@ -243,7 +243,7 @@ src/cli                      → contract のみ
 - F3-3. 比較対象: 作業ツリー vs HEAD（既定、staged + unstaged）、ステージ vs HEAD、任意の 2 commit（F4 から渡す）。
 - F3-4. 変更検知は 1 秒間隔の git ポーリング（tdiff の poller）。フォーカス中の worktree だけをポーリングし、`repo-changed` を配信する。
 - F3-5. バイナリは要約表示。
-- F3-6. 行または行範囲を選択してレビューを付けられる（F5）。現在表示中の diff にアンカーが一致するレビューを該当行にインライン表示する。
+- F3-6. 行または行範囲（複数行）を選択してレビューを付けられる（F5）。現在表示中の diff にアンカーが一致するレビューを該当範囲にインライン表示する。
 
 ### F4. git graph（tgg から移植）
 
@@ -265,14 +265,14 @@ src/cli                      → contract のみ
   - `createdAtHead`: 作成時の HEAD
   - `viewedAs`: 作成時の比較対象 `{ from, to }`（記録用）
   - `status`: `open` / `replied` / `resolved` / `outdated`
-  - `thread`: `{ author: "user" | "agent", body, at, agentSession? }[]`
-- F5-2. アンカーは行番号ではなく行の内容: 対象行テキスト、前後 3 行のコンテキスト、新側 / 旧側、正規化ハッシュ。表示時に現在の diff へコンテキスト一致で再計算する。
-- F5-3. 状態遷移: `open` →（agent 返信）→ `replied` →（user 解決）→ `resolved`。**resolve は user のみ**。user が返信すると `replied` → `open`。`outdated` からは user の再アンカー成功で `open` に戻せる。
+  - `thread`: `{ author: "user" | "agent", body, at, agentSession?, draft }[]`
+- F5-2. アンカーは行番号ではなく行の内容: 対象行（範囲、1 行以上）のテキスト、前後 3 行のコンテキスト、新側 / 旧側、正規化ハッシュ。表示時に現在の diff へコンテキスト一致で再計算する。
+- F5-3. 状態遷移: `open` →（agent 返信）→ `replied` →（user 解決）→ `resolved`。**resolve は user のみ**。user が返信すると `replied` → `open`。`outdated` からは user の再アンカー成功で `open` に戻せる。user のメッセージ（新規レビュー・返信とも）はまず下書きとして作られ、Web UI の送信操作でまとめて `open` になる（F5-6）。
 - F5-4. 再アンカー: `repo-changed` を受けたら、`target.kind == "worktree"` かつ `outdated` でないレビューについて、変更されたファイル（`git diff --name-only <prevHead> HEAD`）に限り `git blame -L` で導入 commit を探し、見つかれば `target` を commit に移す。
 - F5-5. `outdated` は **worktree 付きのレビューにだけ** 適用する。commit 付きのレビューは commit の diff で常に表示できるので、行の再一致に失敗しても `outdated` にしない。commit が HEAD から到達不能になった場合は内容一致で新 commit を探し、見つからなければ `outdated`。
-- F5-6. 通知: §6.5 の規則で通知先 pane を解決し `agent.prompt`。`agent_blocked` / 該当 pane 無しなら未通知として表示し「再送」を出す。同一 pane への通知は既定 10 秒のデバウンスでまとめる。文言は設定で変更可。
-- F5-7. 保存先は SQLite `~/.config/herdr-web/herdr-web.db`。テーブル: `repos`、`reviews`、`review_entries`。drizzle でマイグレーション。
-- F5-8. 一覧ビュー（`Review` タブ）: リポジトリ内の全レビューを状態・target・ファイル・到達可否で絞り込み、クリックで該当 diff（作業ツリーまたは該当 commit）を開く。
+- F5-6. user のメッセージは下書きのまま agent に見えず、通知もされない。Web UI の送信操作で、対象 worktree の下書きを一括で送信済みにし、§6.5 の規則で通知先 pane を解決して `agent.prompt` を即時に 1 回（件数入り）送る。`agent_blocked` / 該当 pane 無しなら未通知として表示し「再送」を出す。文言は設定で変更可。
+- F5-7. 保存先は SQLite `~/.config/herdr-web/herdr-web.db`。テーブル: `repos`、`reviews`、`review_entries`（`draft` 列を含む）。drizzle でマイグレーション。
+- F5-8. git graph はコミットごとのレビュー件数（未解決・下書き）をバッジ表示する（一覧ビューは持たない）。クリックで該当 diff（作業ツリーまたは該当 commit）を開く。
 - F5-9. 作成・返信・解決・再アンカーはイベント WS で反映する。
 
 ### F6. `hw` CLI（エージェント向け）
@@ -282,7 +282,7 @@ src/cli                      → contract のみ
 - F6-3. サブコマンド:
   ```
   hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--json]
-  hw review show <id> [--json]
+  hw review show <id> [--json]   # <id> は `list` の出す短縮 id（末尾一致、4 文字以上）でよい
   hw review reply <id> <text>
   hw status
   hw repo move <old-path> <new-path>
@@ -358,18 +358,22 @@ src/cli                      → contract のみ
 
 ### 9.4 Hono RPC — review（Web UI と `hw` が共用）
 
-| メソッド | パス                                                                                 | 説明                                                                       |
-| -------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| GET      | `/api/review?repo=&worktree=&status=&commit=&since=&uncommitted=&unreachable=&path=` | 一覧。`worktree` を渡すと §6.5 の可視性で絞る                              |
-| GET      | `/api/review/:id`                                                                    | 1 件（スレッド、アンカーのコンテキスト、現在の解決位置）                   |
-| GET      | `/api/review/for-diff?repo=&from=&to=&path=`                                         | 指定 diff にアンカー一致するレビューと行位置                               |
-| POST     | `/api/review`                                                                        | 作成 `{ repo, worktreeRoot, target, path, anchor, viewedAs, body }` → 通知 |
-| POST     | `/api/review/:id/reply`                                                              | `{ body, author, agentSession? }`                                          |
-| POST     | `/api/review/:id/resolve`                                                            | user のみ                                                                  |
-| POST     | `/api/review/:id/reanchor`                                                           | 手動再アンカー                                                             |
-| POST     | `/api/review/:id/notify`                                                             | 再送                                                                       |
-| GET      | `/api/hw/whoami?pane=`                                                               | pane から `foreground_cwd`、worktree、`agent_session` を解決               |
-| POST     | `/api/repo/move`                                                                     | `{ from, to }`                                                             |
+| メソッド | パス                                                                                 | 説明                                                                                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/api/review?repo=&worktree=&status=&commit=&since=&uncommitted=&unreachable=&path=` | 一覧。`worktree` を渡すと §6.5 の可視性で絞る。`hw` からは下書きを含めない。`drafts=true` で Web UI 向けに下書きも返す                                               |
+| GET      | `/api/review/counts?repo=&worktree=`                                                 | git graph のバッジ・送信ボタン用の集計（commit ごと / worktree の未解決・下書き件数）                                                                                |
+| GET      | `/api/review/:id`                                                                    | 1 件（スレッド、アンカーのコンテキスト、現在の解決位置）。`:id` は完全な id か 4 文字以上の末尾一致（UUIDv7 の先頭はタイムスタンプで揃うため）。複数件に当たると 409 |
+| GET      | `/api/review/for-diff?repo=&from=&to=&path=`                                         | 指定 diff にアンカー一致するレビューと行位置（範囲）。下書きを含む（Web UI 専用）                                                                                    |
+| POST     | `/api/review`                                                                        | 下書きとして作成 `{ repo, worktreeRoot, target, path, anchor, viewedAs, body }`。通知はしない                                                                        |
+| POST     | `/api/review/:id/reply`                                                              | `{ body, author, agentSession? }`。user は下書き追加、agent は送信済みとして即時追加                                                                                 |
+| PUT      | `/api/review/:id/draft/:seq`                                                         | `{ body }` で下書きエントリの本文を差し替える                                                                                                                        |
+| DELETE   | `/api/review/:id/draft/:seq`                                                         | 下書きエントリを削除。スレッドが空になったらレビューごと削除する                                                                                                     |
+| POST     | `/api/review/send`                                                                   | `{ repo, worktreeRoot }` — 対象の下書きを一括送信し、1 回だけ通知する                                                                                                |
+| POST     | `/api/review/:id/resolve`                                                            | user のみ                                                                                                                                                            |
+| POST     | `/api/review/:id/reanchor`                                                           | 手動再アンカー                                                                                                                                                       |
+| POST     | `/api/review/:id/notify`                                                             | 再送                                                                                                                                                                 |
+| GET      | `/api/hw/whoami?pane=`                                                               | pane から `foreground_cwd`、worktree、`agent_session` を解決                                                                                                         |
+| POST     | `/api/repo/move`                                                                     | `{ from, to }`                                                                                                                                                       |
 
 ### 9.5 herdr socket API の利用一覧
 
@@ -476,7 +480,7 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - **M2.5: サイドバー** — tree 再構成、F8。
 - **M3: diff** — tdiff 移植、`/api/git/patch` `/api/git/files`、poller、`repo-changed`。
 - **M4: graph** — tgg 移植、`/api/git/graph` `/api/git/commit`、選択 → diff。
-- **M5: レビュー + `hw`** — sqlite、domain、usecases、通知、Review タブ、CLI、再アンカー。
+- **M5: レビュー + `hw`** — sqlite、domain、usecases、通知、git graph の件数バッジ、CLI、再アンカー。
 - **M6: ビルド・配布** — 単一バイナリ、設定、README。
 
 ## 15. 将来拡張

@@ -94,7 +94,7 @@ const api = createApp({
   review: review.routes,
   repo: review.repoRoutes,
   hw: { state: runtime.state, resolver: runtime.resolver },
-  herdr: { gateway: runtime.gateway, allowedRoots: config.allowedRoots },
+  herdr: { gateway: runtime.gateway, state: runtime.state, allowedRoots: config.allowedRoots },
 });
 
 const app = new Hono().route("/", api);

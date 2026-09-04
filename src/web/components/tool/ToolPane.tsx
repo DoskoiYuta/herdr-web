@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Copy } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
 import type { SubRepo } from "@contract/git";
+import type { PaneRow, Repo } from "@contract/events";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
-import { useReviewList } from "@/components/review/hooks/useReviewList";
-import { ReviewPanel, type ReviewNavigation } from "@/components/review/ReviewPanel";
-import { Badge } from "@/components/ui/badge";
+import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -17,9 +17,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { gitApi } from "@/lib/api";
+import { gitApi, reviewApi, SendTargetError } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
+import { agentPanesAt } from "@/lib/sendTargets";
+import { cn } from "@/lib/utils";
+import { STATUS_META } from "@/components/sidebar/PaneRow";
+import { PaneLayoutMiniMap } from "./PaneLayoutMiniMap";
+import { usePanePreview } from "./hooks/usePanePreview";
 
 /** A sub-repo/submodule selection never gets its own `repoChangedTick` from
  * the server — the poller only watches the *focused* worktree (see
@@ -47,10 +52,78 @@ export type ToolPaneFocusInfo = {
   agentSession: AgentSessionInfo | null;
 };
 
+/** 送信先が確定できなかったときの `POST /api/review/send` 409 レスポンスの表示文言。 */
+const SEND_TARGET_ERROR_MESSAGE: Record<SendTargetError["type"], string> = {
+  no_agent: "この worktree にエージェントがいません",
+  ambiguous_target: "送信先を選んでください",
+  invalid_target: "選んだセッションはこの worktree にいません",
+};
+
+/** Send-target picker candidate card (ToolPane's dialog, 2+ agent panes at
+ * the current worktree). Renders immediately from `pane` (the sidebar's
+ * PaneRow) and fills in workspace/tab/title, the layout minimap, and the
+ * output tail once `usePanePreview` resolves — a failed/slow preview just
+ * leaves those parts out, the card stays clickable throughout. */
+function SendTargetCard({
+  pane,
+  fetchPreview,
+  onSelect,
+}: {
+  pane: PaneRow;
+  fetchPreview: boolean;
+  onSelect: (paneId: string) => void;
+}) {
+  const { data: preview } = usePanePreview(pane.paneId, fetchPreview);
+  const meta = STATUS_META[preview?.agentStatus ?? pane.agentStatus];
+  const StatusIcon = meta.icon;
+  const workspaceLabel = preview?.workspaceLabel ?? pane.workspaceLabel;
+  const tabLabel = preview?.tabLabel ?? pane.tabLabel;
+  const title = preview?.title ?? pane.label ?? pane.tabLabel ?? pane.paneId;
+  const sessionId = preview?.agentSession?.slice(0, 8) ?? null;
+  const tail = preview?.tail ?? [];
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className="h-auto flex-col items-stretch gap-1.5 p-2 text-left whitespace-normal"
+      onClick={() => onSelect(pane.paneId)}
+    >
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span className="truncate">
+          {workspaceLabel ?? "?"} › {tabLabel ?? "?"}
+        </span>
+        {sessionId && <span className="shrink-0 font-mono">{sessionId}</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        {preview?.layout && (
+          <PaneLayoutMiniMap layout={preview.layout} candidatePaneId={pane.paneId} />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <StatusIcon
+              className={cn("size-3 shrink-0", meta.className, meta.spin && "animate-spin")}
+            />
+            <span className="truncate text-sm font-medium">{title}</span>
+          </div>
+          {tail.length > 0 && (
+            <pre className="mt-1 max-h-24 overflow-hidden rounded bg-muted/50 p-1 font-mono text-[10px] whitespace-pre-wrap break-all text-muted-foreground">
+              {tail.slice(-6).join("\n")}
+            </pre>
+          )}
+        </div>
+      </div>
+    </Button>
+  );
+}
+
 export interface ToolPaneProps {
   worktreeRoot: string | null;
   /** リポジトリキー（git-common-dir 絶対パス）。レビュー API に渡す `repo`。 */
   repoKey?: string | null;
+  /** サイドバーツリーの repos。送信先候補（`worktreeRoot` のエージェント pane）を
+   * 引くのに使う — サブリポジトリ選択中でも pane はこの worktree root に紐付く。 */
+  repos?: Repo[];
   pinned: boolean;
   onPinToggle: () => void;
   repoChangedTick: number;
@@ -155,6 +228,7 @@ function OpenPathForm({ onOpenPath }: { onOpenPath: (root: string) => void }) {
 export function ToolPane({
   worktreeRoot,
   repoKey = null,
+  repos = [],
   pinned,
   onPinToggle,
   repoChangedTick,
@@ -236,33 +310,65 @@ export function ToolPane({
     setInitialLocation(null);
   }, []);
 
-  const handleReviewNavigate = useCallback((nav: ReviewNavigation) => {
-    if ("routeToGraph" in nav) {
-      setActiveTab("graph");
-      return;
-    }
-    setComparison(nav.comparison);
-    setInitialLocation(nav.location);
-    setActiveTab("diff");
-  }, []);
-
-  // Review タブのバッジ用未解決件数（F5-8）。worktree に付いた未コミットのレビュー
-  // + HEAD から到達可能な commit 付きレビューのうち open/replied。
+  // git-graph の review 件数バッジ + 送信ボタン（F5-10）。review WS イベントと
+  // repoChangedTick の両方で tick を上げ、`staleTime: Infinity` のクエリを
+  // 明示的に再フェッチする（useGraph/useReviewList と同じ流儀）。
   const [reviewTick, setReviewTick] = useState(0);
-  const badgeQuery = useReviewList(
-    repoKey && worktreeRoot ? { repo: repoKey, worktree: worktreeRoot, all: true } : null,
-    reviewTick,
+  const countsQuery = useReviewCounts(
+    resolvedRepoKey && subRepoRoot ? { repo: resolvedRepoKey, worktree: subRepoRoot } : null,
+    reviewTick + repoChangedTick,
   );
-  const unresolvedCount = (badgeQuery.data ?? []).filter(
-    (r) => r.status === "open" || r.status === "replied",
-  ).length;
+  const reviewCounts = countsQuery.data ?? null;
+  const pendingDrafts = reviewCounts?.pendingDrafts ?? 0;
 
   useEffect(() => {
     if (!subscribeReviewEvents) return;
     return subscribeReviewEvents((event) => {
-      if (reviewEventMatchesRepo(event, repoKey)) setReviewTick((t) => t + 1);
+      if (reviewEventMatchesRepo(event, resolvedRepoKey)) setReviewTick((t) => t + 1);
     });
-  }, [subscribeReviewEvents, repoKey]);
+  }, [subscribeReviewEvents, resolvedRepoKey]);
+
+  // 送信先候補は subRepoRoot ではなく worktreeRoot（実際の git worktree）に
+  // 紐付く — pane はサブリポジトリ選択とは無関係にトップの worktree で開かれる。
+  const agentPanes = useMemo(
+    () => (worktreeRoot ? agentPanesAt(repos, worktreeRoot) : []),
+    [repos, worktreeRoot],
+  );
+
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const sendTo = useCallback(
+    async (pane?: string) => {
+      if (!resolvedRepoKey || !subRepoRoot || sendBusy) return;
+      setSendBusy(true);
+      setSendError(null);
+      try {
+        await reviewApi.send({ repo: resolvedRepoKey, worktreeRoot: subRepoRoot, pane });
+        setReviewTick((t) => t + 1);
+        setPickerOpen(false);
+      } catch (err) {
+        setSendError(
+          err instanceof SendTargetError
+            ? SEND_TARGET_ERROR_MESSAGE[err.type]
+            : "送信に失敗しました",
+        );
+      } finally {
+        setSendBusy(false);
+      }
+    },
+    [resolvedRepoKey, subRepoRoot, sendBusy],
+  );
+
+  const handleSend = useCallback(() => {
+    if (pendingDrafts === 0 || sendBusy || agentPanes.length === 0) return;
+    if (agentPanes.length === 1) {
+      void sendTo(agentPanes[0]!.paneId);
+      return;
+    }
+    setPickerOpen(true);
+  }, [pendingDrafts, sendBusy, agentPanes, sendTo]);
 
   if (!worktreeRoot) {
     return (
@@ -307,6 +413,16 @@ export function ToolPane({
               </SelectContent>
             </Select>
           )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pendingDrafts === 0 || sendBusy || agentPanes.length === 0}
+            title={agentPanes.length === 0 ? SEND_TARGET_ERROR_MESSAGE.no_agent : undefined}
+            onClick={handleSend}
+          >
+            送信 ({pendingDrafts})
+          </Button>
           <button
             type="button"
             onClick={onPinToggle}
@@ -318,6 +434,29 @@ export function ToolPane({
           </button>
         </div>
       </header>
+      {sendError && (
+        <p className="shrink-0 border-b border-border px-2 py-1 text-xs text-destructive">
+          {sendError}
+        </p>
+      )}
+
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>送信先を選択</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            {agentPanes.map((pane) => (
+              <SendTargetCard
+                key={pane.paneId}
+                pane={pane}
+                fetchPreview={pickerOpen}
+                onSelect={(paneId) => void sendTo(paneId)}
+              />
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {focusInfo && <FocusInfoBar focusInfo={focusInfo} />}
 
@@ -325,14 +464,6 @@ export function ToolPane({
         <TabsList className="mx-2 mt-2 w-fit">
           <TabsTrigger value="diff">Diff</TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
-          <TabsTrigger value="review" className="gap-1">
-            Review
-            {unresolvedCount > 0 && (
-              <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px]">
-                {unresolvedCount}
-              </Badge>
-            )}
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
@@ -378,17 +509,9 @@ export function ToolPane({
               pollMs={subRepoPollMs}
               onSelectCommit={handleSelectCommit}
               onOpenDiff={openDiffFor}
+              reviewCounts={reviewCounts}
             />
           </div>
-        </TabsContent>
-
-        <TabsContent value="review" className="min-h-0 flex-1 overflow-hidden">
-          <ReviewPanel
-            repoKey={resolvedRepoKey}
-            worktreeRoot={subRepoRoot}
-            subscribeReviewEvents={subscribeReviewEvents}
-            onNavigate={handleReviewNavigate}
-          />
         </TabsContent>
       </Tabs>
     </div>

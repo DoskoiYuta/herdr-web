@@ -80,4 +80,31 @@ describe("herdrApi", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: "internal" }, 500));
     await expect(herdrApi.closeWorkspace("w1", { confirm: true })).rejects.toThrow(/500/);
   });
+
+  test("panePreview() GETs /api/herdr/pane-preview with the pane id as a query param and parses the response", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        pane: "p1",
+        workspaceLabel: "ws-1",
+        tabLabel: "tab-1",
+        title: "claude working",
+        agent: "claude",
+        agentStatus: "working",
+        agentSession: "sess-abc12345",
+        layout: null,
+        tail: ["line 1", "line 2"],
+      }),
+    );
+    const result = await herdrApi.panePreview("p1");
+    expect(result.workspaceLabel).toBe("ws-1");
+    expect(result.tail).toEqual(["line 1", "line 2"]);
+    const [url] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/api/herdr/pane-preview");
+    expect(String(url)).toContain("pane=p1");
+  });
+
+  test("panePreview() throws on a non-ok response", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: "not-found" }, 404));
+    await expect(herdrApi.panePreview("missing")).rejects.toThrow(/404/);
+  });
 });

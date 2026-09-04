@@ -18,7 +18,10 @@ import type {
   Timer,
   WorktreeFileReader,
 } from "./ports";
+import { countsUsecase } from "./usecases/counts";
 import { createReviewUsecase } from "./usecases/create-review";
+import { deleteDraftUsecase } from "./usecases/delete-draft";
+import { editDraftUsecase } from "./usecases/edit-draft";
 import { forDiffUsecase } from "./usecases/for-diff";
 import { listVisibleUsecase } from "./usecases/list-visible";
 import { createLocks } from "./usecases/locks";
@@ -29,6 +32,7 @@ import { reanchorReviewUsecase } from "./usecases/reanchor-review";
 import { reassignRepoUsecase } from "./usecases/reassign-repo";
 import { replyToReviewUsecase } from "./usecases/reply-to-review";
 import { resolveReviewUsecase } from "./usecases/resolve-review";
+import { sendDraftsUsecase } from "./usecases/send-drafts";
 
 export type ReviewRuntimeDeps = {
   config: Pick<Config, "notify">;
@@ -83,11 +87,13 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
     (deps.herdr
       ? createHerdrNotifier({
           ...deps.herdr,
-          gitHistory,
           template: deps.config.notify.template,
           logger,
         })
-      : { notify: async () => ({ result: "no_target", pane: null }) });
+      : {
+          targetsAt: async () => [],
+          notify: async () => ({ result: "no_target" as const, pane: null }),
+        });
 
   // F4: a single shared lock registry, so a reply/resolve/manual-reanchor can never
   // race a concurrent reanchorAfterChange and lose one side's update (per-review
@@ -124,6 +130,8 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
 
   const outdateWorktree = outdateWorktreeUsecase({ repository, clock, events, locks, logger });
 
+  const listVisible = listVisibleUsecase({ repository, gitHistory });
+
   return {
     repository,
     gitHistory,
@@ -136,7 +144,6 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
         repository,
         events,
         clock,
-        scheduleNotify: (r) => notifyScheduler.schedule(r),
         // F3: a stale createdAtHead (poller missed a commit, or HEAD moved between
         // loading the diff and the POST landing) is commit-bound immediately rather
         // than waiting for the next repo-changed tick.
@@ -155,7 +162,7 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
       }),
       replyToReview: replyToReviewUsecase({ repository, events, clock, locks }),
       resolveReview: resolveReviewUsecase({ repository, events, clock, locks }),
-      listVisible: listVisibleUsecase({ repository, gitHistory }),
+      listVisible,
       forDiff: forDiffUsecase({ repository }),
       reanchorReview: reanchorReviewUsecase({
         repository,
@@ -166,6 +173,18 @@ export function createReviewRuntime(deps: ReviewRuntimeDeps) {
         events,
         locks,
       }),
+      editDraft: editDraftUsecase({ repository, events, clock, locks }),
+      deleteDraft: deleteDraftUsecase({ repository, events, clock, locks }),
+      sendDrafts: sendDraftsUsecase({
+        repository,
+        events,
+        clock,
+        notifyScheduler,
+        notifier,
+        listVisible,
+        locks,
+      }),
+      counts: countsUsecase({ repository, listVisible }),
       notifyScheduler,
     },
     repoRoutes: { reassignRepo: reassignRepoUsecase({ repository }) },

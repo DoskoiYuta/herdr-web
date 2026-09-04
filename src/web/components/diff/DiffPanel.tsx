@@ -440,6 +440,11 @@ export function DiffPanel({
   }, [repo, repoChangedTick]);
 
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
+  // CodeView reports the selection from the first mousedown; the composer
+  // must not appear (and shift the layout under the pointer) until mouseup.
+  const [selecting, setSelecting] = useState(false);
+  const handleSelectionStart = useCallback(() => setSelecting(true), []);
+  const handleSelectionEnd = useCallback(() => setSelecting(false), []);
   const [matchesByPath, setMatchesByPath] = useState<Map<string, ForDiffMatch[]>>(new Map());
 
   // `repo`/`from`/`to` changes remount this whole component (ToolPane keys
@@ -505,10 +510,14 @@ export function DiffPanel({
   }, [subscribeReviewEvents, refreshMatches, repoKey]);
 
   const composerTarget = useMemo(() => {
-    if (!selection) return null;
+    if (!selection || selecting) return null;
     const side: Side = selection.range.side ? fromAnnotationSide(selection.range.side) : "new";
-    return { id: selection.id, side, lineNumber: selection.range.start };
-  }, [selection]);
+    // @pierre/diffs gives start/end in drag order, which is reversed when
+    // the user drags upward — normalize so start <= end before anchoring.
+    const start = Math.min(selection.range.start, selection.range.end);
+    const end = Math.max(selection.range.start, selection.range.end);
+    return { id: selection.id, side, startLine: start, endLine: end, lineNumber: end };
+  }, [selection, selecting]);
 
   const cancelComposer = useCallback(() => setSelection(null), []);
 
@@ -522,13 +531,18 @@ export function DiffPanel({
       if (!item) return;
       const fileDiff = item.fileDiff;
       const lines = sideLines(fileDiff)[composerTarget.side];
-      const index0 = lineNumberToIndex(fileDiff, composerTarget.side, composerTarget.lineNumber);
-      if (index0 === null) {
+      const startIndex0 = lineNumberToIndex(
+        fileDiff,
+        composerTarget.side,
+        composerTarget.startLine,
+      );
+      const endIndex0 = lineNumberToIndex(fileDiff, composerTarget.side, composerTarget.endLine);
+      if (startIndex0 === null || endIndex0 === null) {
         showToast("行を特定できませんでした");
         return;
       }
       try {
-        const anchor = await buildAnchor(lines, index0, composerTarget.side);
+        const anchor = await buildAnchor(lines, startIndex0, endIndex0, composerTarget.side);
         await reviewApi.create({
           repo: repoKey,
           worktreeRoot: repo,
@@ -596,6 +610,30 @@ export function DiffPanel({
     [refreshMatches, showToast],
   );
 
+  const handleEditDraft = useCallback(
+    async (id: string, seq: number, body: string) => {
+      try {
+        await reviewApi.editDraft(id, seq, body);
+        refreshMatches();
+      } catch {
+        showToast("下書きの編集に失敗しました");
+      }
+    },
+    [refreshMatches, showToast],
+  );
+
+  const handleDeleteDraft = useCallback(
+    async (id: string, seq: number) => {
+      try {
+        await reviewApi.deleteDraft(id, seq);
+        refreshMatches();
+      } catch {
+        showToast("下書きの削除に失敗しました");
+      }
+    },
+    [refreshMatches, showToast],
+  );
+
   // CodeView（@pierre/diffs/react）は item の `id:version` が変わったときしか
   // annotation のポータルを作り直さない。annotation の集合が変わったら version を
   // 上げないと、コンポーザーもレビュースレッドも画面に出ない。
@@ -634,10 +672,13 @@ export function DiffPanel({
       return (
         <ReviewsAnnotation
           matches={meta.matches}
+          ranges={meta.ranges}
           onReply={handleReply}
           onResolve={handleResolve}
           onReanchor={handleReanchor}
           onResend={handleResend}
+          onEditDraft={handleEditDraft}
+          onDeleteDraft={handleDeleteDraft}
         />
       );
     },
@@ -649,6 +690,8 @@ export function DiffPanel({
       handleResolve,
       handleReanchor,
       handleResend,
+      handleEditDraft,
+      handleDeleteDraft,
     ],
   );
 
@@ -743,6 +786,8 @@ export function DiffPanel({
               onScrollTopChange={handleScrollTopChange}
               selectedLines={selection}
               onSelectedLinesChange={setSelection}
+              onLineSelectionStart={handleSelectionStart}
+              onLineSelectionEnd={handleSelectionEnd}
               onToggleCollapse={toggleCollapse}
               renderAnnotation={renderAnnotation}
             />

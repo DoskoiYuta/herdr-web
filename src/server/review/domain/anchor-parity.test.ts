@@ -12,36 +12,43 @@ import { buildAnchor as buildAnchorServer } from "./anchor";
 describe("anchor parity: web buildAnchor === server buildAnchor", () => {
   test("a line in the middle of a file, with full before/after context", async () => {
     const lines = ["one", "two", "three", "four", "five", "six", "seven"];
-    const server = buildAnchorServer(lines, 3, "new");
-    const web = await buildAnchorWeb(lines, 3, "new");
+    const server = buildAnchorServer(lines, 3, 3, "new");
+    const web = await buildAnchorWeb(lines, 3, 3, "new");
     expect(web).toEqual(server);
   });
 
   test("the first line (no before context)", async () => {
     const lines = ["only", "second", "third"];
-    const server = buildAnchorServer(lines, 0, "old");
-    const web = await buildAnchorWeb(lines, 0, "old");
+    const server = buildAnchorServer(lines, 0, 0, "old");
+    const web = await buildAnchorWeb(lines, 0, 0, "old");
     expect(web).toEqual(server);
   });
 
   test("the last line (no after context)", async () => {
     const lines = ["a", "b", "c"];
-    const server = buildAnchorServer(lines, 2, "new");
-    const web = await buildAnchorWeb(lines, 2, "new");
+    const server = buildAnchorServer(lines, 2, 2, "new");
+    const web = await buildAnchorWeb(lines, 2, 2, "new");
     expect(web).toEqual(server);
   });
 
   test("trailing whitespace and \\r are normalized identically", async () => {
     const lines = ["foo  \t", "bar\r", "baz   "];
-    const server = buildAnchorServer(lines, 1, "old");
-    const web = await buildAnchorWeb(lines, 1, "old");
+    const server = buildAnchorServer(lines, 1, 1, "old");
+    const web = await buildAnchorWeb(lines, 1, 1, "old");
     expect(web).toEqual(server);
   });
 
   test("a single-line file", async () => {
     const lines = ["lonely"];
-    const server = buildAnchorServer(lines, 0, "new");
-    const web = await buildAnchorWeb(lines, 0, "new");
+    const server = buildAnchorServer(lines, 0, 0, "new");
+    const web = await buildAnchorWeb(lines, 0, 0, "new");
+    expect(web).toEqual(server);
+  });
+
+  test("a multi-line range selection", async () => {
+    const lines = ["one", "two", "three", "four", "five"];
+    const server = buildAnchorServer(lines, 1, 3, "new");
+    const web = await buildAnchorWeb(lines, 1, 3, "new");
     expect(web).toEqual(server);
   });
 });

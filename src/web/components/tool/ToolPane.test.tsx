@@ -4,27 +4,43 @@ import type { ReactElement } from "react";
 import { useEffect } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { SubReposResponse } from "@contract/git";
-import type { Review } from "@contract/review";
+import type { PaneRow, Repo } from "@contract/events";
+import type { ReviewCountsResponse } from "@contract/review";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { ToolPane } from "./ToolPane";
 
-function review(overrides: Partial<Review> = {}): Review {
+function counts(overrides: Partial<ReviewCountsResponse> = {}): ReviewCountsResponse {
+  return { byCommit: {}, worktree: { unresolved: 0, drafts: 0 }, pendingDrafts: 0, ...overrides };
+}
+
+function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
-    id: "r1",
-    repo: "/repo/.git",
-    target: { kind: "worktree", root: "/repo" },
-    worktreeRoot: "/repo",
-    path: "a.txt",
-    anchor: { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" },
-    createdAtHead: "abc",
-    viewedAs: { from: "HEAD", to: "WORKTREE" },
-    status: "open",
-    thread: [{ seq: 0, author: "user", body: "check this", at: "t", agentSession: null }],
-    notify: { state: "pending", pane: null, at: null },
-    createdAt: "t",
-    updatedAt: "t",
+    paneId: "p1",
+    workspaceId: "w1",
+    workspaceLabel: "workspace 1",
+    tabId: "t1",
+    tabLabel: "tab 1",
+    label: null,
+    agent: "claude",
+    agentStatus: "idle",
+    terminalTitleStripped: null,
+    focused: false,
+    cwd: null,
+    foregroundCwd: null,
     ...overrides,
   };
+}
+
+/** `repos` fixture: a single repo with one worktree at `root` holding `panes`. */
+function reposWithPanes(root: string, panes: PaneRow[]): Repo[] {
+  return [
+    {
+      key: `${root}/.git`,
+      name: "project",
+      worktrees: [{ root, branch: "main", isMain: true, panes }],
+      counts: { blocked: 0, done: 0 },
+    },
+  ];
 }
 
 // Radix `Tabs.Trigger` activates on `mousedown`, not `click` (see
@@ -34,8 +50,8 @@ function selectTab(name: string) {
   fireEvent.mouseDown(screen.getByRole("tab", { name }));
 }
 
-// ToolPane's unresolved-review badge uses useReviewList (a TanStack Query
-// hook), so every render needs a QueryClientProvider ancestor.
+// ToolPane's review-counts query is a TanStack Query hook, so every render
+// needs a QueryClientProvider ancestor.
 function render(ui: ReactElement) {
   const client = new QueryClient();
   return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
@@ -55,48 +71,49 @@ vi.mock("@/components/diff/DiffPanel", () => ({
   },
 }));
 
-vi.mock("@/components/review/ReviewPanel", () => ({
-  ReviewPanel: ({
-    repoKey,
-    worktreeRoot,
-    onNavigate,
-  }: {
-    repoKey: string | null;
-    worktreeRoot: string;
-    onNavigate: (nav: { routeToGraph: true }) => void;
-  }) => (
-    <button
-      type="button"
-      data-testid="review-panel-stub"
-      onClick={() => onNavigate({ routeToGraph: true })}
-    >
-      review:{worktreeRoot}:{repoKey ?? "null"}
-    </button>
-  ),
-}));
-
 vi.mock("@/components/graph/GraphPanel", () => ({
   GraphPanel: ({
     repo,
     onSelectCommit,
+    reviewCounts,
   }: {
     repo: string;
     onSelectCommit: (range: { from: string; to: string } | null) => void;
+    reviewCounts?: ReviewCountsResponse | null;
   }) => (
     <button
       type="button"
       data-testid="graph-panel-stub"
       onClick={() => onSelectCommit({ from: "aaa111", to: "bbb222" })}
     >
-      graph:{repo}
+      graph:{repo}:{reviewCounts ? reviewCounts.pendingDrafts : "null"}
     </button>
   ),
 }));
 
-const reviewListMock = vi.fn(async (..._args: unknown[]) => []);
+const countsMock = vi.fn(async (..._args: unknown[]) => counts());
+const sendMock = vi.fn(async (..._args: unknown[]) => ({ reviews: [] }));
 const subreposMock = vi.fn(async (repo: string): Promise<SubReposResponse> => ({
   repos: [{ id: "", name: repo.split("/").pop() ?? repo, root: repo, kind: "root" }],
 }));
+// The picker dialog always fetches a preview per candidate — default to a
+// permanently-pending promise so tests that don't care about the preview
+// (and never open the picker) aren't affected; tests that do open it set
+// their own resolved/rejected value first.
+const panePreviewMock = vi.fn(async (..._args: [string]) => new Promise(() => {}));
+
+const { SendTargetError } = vi.hoisted(() => {
+  class SendTargetErrorImpl extends Error {
+    type: "no_agent" | "ambiguous_target" | "invalid_target";
+    targets?: string[];
+    constructor(type: "no_agent" | "ambiguous_target" | "invalid_target", targets?: string[]) {
+      super(type);
+      this.type = type;
+      this.targets = targets;
+    }
+  }
+  return { SendTargetError: SendTargetErrorImpl };
+});
 
 vi.mock("@/lib/api", () => ({
   gitApi: {
@@ -111,8 +128,13 @@ vi.mock("@/lib/api", () => ({
     subrepos: (...args: [string]) => subreposMock(...args),
   },
   reviewApi: {
-    list: (...args: unknown[]) => reviewListMock(...args),
+    counts: (...args: unknown[]) => countsMock(...args),
+    send: (...args: unknown[]) => sendMock(...args),
   },
+  herdrApi: {
+    panePreview: (...args: [string]) => panePreviewMock(...args),
+  },
+  SendTargetError,
 }));
 
 describe("ToolPane", () => {
@@ -203,7 +225,7 @@ describe("ToolPane", () => {
     expect(onOpenPath).toHaveBeenCalledWith("/tmp/repo");
   });
 
-  test("shows the worktree header, tabs, and pin toggle when a worktree is selected", () => {
+  test("shows the worktree header, tabs (no Review tab), and pin toggle when a worktree is selected", () => {
     render(
       <ToolPane
         worktreeRoot="/Users/dev/project"
@@ -217,7 +239,7 @@ describe("ToolPane", () => {
     expect(screen.getByText("/Users/dev/project")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Diff" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Graph" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Review" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project:WORKTREE:HEAD",
     );
@@ -342,50 +364,269 @@ describe("ToolPane", () => {
     );
   });
 
-  test("a root-commit review navigation (routeToGraph) switches to the Graph tab instead of Diff", () => {
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-      />,
-    );
-    selectTab("Review");
-    fireEvent.click(screen.getByTestId("review-panel-stub"));
-    expect(screen.getByTestId("graph-panel-stub")).toBeInTheDocument();
-    expect(screen.queryByTestId("diff-panel-stub")).not.toBeInTheDocument();
-  });
-
-  test("a review WS event for a different repo does not refetch the unresolved-count badge", async () => {
-    let emit: ((event: ReviewEvent) => void) | undefined;
-    const subscribeReviewEvents = vi.fn((cb: (event: ReviewEvent) => void) => {
-      emit = cb;
-      return () => {};
+  describe("review counts + send button", () => {
+    test("passes reviewCounts fetched via reviewApi.counts down to GraphPanel", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 3 }));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      selectTab("Graph");
+      await waitFor(() =>
+        expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
+          "graph:/Users/dev/project:3",
+        ),
+      );
     });
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        repoKey="/Users/dev/project/.git"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-        subscribeReviewEvents={subscribeReviewEvents}
-      />,
-    );
-    await waitFor(() => expect(reviewListMock).toHaveBeenCalledTimes(1));
 
-    emit?.({ type: "review", event: "created", review: review({ repo: "/other/.git" }) });
-    expect(reviewListMock).toHaveBeenCalledTimes(1);
-
-    emit?.({
-      type: "review",
-      event: "created",
-      review: review({ repo: "/Users/dev/project/.git" }),
+    test("send button shows pendingDrafts and is disabled at 0", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 0 }));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      const button = await screen.findByRole("button", { name: "送信 (0)" });
+      expect(button).toBeDisabled();
     });
-    await waitFor(() => expect(reviewListMock).toHaveBeenCalledTimes(2));
+
+    test("send button is enabled with a nonzero count and, with a single agent pane, POSTs /api/review/send with its pane id", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          repos={reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })])}
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      const button = await screen.findByRole("button", { name: "送信 (2)" });
+      expect(button).not.toBeDisabled();
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(sendMock).toHaveBeenCalledWith({
+          repo: "/Users/dev/project/.git",
+          worktreeRoot: "/Users/dev/project",
+          pane: "claude-1",
+        }),
+      );
+    });
+
+    test("disables the send button and shows a hint when the worktree has no agent pane", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          repos={reposWithPanes("/Users/dev/project", [pane({ agent: null })])}
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      const button = await screen.findByRole("button", { name: "送信 (2)" });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute("title", "この worktree にエージェントがいません");
+    });
+
+    test("with two agent panes, clicking send opens a picker; choosing the second pane sends with its id", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          repos={reposWithPanes("/Users/dev/project", [
+            pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
+            pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
+          ])}
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      const button = await screen.findByRole("button", { name: "送信 (1)" });
+      fireEvent.click(button);
+
+      expect(await screen.findByText("送信先を選択")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /ws-2.*second/s }));
+
+      await waitFor(() =>
+        expect(sendMock).toHaveBeenCalledWith({
+          repo: "/Users/dev/project/.git",
+          worktreeRoot: "/Users/dev/project",
+          pane: "claude-2",
+        }),
+      );
+    });
+
+    test("renders one card per candidate with workspace/tab/title and the tail lines from a fetched preview", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
+      panePreviewMock.mockImplementation(async (paneId) => ({
+        pane: paneId,
+        workspaceLabel: `preview-ws-${paneId}`,
+        tabLabel: `preview-tab-${paneId}`,
+        title: `preview-title-${paneId}`,
+        agent: "claude",
+        agentStatus: "working",
+        agentSession: "session-abcdef123456",
+        layout: null,
+        tail: ["doing thing A", "doing thing B"],
+      }));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          repos={reposWithPanes("/Users/dev/project", [
+            pane({ paneId: "claude-1" }),
+            pane({ paneId: "claude-2", agent: "codex" }),
+          ])}
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "送信 (1)" }));
+      expect(await screen.findByText("送信先を選択")).toBeInTheDocument();
+
+      const card = await screen.findByRole("button", {
+        name: /preview-ws-claude-1.*preview-tab-claude-1.*preview-title-claude-1/s,
+      });
+      expect(card).toHaveTextContent("doing thing A");
+      expect(card).toHaveTextContent("doing thing B");
+    });
+
+    test("a failed preview fetch still leaves the card usable — clicking it sends to that pane", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
+      panePreviewMock.mockRejectedValue(new Error("boom"));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          repos={reposWithPanes("/Users/dev/project", [
+            pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
+            pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
+          ])}
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "送信 (1)" }));
+      const card = await screen.findByRole("button", { name: /ws-1.*first/s });
+      fireEvent.click(card);
+
+      await waitFor(() =>
+        expect(sendMock).toHaveBeenCalledWith({
+          repo: "/Users/dev/project/.git",
+          worktreeRoot: "/Users/dev/project",
+          pane: "claude-1",
+        }),
+      );
+    });
+
+    test("shows a readable message when the server answers 409 no_agent", async () => {
+      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
+      sendMock.mockRejectedValueOnce(new SendTargetError("no_agent"));
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          repos={reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })])}
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+        />,
+      );
+      const button = await screen.findByRole("button", { name: "送信 (2)" });
+      fireEvent.click(button);
+
+      expect(await screen.findByText("この worktree にエージェントがいません")).toBeInTheDocument();
+    });
+
+    test("a review WS event for a different repo does not refetch review counts", async () => {
+      let emit: ((event: ReviewEvent) => void) | undefined;
+      const subscribeReviewEvents = vi.fn((cb: (event: ReviewEvent) => void) => {
+        emit = cb;
+        return () => {};
+      });
+      render(
+        <ToolPane
+          worktreeRoot="/Users/dev/project"
+          repoKey="/Users/dev/project/.git"
+          pinned={false}
+          onPinToggle={vi.fn()}
+          repoChangedTick={0}
+          onOpenPath={vi.fn()}
+          subscribeReviewEvents={subscribeReviewEvents}
+        />,
+      );
+      await waitFor(() => expect(countsMock).toHaveBeenCalledTimes(1));
+
+      emit?.({
+        type: "review",
+        event: "created",
+        review: {
+          id: "r1",
+          repo: "/other/.git",
+          target: { kind: "worktree", root: "/other" },
+          worktreeRoot: "/other",
+          path: "a.txt",
+          anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
+          createdAtHead: "abc",
+          viewedAs: { from: "HEAD", to: "WORKTREE" },
+          status: "open",
+          thread: [
+            { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
+          ],
+          notify: { state: "pending", pane: null, at: null },
+          createdAt: "t",
+          updatedAt: "t",
+        },
+      });
+      expect(countsMock).toHaveBeenCalledTimes(1);
+
+      emit?.({
+        type: "review",
+        event: "created",
+        review: {
+          id: "r2",
+          repo: "/Users/dev/project/.git",
+          target: { kind: "worktree", root: "/Users/dev/project" },
+          worktreeRoot: "/Users/dev/project",
+          path: "a.txt",
+          anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
+          createdAtHead: "abc",
+          viewedAs: { from: "HEAD", to: "WORKTREE" },
+          status: "open",
+          thread: [
+            { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
+          ],
+          notify: { state: "pending", pane: null, at: null },
+          createdAt: "t",
+          updatedAt: "t",
+        },
+      });
+      await waitFor(() => expect(countsMock).toHaveBeenCalledTimes(2));
+    });
   });
 
   describe("sub-repo switcher", () => {
@@ -405,7 +646,7 @@ describe("ToolPane", () => {
       ).not.toBeInTheDocument();
     });
 
-    test("shows the select with >1 entries; switching updates the repo/repoKey passed to Diff/Graph/Review panels, and the header path", async () => {
+    test("shows the select with >1 entries; switching updates the repo/repoKey passed to Diff/Graph panels, and the header path", async () => {
       subreposMock.mockResolvedValueOnce({
         repos: [
           { id: "", name: "project", root: "/Users/dev/project", kind: "root" as const },
@@ -449,15 +690,6 @@ describe("ToolPane", () => {
       selectTab("Graph");
       expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
         "graph:/Users/dev/project/vendor/lib",
-      );
-
-      selectTab("Review");
-      // repoKey is re-resolved via gitApi.root(subRepoRoot) instead of the
-      // focus repoKey, since the sub-repo has its own git-common-dir.
-      await waitFor(() =>
-        expect(screen.getByTestId("review-panel-stub")).toHaveTextContent(
-          "review:/Users/dev/project/vendor/lib:/Users/dev/project/vendor/lib/.git",
-        ),
       );
     });
 

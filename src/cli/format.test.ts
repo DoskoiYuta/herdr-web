@@ -18,7 +18,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
     path: "src/foo.ts",
     anchor: {
       side: "new",
-      line: "  return 1;",
+      lines: ["  return 1;"],
       before: ["function foo() {"],
       after: ["}"],
       lineHint: 42,
@@ -34,6 +34,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
         body: "why is this here?",
         at: "2026-01-01T00:00:00Z",
         agentSession: null,
+        draft: false,
       },
     ],
     notify: { state: "none", pane: null, at: null },
@@ -45,7 +46,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
 
 describe("shortId", () => {
   test("truncates to 8 chars", () => {
-    expect(shortId("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toBe("01ARZ3ND");
+    expect(shortId("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toBe("Q69G5FAV");
   });
 });
 
@@ -63,14 +64,16 @@ describe("formatTarget", () => {
 describe("formatReviewLine", () => {
   test("matches the spec layout", () => {
     const line = formatReviewLine(makeReview());
-    expect(line).toBe("01ARZ3ND open src/foo.ts:42 [worktree] why is this here?");
+    expect(line).toBe("Q69G5FAV open src/foo.ts:42 [worktree] why is this here?");
   });
 
   test("truncates the first thread body to 60 chars and collapses whitespace", () => {
     const longBody = "x".repeat(80);
     const line = formatReviewLine(
       makeReview({
-        thread: [{ seq: 0, author: "user", body: longBody, at: "t", agentSession: null }],
+        thread: [
+          { seq: 0, author: "user", body: longBody, at: "t", agentSession: null, draft: false },
+        ],
       }),
     );
     expect(line.endsWith("x".repeat(60))).toBe(true);
@@ -78,7 +81,23 @@ describe("formatReviewLine", () => {
 
   test("empty thread yields empty tail, no crash", () => {
     const line = formatReviewLine(makeReview({ thread: [] }));
-    expect(line).toBe("01ARZ3ND open src/foo.ts:42 [worktree] ");
+    expect(line).toBe("Q69G5FAV open src/foo.ts:42 [worktree] ");
+  });
+
+  test("shows a range when the anchor spans multiple lines", () => {
+    const line = formatReviewLine(
+      makeReview({
+        anchor: {
+          side: "new",
+          lines: ["  return 1;", "  return 2;", "  return 3;"],
+          before: ["function foo() {"],
+          after: ["}"],
+          lineHint: 42,
+          hash: "deadbeef",
+        },
+      }),
+    );
+    expect(line).toBe("Q69G5FAV open src/foo.ts:42-44 [worktree] why is this here?");
   });
 });
 
@@ -105,6 +124,23 @@ describe("formatReviewShow", () => {
     expect(out).toContain("return 1;");
     expect(out).toContain("[user] 2026-01-01T00:00:00Z");
     expect(out).toContain("why is this here?");
+  });
+
+  test("prints every selected line of a multi-line anchor with the > prefix", () => {
+    const out = formatReviewShow(
+      makeReview({
+        anchor: {
+          side: "new",
+          lines: ["  return 1;", "  return 2;"],
+          before: ["function foo() {"],
+          after: ["}"],
+          lineHint: 42,
+          hash: "deadbeef",
+        },
+      }),
+    );
+    expect(out).toContain("  >   return 1;");
+    expect(out).toContain("  >   return 2;");
   });
 });
 

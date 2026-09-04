@@ -11,7 +11,7 @@ import {
 } from "./testing/fakes";
 import { createReviewRuntime } from "./runtime";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 
 function build() {
   const db: Db = openDb(":memory:");

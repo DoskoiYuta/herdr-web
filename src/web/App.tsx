@@ -167,6 +167,7 @@ export function App() {
           <ToolPane
             worktreeRoot={worktreeRoot}
             repoKey={worktreeRoot ? repoKey : null}
+            repos={state.repos}
             pinned={pinned}
             onPinToggle={handlePinToggle}
             repoChangedTick={repoChangedTick}

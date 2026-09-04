@@ -4,7 +4,8 @@ import type { VirtualizerOptions } from "@tanstack/react-virtual";
 import { layoutGraph } from "./layout/layout";
 import { GEOM } from "./layout/path";
 import type { Commit, Ref } from "@contract/git";
-import GraphRow from "./GraphRow";
+import type { ReviewCountsResponse } from "@contract/review";
+import GraphRow, { UNCOMMITTED_HASH } from "./GraphRow";
 
 export interface GraphViewHandle {
   scrollToIndex(index: number, opts?: { align?: "start" | "center" | "end" | "auto" }): void;
@@ -21,6 +22,8 @@ export interface GraphViewProps {
   repo?: string;
   /** Note shown in the expanded detail block for the selected row (e.g. root commit). */
   detailNote?: string;
+  /** F5-10: git-graph の review 件数バッジ用集計。 */
+  reviewCounts?: ReviewCountsResponse | null;
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
@@ -43,6 +46,7 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
     detailOpen = false,
     repo = "",
     detailNote,
+    reviewCounts = null,
     onSelect,
     onCloseDetail,
     onOpenDiff,
@@ -126,6 +130,11 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
                 expanded={expanded}
                 repo={repo}
                 detailNote={detailNote}
+                reviewCount={
+                  (row.hash === UNCOMMITTED_HASH
+                    ? reviewCounts?.worktree
+                    : reviewCounts?.byCommit[row.hash]) ?? undefined
+                }
                 onSelect={onSelect}
                 onCloseDetail={onCloseDetail}
                 onOpenDiff={onOpenDiff}

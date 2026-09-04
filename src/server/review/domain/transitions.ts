@@ -33,6 +33,7 @@ export function createReview(input: CreateReviewInput, clock: Clock): Review {
     body: input.body,
     at: now,
     agentSession: input.agentSession ?? null,
+    draft: true,
   };
   return {
     id: input.id,
@@ -45,7 +46,8 @@ export function createReview(input: CreateReviewInput, clock: Clock): Review {
     viewedAs: input.viewedAs,
     status: "open",
     thread: [entry],
-    notify: { state: "pending", pane: null, at: null },
+    // まだ何も送信されていない — send() が呼ばれるまで通知対象ではない。
+    notify: { state: "none", pane: null, at: null },
     createdAt: now,
     updatedAt: now,
   };
@@ -53,52 +55,123 @@ export function createReview(input: CreateReviewInput, clock: Clock): Review {
 
 export type ReplyInput = { author: EntryAuthor; body: string; agentSession?: string | null };
 
+/** seq は削除で欠番になっても再利用しない（クライアントが持つ seq が別エントリを指さないため） */
+function nextSeq(review: Review): number {
+  return review.thread.reduce((max, e) => Math.max(max, e.seq + 1), 0);
+}
+
+function hasSentUserEntry(review: Review): boolean {
+  return review.thread.some((e) => e.author === "user" && !e.draft);
+}
+
 /**
- * 返信による状態遷移。[status, author] の全マスを網羅する:
- *  - open|replied  + agent -> replied
- *  - open|replied  + user  -> open
- *  - resolved      + user  -> open (reopen)
- *  - resolved      + agent -> error not_repliable
- *  - outdated      + user  -> outdated のまま (append only)
- *  - outdated      + agent -> error not_repliable
+ * 返信による状態遷移。
+ *  - author=user: 下書きとして追加するだけ。status は一切変えない
+ *    （送信は send() の役目）。どの status でも常に成功する。
+ *  - author=agent: 即送信済みとして追加する。送信済みの user エントリが
+ *    一つも無ければ agent には review が見えていないはずなので not_repliable。
+ *    [status, agent] の遷移: open|replied -> replied、resolved|outdated -> not_repliable。
  */
 export function reply(
   review: Review,
   input: ReplyInput,
   clock: Clock,
 ): Result<Review, DomainError> {
-  const nextStatus = match<[ReviewStatus, EntryAuthor], ReviewStatus | null>([
-    review.status,
-    input.author,
-  ])
-    .with(["open", "agent"], () => "replied" as const)
-    .with(["replied", "agent"], () => "replied" as const)
-    .with(["open", "user"], () => "open" as const)
-    .with(["replied", "user"], () => "open" as const)
-    .with(["resolved", "user"], () => "open" as const)
-    .with(["resolved", "agent"], () => null)
-    .with(["outdated", "user"], () => "outdated" as const)
-    .with(["outdated", "agent"], () => null)
+  const now = clock.now().toISOString();
+
+  if (input.author === "user") {
+    const entry: Entry = {
+      seq: nextSeq(review),
+      author: "user",
+      body: input.body,
+      at: now,
+      agentSession: input.agentSession ?? null,
+      draft: true,
+    };
+    return ok({ ...review, thread: [...review.thread, entry], updatedAt: now });
+  }
+
+  if (!hasSentUserEntry(review)) {
+    return err(domainError("not_repliable", "agent cannot reply to a review with no sent entry"));
+  }
+
+  const nextStatus = match<ReviewStatus, ReviewStatus | null>(review.status)
+    .with("open", () => "replied" as const)
+    .with("replied", () => "replied" as const)
+    .with("resolved", () => null)
+    .with("outdated", () => null)
     .exhaustive();
 
   if (nextStatus === null) {
-    return err(
-      domainError("not_repliable", `${input.author} cannot reply to a ${review.status} review`),
-    );
+    return err(domainError("not_repliable", `agent cannot reply to a ${review.status} review`));
   }
 
-  const now = clock.now().toISOString();
   const entry: Entry = {
-    seq: review.thread.length,
-    author: input.author,
+    seq: nextSeq(review),
+    author: "agent",
     body: input.body,
     at: now,
     agentSession: input.agentSession ?? null,
+    draft: false,
   };
   return ok({
     ...review,
     status: nextStatus,
     thread: [...review.thread, entry],
+    updatedAt: now,
+  });
+}
+
+/** `PUT /api/review/:id/draft/:seq` の本文差し替え。draft でないエントリは触れない。 */
+export function editDraft(
+  review: Review,
+  seq: number,
+  body: string,
+  clock: Clock,
+): Result<Review, DomainError> {
+  const entry = review.thread.find((e) => e.seq === seq);
+  if (!entry || !entry.draft) {
+    return err(domainError("not_draft", `no draft entry at seq ${seq}`));
+  }
+  const now = clock.now().toISOString();
+  const thread = review.thread.map((e) => (e.seq === seq ? { ...e, body, at: now } : e));
+  return ok({ ...review, thread, updatedAt: now });
+}
+
+/**
+ * `DELETE /api/review/:id/draft/:seq`。draft でないエントリは触れない。残りの seq はそのまま。
+ * 結果として thread が空になった場合の review 自体の削除は呼び出し側（usecase）の責務。
+ */
+export function deleteDraft(
+  review: Review,
+  seq: number,
+  clock: Clock,
+): Result<Review, DomainError> {
+  const entry = review.thread.find((e) => e.seq === seq);
+  if (!entry || !entry.draft) {
+    return err(domainError("not_draft", `no draft entry at seq ${seq}`));
+  }
+  const thread = review.thread.filter((e) => e.seq !== seq);
+  return ok({ ...review, thread, updatedAt: clock.now().toISOString() });
+}
+
+/**
+ * `POST /api/review/send` の対象 1 件分。すべての下書きエントリを送信済みにし、
+ * status を確定する: open/replied/resolved -> open（resolved は send で再オープン
+ * される）、outdated -> outdated のまま。下書きが一つも無ければ no_drafts。
+ */
+export function send(review: Review, clock: Clock): Result<Review, DomainError> {
+  if (!review.thread.some((e) => e.draft)) {
+    return err(domainError("no_drafts", "review has no draft entries to send"));
+  }
+  const now = clock.now().toISOString();
+  const thread = review.thread.map((e) => (e.draft ? { ...e, draft: false, at: now } : e));
+  const status: ReviewStatus = review.status === "outdated" ? "outdated" : "open";
+  return ok({
+    ...review,
+    thread,
+    status,
+    notify: { state: "pending", pane: null, at: null },
     updatedAt: now,
   });
 }

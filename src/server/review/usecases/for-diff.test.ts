@@ -17,7 +17,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
         target: { kind: "worktree", root: "/repo" },
         worktreeRoot: "/repo",
         path: "a.ts",
-        anchor: buildAnchor(NEW_LINES, 1, "new"),
+        anchor: buildAnchor(NEW_LINES, 1, 1, "new"),
         createdAtHead: "head0",
         viewedAs: { from: "WORKTREE", to: "WORKTREE" },
         body: "why?",

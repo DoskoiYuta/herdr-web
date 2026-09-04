@@ -18,6 +18,7 @@ export type ForDiffDeps = { repository: ReviewRepository };
 export type ForDiffMatch = {
   review: Review;
   line: number;
+  span: number;
   confidence: AnchorLocation["confidence"];
 };
 
@@ -43,7 +44,9 @@ export function forDiffUsecase(deps: ForDiffDeps) {
         for (const review of reviews) {
           const lines = review.anchor.side === "old" ? input.sideLines.old : input.sideLines.new;
           const loc = locateAnchor(review.anchor, lines);
-          if (loc) matches.push({ review, line: loc.line, confidence: loc.confidence });
+          if (loc) {
+            matches.push({ review, line: loc.line, span: loc.span, confidence: loc.confidence });
+          }
         }
         return matches;
       })(),

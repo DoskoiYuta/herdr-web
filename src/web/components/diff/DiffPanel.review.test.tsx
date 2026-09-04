@@ -14,9 +14,19 @@ vi.mock("@pierre/diffs/react", () => {
   // biome-ignore lint: test double
   const CodeView = forwardRef((props: any, ref: any) => {
     useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
-    const { containerRef, items, onSelectedLinesChange, renderAnnotation } = props;
+    const { containerRef, items, options, onSelectedLinesChange, renderAnnotation } = props;
     return (
       <div ref={containerRef} data-testid="scroll-root">
+        <button
+          type="button"
+          data-testid="drag-start"
+          onClick={() => options?.onLineSelectionStart?.({ start: 2, side: "additions", end: 2 })}
+        />
+        <button
+          type="button"
+          data-testid="drag-end"
+          onClick={() => options?.onLineSelectionEnd?.({ start: 2, side: "additions", end: 2 })}
+        />
         <button
           type="button"
           data-testid="select-new-line-2"
@@ -24,6 +34,18 @@ vi.mock("@pierre/diffs/react", () => {
             onSelectedLinesChange?.({
               id: items[0]?.id,
               range: { start: 2, side: "additions", end: 2 },
+            })
+          }
+        />
+        <button
+          type="button"
+          data-testid="select-new-lines-3-to-2-reversed"
+          onClick={() =>
+            // Simulates dragging upward: @pierre/diffs reports start/end in
+            // drag order, so start (3) > end (2) here.
+            onSelectedLinesChange?.({
+              id: items[0]?.id,
+              range: { start: 3, side: "additions", end: 2 },
             })
           }
         />
@@ -67,6 +89,8 @@ vi.mock("@/lib/api", () => ({
     resolve: (...args: unknown[]) => resolveMock(...args),
     reanchor: vi.fn(),
     notify: vi.fn(),
+    editDraft: vi.fn(),
+    deleteDraft: vi.fn(),
   },
 }));
 
@@ -112,7 +136,7 @@ function review(overrides: Partial<Review> = {}): Review {
     path: "a.txt",
     anchor: {
       side: "new",
-      line: "line2-changed",
+      lines: ["line2-changed"],
       before: ["line1"],
       after: ["line2b", "line3"],
       lineHint: 2,
@@ -121,7 +145,16 @@ function review(overrides: Partial<Review> = {}): Review {
     createdAtHead: "headHash",
     viewedAs: { from: "HEAD", to: "WORKTREE" },
     status: "open",
-    thread: [{ seq: 0, author: "user", body: "please double-check", at: "t", agentSession: null }],
+    thread: [
+      {
+        seq: 0,
+        author: "user",
+        body: "please double-check",
+        at: "t",
+        agentSession: null,
+        draft: false,
+      },
+    ],
     notify: { state: "pending", pane: null, at: null },
     createdAt: "t",
     updatedAt: "t",
@@ -157,7 +190,7 @@ test("selecting a line opens the composer; submitting calls reviewApi.create wit
   fireEvent.click(screen.getByTestId("select-new-line-2"));
   const textarea = await screen.findByPlaceholderText("コメントを追加");
   fireEvent.change(textarea, { target: { value: "please double-check" } });
-  fireEvent.click(screen.getByRole("button", { name: "コメント" }));
+  fireEvent.click(screen.getByRole("button", { name: "下書きを追加" }));
 
   await waitFor(() => expect(createMock).toHaveBeenCalled());
   const body = createMock.mock.calls[0]![0];
@@ -169,12 +202,43 @@ test("selecting a line opens the composer; submitting calls reviewApi.create wit
     viewedAs: { from: "HEAD", to: "WORKTREE" },
     body: "please double-check",
   });
-  expect(body.anchor).toMatchObject({ side: "new", line: "line2-changed" });
+  expect(body.anchor).toMatchObject({ side: "new", lines: ["line2-changed"] });
   expect(body.anchor.hash).toMatch(/^[0-9a-f]{40}$/);
 });
 
+test("the composer stays closed while the mouse button is held and opens once the drag ends", async () => {
+  forDiffMock.mockResolvedValue([]);
+  renderPanel();
+
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+
+  fireEvent.click(screen.getByTestId("drag-start"));
+  fireEvent.click(screen.getByTestId("select-new-line-2"));
+  expect(screen.queryByPlaceholderText("コメントを追加")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByTestId("drag-end"));
+  expect(await screen.findByPlaceholderText("コメントを追加")).toBeInTheDocument();
+});
+
+test("a reversed multi-line selection (dragged upward) still builds an anchor covering both lines in order", async () => {
+  forDiffMock.mockResolvedValue([]);
+  createMock.mockResolvedValue(review());
+  renderPanel();
+
+  await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+
+  fireEvent.click(screen.getByTestId("select-new-lines-3-to-2-reversed"));
+  const textarea = await screen.findByPlaceholderText("コメントを追加");
+  fireEvent.change(textarea, { target: { value: "range comment" } });
+  fireEvent.click(screen.getByRole("button", { name: "下書きを追加" }));
+
+  await waitFor(() => expect(createMock).toHaveBeenCalled());
+  const body = createMock.mock.calls[0]![0];
+  expect(body.anchor).toMatchObject({ side: "new", lines: ["line2-changed", "line2b"] });
+});
+
 test("renders a matched review inline via forDiff, and resolve calls reviewApi.resolve", async () => {
-  const match = { review: review(), line: 2, confidence: "exact" as const };
+  const match = { review: review(), line: 2, span: 1, confidence: "exact" as const };
   forDiffMock.mockResolvedValue([match]);
   renderPanel();
 
@@ -186,7 +250,7 @@ test("renders a matched review inline via forDiff, and resolve calls reviewApi.r
 });
 
 test("a line-confidence match is dimmed with a 位置は推定 note", async () => {
-  const match = { review: review(), line: 2, confidence: "line" as const };
+  const match = { review: review(), line: 2, span: 1, confidence: "line" as const };
   forDiffMock.mockResolvedValue([match]);
   renderPanel();
 
@@ -209,7 +273,7 @@ test("composer submit is disabled with a hint until createdAtHead resolves", asy
   fireEvent.click(screen.getByTestId("select-new-line-2"));
   await screen.findByPlaceholderText("コメントを追加");
 
-  expect(screen.getByRole("button", { name: "コメント" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "下書きを追加" })).toBeDisabled();
   expect(screen.getByText(/HEAD を解決できていません/)).toBeInTheDocument();
 
   resolveRoot({
@@ -226,7 +290,7 @@ test("composer submit is disabled with a hint until createdAtHead resolves", asy
   fireEvent.change(screen.getByPlaceholderText("コメントを追加"), {
     target: { value: "please double-check" },
   });
-  expect(screen.getByRole("button", { name: "コメント" })).not.toBeDisabled();
+  expect(screen.getByRole("button", { name: "下書きを追加" })).not.toBeDisabled();
 });
 
 test("a review WS event for a different repo does not trigger a for-diff refetch", async () => {
@@ -265,7 +329,7 @@ test("a review WS event for a different repo does not trigger a for-diff refetch
 });
 
 test("stale inline annotations are dropped when repoKey changes, not left showing a different repo's thread", async () => {
-  const match = { review: review(), line: 2, confidence: "exact" as const };
+  const match = { review: review(), line: 2, span: 1, confidence: "exact" as const };
   forDiffMock.mockResolvedValue([match]);
   const client = new QueryClient();
   const { rerender } = render(

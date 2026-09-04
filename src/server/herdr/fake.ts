@@ -1,6 +1,7 @@
 import type {
   HerdrEventEnvelope,
   PaneInfo,
+  PaneLayoutSnapshot,
   PingResult,
   SessionSnapshot,
   WorkspaceInfo,
@@ -31,6 +32,16 @@ export interface FakeHerdr extends HerdrGateway {
    * way to observe it (plan.md §12-1 fallback).
    */
   setForegroundCwdSilently(paneId: string, cwd: string | null): void;
+  /** Mutate any pane fields WITHOUT emitting an event — only `paneGet` reveals them. */
+  setPaneSilently(paneId: string, patch: Partial<PaneInfo>): void;
+  /** Configure what `paneLayout(paneId)` resolves with. */
+  setPaneLayout(paneId: string, layout: PaneLayoutSnapshot): void;
+  /** Make the next `paneLayout(paneId)` calls reject, simulating a herdr RPC failure. */
+  failPaneLayout(paneId: string, fail?: boolean): void;
+  /** Configure what `paneRead(paneId, lines)` resolves with. */
+  setPaneReadText(paneId: string, text: string): void;
+  /** Make the next `paneRead(paneId, lines)` calls reject, simulating a herdr RPC failure. */
+  failPaneRead(paneId: string, fail?: boolean): void;
 }
 
 export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
@@ -42,6 +53,10 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
   let focusedTabId = initial.focused_tab_id ?? null;
   let status: HerdrStatus = { connected: true, protocol: 20 };
   const blockedPanes = new Set<string>();
+  const paneLayouts = new Map<string, PaneLayoutSnapshot>();
+  const failingLayoutPanes = new Set<string>();
+  const paneReadTexts = new Map<string, string>();
+  const failingReadPanes = new Set<string>();
   let nextWorkspaceNumber = workspaces.size + 1;
 
   const subscribers = new Set<(event: HerdrEventEnvelope) => void>();
@@ -174,6 +189,19 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
         data: { type: "workspace_closed", workspace_id: workspaceId, workspace: existing },
       });
     },
+    async paneLayout(paneId: string): Promise<PaneLayoutSnapshot> {
+      if (failingLayoutPanes.has(paneId))
+        throw new Error(`fake herdr: pane.layout failed for ${paneId}`);
+      const layout = paneLayouts.get(paneId);
+      if (!layout) throw new Error(`fake herdr: no layout configured for ${paneId}`);
+      return layout;
+    },
+    async paneRead(paneId: string, _lines: number): Promise<string> {
+      if (failingReadPanes.has(paneId))
+        throw new Error(`fake herdr: pane.read failed for ${paneId}`);
+      requirePane(paneId);
+      return paneReadTexts.get(paneId) ?? "";
+    },
     async agentPrompt(paneId: string, _text: string): Promise<AgentPromptOutcome> {
       const pane = requirePane(paneId);
       if (blockedPanes.has(paneId)) return { status: "agent_blocked" };
@@ -266,6 +294,28 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
     setForegroundCwdSilently(paneId: string, cwd: string | null): void {
       const pane = requirePane(paneId);
       panes.set(paneId, { ...pane, foreground_cwd: cwd });
+    },
+    setPaneSilently(paneId, patch) {
+      const pane = panes.get(paneId);
+      if (pane) panes.set(paneId, { ...pane, ...patch });
+    },
+
+    setPaneLayout(paneId: string, layout: PaneLayoutSnapshot): void {
+      paneLayouts.set(paneId, layout);
+    },
+
+    failPaneLayout(paneId: string, fail = true): void {
+      if (fail) failingLayoutPanes.add(paneId);
+      else failingLayoutPanes.delete(paneId);
+    },
+
+    setPaneReadText(paneId: string, text: string): void {
+      paneReadTexts.set(paneId, text);
+    },
+
+    failPaneRead(paneId: string, fail = true): void {
+      if (fail) failingReadPanes.add(paneId);
+      else failingReadPanes.delete(paneId);
     },
   };
 }

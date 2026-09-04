@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import type { VirtualizerOptions } from "@tanstack/react-virtual";
 import { RefreshCw } from "lucide-react";
 import type { Ref } from "@contract/git";
+import type { ReviewCountsResponse } from "@contract/review";
 import { FetchBusyError, gitApi } from "@/lib/api";
 import { useGraph } from "./hooks/useGraph";
 import { initialState, reduce } from "./state";
@@ -20,6 +21,8 @@ export interface GraphPanelProps {
   onSelectCommit(range: { from: string; to: string } | null): void;
   /** 「diff を見る」/ ダブルクリック: 親との diff を選択して Diff タブへ遷移させる */
   onOpenDiff?(range: { from: string; to: string }): void;
+  /** F5-10: git-graph の review 件数バッジ用集計。 */
+  reviewCounts?: ReviewCountsResponse | null;
   /**
    * Test-only escape hatch, threaded down to GraphView (react-virtual needs
    * a real ResizeObserver to size itself; jsdom has none).
@@ -55,6 +58,7 @@ export function GraphPanel({
   pollMs,
   onSelectCommit,
   onOpenDiff,
+  reviewCounts,
   virtualizerOptions,
 }: GraphPanelProps) {
   const [state, dispatch] = useReducer(reduce, undefined, () => initialState());
@@ -242,6 +246,7 @@ export function GraphPanel({
           detailOpen={state.detailOpen}
           repo={repo}
           detailNote={detailNote}
+          reviewCounts={reviewCounts}
           onSelect={handleSelect}
           onCloseDetail={handleCloseDetail}
           onOpenDiff={(hash) => {

@@ -13,7 +13,7 @@ import type { AppType } from "../server/app";
 
 export type ClientError =
   | { kind: "network"; message: string }
-  | { kind: "http"; status: number; message: string };
+  | { kind: "http"; status: number; message: string; type: string | null };
 
 export type ClientResult<T> = { ok: true; value: T } | { ok: false; error: ClientError };
 
@@ -31,17 +31,21 @@ export type ListReviewsParams = {
 /** Structural subset of `Response`/Hono's `ClientResponse` that `call` needs. */
 type MinimalResponse = { ok: boolean; status: number; json(): Promise<unknown> };
 
-async function readErrorMessage(res: MinimalResponse): Promise<string> {
+/** Server error bodies are `{ error: string, type?: string }` (see `mapUsecaseError`, `GET /:id`). */
+async function readError(res: MinimalResponse): Promise<{ message: string; type: string | null }> {
   try {
     const body: unknown = await res.json();
     if (body && typeof body === "object" && "error" in body) {
       const err = (body as { error: unknown }).error;
-      if (typeof err === "string") return err;
+      const type = "type" in body ? (body as { type: unknown }).type : undefined;
+      if (typeof err === "string") {
+        return { message: err, type: typeof type === "string" ? type : null };
+      }
     }
   } catch {
     // fall through to the generic message below
   }
-  return `HTTP ${res.status}`;
+  return { message: `HTTP ${res.status}`, type: null };
 }
 
 async function call<T>(
@@ -58,9 +62,10 @@ async function call<T>(
     };
   }
   if (!res.ok) {
+    const { message, type } = await readError(res);
     return {
       ok: false,
-      error: { kind: "http", status: res.status, message: await readErrorMessage(res) },
+      error: { kind: "http", status: res.status, message, type },
     };
   }
   return { ok: true, value: v.parse(schema, await res.json()) };

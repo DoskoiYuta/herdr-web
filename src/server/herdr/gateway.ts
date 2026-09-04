@@ -1,5 +1,6 @@
 import type {
   PaneInfo,
+  PaneLayoutSnapshot,
   PingResult,
   SessionSnapshot,
   HerdrEventEnvelope,
@@ -46,6 +47,10 @@ export interface HerdrGateway {
    */
   workspaceClose(workspaceId: string): Promise<void>;
   agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome>;
+  /** `pane.layout`: the tab's split layout containing this pane. */
+  paneLayout(paneId: string): Promise<PaneLayoutSnapshot>;
+  /** `pane.read`: the pane's recent scrollback, ANSI stripped, as plain text. */
+  paneRead(paneId: string, lines: number): Promise<string>;
   /** Subscribe to herdr events. Returns an unsubscribe function. Handlers are never allowed to throw out. */
   subscribe(handler: (event: HerdrEventEnvelope) => void): () => void;
   status(): HerdrStatus;

@@ -38,7 +38,7 @@ export function createGitIntroducingCommitFinder(history: GitHistory): Introduci
         return commit;
       }
 
-      const needle = normalizeLine(review.anchor.line);
+      const needle = normalizeLine(review.anchor.lines[0] ?? "");
       if (needle.length === 0) return null;
       const log = await runGit(
         ["log", "--format=%H", `-S${needle}`, `${sinceHead}..HEAD`, "--", review.path],

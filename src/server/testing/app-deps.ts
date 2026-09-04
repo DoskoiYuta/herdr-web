@@ -58,7 +58,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     review: review.routes,
     repo: review.repoRoutes,
     hw: { state, resolver },
-    herdr: { gateway: fake, allowedRoots: opts.allowedRoots ?? [] },
+    herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
   };
   return { app: createApp(deps), fake, state, review, events, db };
 }

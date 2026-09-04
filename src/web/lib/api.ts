@@ -18,9 +18,12 @@ import {
   type ListReviewQuery,
   type ReanchorRequest,
   type ReplyRequest,
+  ReviewCountsResponseSchema,
   ReviewSchema,
+  SendDraftsResultSchema,
 } from "../../contract/review";
 import { WorkspaceInfoSchema } from "../../contract/herdr";
+import { PanePreviewResponseSchema } from "../../contract/herdr-ops";
 export type { ForDiffMatch } from "../../contract/review";
 
 /**
@@ -39,6 +42,20 @@ export class FetchBusyError extends Error {
   constructor() {
     super("実行中です");
     this.name = "FetchBusyError";
+  }
+}
+
+/** Thrown by `reviewApi.send` on HTTP 409 — the server couldn't resolve a
+ * unique send target. `targets` (candidate pane ids) is only present for
+ * `ambiguous_target`. */
+export class SendTargetError extends Error {
+  type: "no_agent" | "ambiguous_target" | "invalid_target";
+  targets?: string[];
+  constructor(type: "no_agent" | "ambiguous_target" | "invalid_target", targets?: string[]) {
+    super(type);
+    this.name = "SendTargetError";
+    this.type = type;
+    this.targets = targets;
   }
 }
 
@@ -137,16 +154,62 @@ function toQueryRecord(query: ListReviewQuery): Record<string, string> {
 }
 
 export const reviewApi = {
+  // The Web UI is the only reviewApi consumer (`hw` talks to the server
+  // directly, not through this client) and always needs draft entries —
+  // list()/get() force `drafts=true` rather than taking it as a param.
   async list(query: ListReviewQuery) {
-    const res = await client.api.review.$get({ query: toQueryRecord(query) });
+    const res = await client.api.review.$get({
+      query: { ...toQueryRecord(query), drafts: "true" },
+    });
     if (!res.ok) throw new Error(`GET /api/review failed: ${res.status}`);
     return v.parse(v.array(ReviewSchema), await res.json());
   },
 
   async get(id: string) {
-    const res = await client.api.review[":id"].$get({ param: { id } });
+    // The route reads `drafts` via `c.req.query` directly rather than a
+    // vValidator schema, so `hc` doesn't type it as a query param — append
+    // it to the generated URL instead.
+    const url = client.api.review[":id"].$url({ param: { id } });
+    url.searchParams.set("drafts", "true");
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`GET /api/review/:id failed: ${res.status}`);
     return v.parse(ReviewSchema, await res.json());
+  },
+
+  async counts(params: { repo: string; worktree: string }) {
+    const res = await client.api.review.counts.$get({ query: params });
+    if (!res.ok) throw new Error(`GET /api/review/counts failed: ${res.status}`);
+    return v.parse(ReviewCountsResponseSchema, await res.json());
+  },
+
+  async send(params: { repo: string; worktreeRoot: string; pane?: string }) {
+    const res = await client.api.review.send.$post({ json: params });
+    if (res.status === 409) {
+      const body = (await res.json()) as { type: SendTargetError["type"]; targets?: string[] };
+      throw new SendTargetError(body.type, body.targets);
+    }
+    if (!res.ok) throw new Error(`POST /api/review/send failed: ${res.status}`);
+    return v.parse(SendDraftsResultSchema, await res.json());
+  },
+
+  async editDraft(id: string, seq: number, body: string) {
+    const res = await client.api.review[":id"].draft[":seq"].$put({
+      param: { id, seq: String(seq) },
+      json: { body },
+    });
+    if (!res.ok) throw new Error(`PUT /api/review/:id/draft/:seq failed: ${res.status}`);
+    return v.parse(ReviewSchema, await res.json());
+  },
+
+  async deleteDraft(id: string, seq: number) {
+    const res = await client.api.review[":id"].draft[":seq"].$delete({
+      param: { id, seq: String(seq) },
+    });
+    if (!res.ok) throw new Error(`DELETE /api/review/:id/draft/:seq failed: ${res.status}`);
+    return v.parse(
+      v.object({ deleted: v.boolean(), review: v.nullable(ReviewSchema) }),
+      await res.json(),
+    );
   },
 
   async forDiff(body: ForDiffRequest) {
@@ -218,6 +281,12 @@ export const herdrApi = {
     });
     if (!res.ok) throw new Error(`POST /api/herdr/workspace/:id/close failed: ${res.status}`);
     return (await res.json()) as { ok: true };
+  },
+
+  async panePreview(pane: string) {
+    const res = await client.api.herdr["pane-preview"].$get({ query: { pane } });
+    if (!res.ok) throw new Error(`GET /api/herdr/pane-preview failed: ${res.status}`);
+    return v.parse(PanePreviewResponseSchema, await res.json());
   },
 };
 

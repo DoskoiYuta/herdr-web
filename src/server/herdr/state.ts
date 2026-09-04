@@ -54,6 +54,23 @@ function withPane(state: HerdrState, pane: PaneInfo): HerdrState {
   return { ...state, panes };
 }
 
+/**
+ * herdr's pane.updated / pane.moved payloads omit `agent_session` and carry
+ * `agent_status: "unknown"` even while `pane.get` reports a live status and
+ * session (herdr 0.8.2). For the same agent, keep what the store already knows;
+ * agent changes themselves arrive via pane.agent_detected.
+ */
+function mergePaneUpdate(state: HerdrState, pane: PaneInfo): HerdrState {
+  const existing = state.panes.get(pane.pane_id);
+  if (!existing || existing.agent !== pane.agent || pane.agent == null)
+    return withPane(state, pane);
+  return withPane(state, {
+    ...pane,
+    agent_session: pane.agent_session ?? existing.agent_session,
+    agent_status: pane.agent_status === "unknown" ? existing.agent_status : pane.agent_status,
+  });
+}
+
 function withoutPane(state: HerdrState, paneId: string): HerdrState {
   const panes = new Map(state.panes);
   panes.delete(paneId);
@@ -131,13 +148,42 @@ function renameTab(state: HerdrState, tabId: string, label: string): HerdrState 
   return withTab(state, { ...existing, label });
 }
 
+function applyPaneAgentDetected(
+  state: HerdrState,
+  event: Extract<HerdrEventData, { type: "pane_agent_detected" }>,
+): HerdrState {
+  const existing = state.panes.get(event.pane_id);
+  if (!existing) return state;
+  const next: PaneInfo = { ...existing, agent: event.agent ?? null };
+  if (event.final_status) next.agent_status = event.final_status;
+  if (event.released || event.agent === null) {
+    next.agent = null;
+    next.agent_session = null;
+  }
+  return withPane(state, next);
+}
+
+function applyPaneAgentStatusChanged(
+  state: HerdrState,
+  event: Extract<HerdrEventData, { type: "pane_agent_status_changed" }>,
+): HerdrState {
+  const existing = state.panes.get(event.pane_id);
+  if (!existing) return state;
+  const next: PaneInfo = { ...existing, agent_status: event.agent_status };
+  if (event.agent !== undefined) {
+    next.agent = event.agent;
+    if (event.agent === null) next.agent_session = null;
+  }
+  return withPane(state, next);
+}
+
 /** Pure reducer over the herdr event union (ts-pattern `.exhaustive()` — new EventKinds fail to compile). */
 export function applyEvent(state: HerdrState, envelope: HerdrEventEnvelope): HerdrState {
   const data: HerdrEventData = envelope.data;
   return match(data)
     .with({ type: "pane_created" }, (d) => withPane(state, d.pane))
-    .with({ type: "pane_updated" }, (d) => withPane(state, d.pane))
-    .with({ type: "pane_moved" }, (d) => withPane(state, d.pane))
+    .with({ type: "pane_updated" }, (d) => mergePaneUpdate(state, d.pane))
+    .with({ type: "pane_moved" }, (d) => mergePaneUpdate(state, d.pane))
     .with({ type: "pane_closed" }, (d) => withoutPane(state, d.pane_id))
     .with({ type: "pane_exited" }, (d) => withoutPane(state, d.pane_id))
     .with({ type: "pane_focused" }, (d) => ({
@@ -145,8 +191,8 @@ export function applyEvent(state: HerdrState, envelope: HerdrEventEnvelope): Her
       focusedPaneId: d.pane_id,
       focusedWorkspaceId: d.workspace_id,
     }))
-    .with({ type: "pane_agent_detected" }, () => state)
-    .with({ type: "pane_agent_status_changed" }, () => state)
+    .with({ type: "pane_agent_detected" }, (d) => applyPaneAgentDetected(state, d))
+    .with({ type: "pane_agent_status_changed" }, (d) => applyPaneAgentStatusChanged(state, d))
     .with({ type: "workspace_created" }, (d) => withWorkspace(state, d.workspace))
     .with({ type: "workspace_updated" }, (d) => withWorkspace(state, d.workspace))
     .with({ type: "workspace_metadata_updated" }, (d) => withWorkspace(state, d.workspace))
@@ -243,10 +289,27 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
     }
   }
 
+  // Agent lifecycle events carry only a few fields (no agent_session, and the
+  // status is sometimes a step behind pane.get), so re-read the pane to converge.
+  async function refreshPane(paneId: string): Promise<void> {
+    try {
+      const fresh = await gateway.paneGet(paneId);
+      if (!state.panes.has(paneId)) return;
+      state = withPane(state, fresh);
+      notify({ kind: "pane", paneId });
+    } catch (err) {
+      logger.warn(`herdr: pane.get after agent event failed for ${paneId}`, err);
+    }
+  }
+
   gateway.subscribe((event) => {
     try {
       state = applyEvent(state, event);
       notify(describeChange(event));
+      const data = event.data;
+      if (data.type === "pane_agent_detected" || data.type === "pane_agent_status_changed") {
+        void refreshPane(data.pane_id);
+      }
     } catch (err) {
       logger.error("herdr: failed to apply event", err, event);
     }

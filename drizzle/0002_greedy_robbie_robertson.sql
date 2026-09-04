@@ -1,0 +1,1 @@
+ALTER TABLE `review_entries` ADD `draft` integer DEFAULT 0 NOT NULL;

@@ -13,7 +13,7 @@ import { createReview } from "../domain/transitions";
 import { reanchorAfterChangeUsecase } from "./reanchor-after-change";
 
 const CLOCK = new ManualClock("2026-01-01T00:00:00.000Z");
-const ANCHOR: Anchor = buildAnchor(["const a = 1;", "const b = 2;", "const c = 3;"], 1, "new");
+const ANCHOR: Anchor = buildAnchor(["const a = 1;", "const b = 2;", "const c = 3;"], 1, 1, "new");
 
 function makeReview(overrides: Partial<Review> = {}): Review {
   return {

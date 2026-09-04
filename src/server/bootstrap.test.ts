@@ -222,7 +222,7 @@ describe("attachWorktreeMissingToReview", () => {
   });
 });
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 
 describe("createRuntime: worktree_removed gateway event", () => {
   // Item 11: herdr reports its own (non-realpath'd) path for the worktree; a
@@ -486,7 +486,7 @@ describe("Item 1: onRootWatched reconciles a newly-watched worktree", () => {
     await writeFile(join(root, "a.txt"), "one\ntwo\nthree\nfour\n");
     const anchor: Anchor = {
       side: "new",
-      line: "four",
+      lines: ["four"],
       before: ["three"],
       after: [],
       lineHint: 4,

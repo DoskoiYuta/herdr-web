@@ -13,6 +13,17 @@ import { RepoMoveTargetExistsError, type ListFilter, type ReviewRepository } fro
 type ReviewRow = typeof reviews.$inferSelect;
 type ReviewEntryRow = typeof reviewEntries.$inferSelect;
 
+/**
+ * この変更より前に書かれた行は `anchor` JSON に `line: string` を持ち、`lines` を持たない。
+ * SQL 側の一括マイグレーションはせず、読み出し時にその場で `{ lines: [line] }` へ寄せる。
+ */
+function normalizeAnchor(raw: unknown): Anchor {
+  const a = raw as Anchor & { line?: string };
+  if (Array.isArray(a.lines)) return a as Anchor;
+  const { line, ...rest } = a;
+  return { ...rest, lines: [line ?? ""] } as Anchor;
+}
+
 function rowsToReview(row: ReviewRow, entryRows: ReviewEntryRow[]): Review {
   const target =
     row.targetKind === "worktree"
@@ -24,7 +35,7 @@ function rowsToReview(row: ReviewRow, entryRows: ReviewEntryRow[]): Review {
     target,
     worktreeRoot: row.worktreeRoot,
     path: row.path,
-    anchor: row.anchor as Anchor,
+    anchor: normalizeAnchor(row.anchor),
     createdAtHead: row.createdAtHead,
     viewedAs: { from: row.viewedFrom, to: row.viewedTo },
     status: row.status as ReviewStatus,
@@ -37,6 +48,7 @@ function rowsToReview(row: ReviewRow, entryRows: ReviewEntryRow[]): Review {
         body: e.body,
         at: e.at,
         agentSession: e.agentSession,
+        draft: Boolean(e.draft),
       })),
     notify: {
       state: row.notifyState as NotifyState,
@@ -145,11 +157,17 @@ export function createSqliteReviewRepository(db: Db): ReviewRepository {
                 body: entry.body,
                 at: entry.at,
                 agentSession: entry.agentSession,
+                draft: entry.draft ? 1 : 0,
               })),
             )
             .run();
         }
       });
+    },
+
+    async delete(id) {
+      // review_entries は ON DELETE CASCADE (schema.ts) なので reviews の削除だけでよい。
+      await db.delete(reviews).where(eq(reviews.id, id));
     },
 
     async updateNotify(id, notify) {

@@ -4,7 +4,7 @@ import { createReview } from "../domain/transitions";
 import { FakeReviewEvents, FakeReviewRepository, ManualClock } from "../testing/fakes";
 import { outdateWorktreeUsecase } from "./outdate-worktree";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 const CLOCK = new ManualClock("2026-01-01T00:00:00.000Z");
 
 function makeReview(overrides: Partial<Review> = {}): Review {

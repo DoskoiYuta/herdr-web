@@ -5,7 +5,9 @@ export type DomainErrorType =
   | "already_committed"
   | "not_commit_bound"
   | "invalid_rev"
-  | "already_exists";
+  | "already_exists"
+  | "not_draft"
+  | "no_drafts";
 
 export type DomainError = { type: DomainErrorType; message: string };
 

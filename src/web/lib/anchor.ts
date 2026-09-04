@@ -17,8 +17,8 @@ export function normalizeLine(line: string): string {
   return line.replace(/\r/g, "").replace(/[ \t]+$/, "");
 }
 
-async function hashAnchorText(before: string[], line: string, after: string[]): Promise<string> {
-  const text = [...before, line, ...after].join("\n");
+async function hashAnchorText(before: string[], lines: string[], after: string[]): Promise<string> {
+  const text = [...before, ...lines, ...after].join("\n");
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-1", bytes);
   return Array.from(new Uint8Array(digest))
@@ -27,24 +27,25 @@ async function hashAnchorText(before: string[], line: string, after: string[]): 
 }
 
 /**
- * `lines` (未正規化でよい) の `lineIndex0`（0-based）番目の行から Anchor を組み立てる。
- * before/after は同じ side 上の最大 3 行。
+ * `lines` (未正規化でよい) の `startIndex0..endIndex0`（0-based, 両端含む）番目の
+ * 選択範囲から Anchor を組み立てる。before/after は同じ side 上の最大 3 行。
  */
 export async function buildAnchor(
   lines: string[],
-  lineIndex0: number,
+  startIndex0: number,
+  endIndex0: number,
   side: Side,
 ): Promise<Anchor> {
   const normalized = lines.map(normalizeLine);
-  const before = normalized.slice(Math.max(0, lineIndex0 - 3), lineIndex0);
-  const line = normalized[lineIndex0] ?? "";
-  const after = normalized.slice(lineIndex0 + 1, lineIndex0 + 4);
+  const before = normalized.slice(Math.max(0, startIndex0 - 3), startIndex0);
+  const selected = normalized.slice(startIndex0, endIndex0 + 1);
+  const after = normalized.slice(endIndex0 + 1, endIndex0 + 4);
   return {
     side,
-    line,
+    lines: selected,
     before,
     after,
-    lineHint: lineIndex0 + 1,
-    hash: await hashAnchorText(before, line, after),
+    lineHint: startIndex0 + 1,
+    hash: await hashAnchorText(before, selected, after),
   };
 }

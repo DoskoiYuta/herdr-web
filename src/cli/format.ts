@@ -7,8 +7,9 @@ function firstChars(s: string, n: number): string {
   return oneLine.length > n ? oneLine.slice(0, n) : oneLine;
 }
 
+/** UUIDv7 の末尾 8 文字（ランダム部）。先頭はタイムスタンプで近接作成分が揃うため使わない */
 export function shortId(id: string): string {
-  return id.slice(0, 8);
+  return id.slice(-8);
 }
 
 export function formatTarget(review: Pick<Review, "target">): string {
@@ -17,10 +18,16 @@ export function formatTarget(review: Pick<Review, "target">): string {
     : `commit:${review.target.hash.slice(0, 7)}`;
 }
 
-/** `<id-short(8)> <status> <path>:<anchor.lineHint> [<target>] <first 60 chars of thread[0].body>` */
+function formatLineRange(anchor: Review["anchor"]): string {
+  const start = anchor.lineHint;
+  if (anchor.lines.length <= 1) return `${start}`;
+  return `${start}-${start + anchor.lines.length - 1}`;
+}
+
+/** `<id-short(8)> <status> <path>:<anchor.lineHint>[-<end>] [<target>] <first 60 chars of thread[0].body>` */
 export function formatReviewLine(review: Review): string {
   const firstBody = review.thread[0]?.body ?? "";
-  return `${shortId(review.id)} ${review.status} ${review.path}:${review.anchor.lineHint} [${formatTarget(review)}] ${firstChars(firstBody, 60)}`;
+  return `${shortId(review.id)} ${review.status} ${review.path}:${formatLineRange(review.anchor)} [${formatTarget(review)}] ${firstChars(firstBody, 60)}`;
 }
 
 export function formatReviewList(reviews: Review[]): string {
@@ -44,7 +51,9 @@ export function formatReviewShow(review: Review): string {
   for (const before of review.anchor.before) {
     lines.push(`    ${before}`);
   }
-  lines.push(`  > ${review.anchor.line}`);
+  for (const anchorLine of review.anchor.lines) {
+    lines.push(`  > ${anchorLine}`);
+  }
   for (const after of review.anchor.after) {
     lines.push(`    ${after}`);
   }

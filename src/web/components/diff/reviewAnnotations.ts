@@ -8,7 +8,27 @@ import { indexToLineNumber } from "./sideLines.ts";
 
 export type ReviewAnnotationMeta =
   | { kind: "composer"; side: Side }
-  | { kind: "reviews"; side: Side; matches: ForDiffMatch[] };
+  | {
+      kind: "reviews";
+      side: Side;
+      matches: ForDiffMatch[];
+      /** review id -> real line range spanned, for the `L<start>–L<end>` label. */
+      ranges: Record<string, { start: number; end: number }>;
+    };
+
+/** Real (1-based) per-side line numbers a `ForDiffMatch`'s range spans, for
+ * `ReviewThreadCard`'s `L<start>–L<end>` label. `start` falls back to `end`
+ * when the range's start line doesn't map to a rendered line (only the end
+ * line is guaranteed to, since that's where the annotation itself anchors). */
+export function matchLineRange(
+  fileDiff: FileDiffMetadata,
+  match: ForDiffMatch,
+): { start: number; end: number } {
+  const side = match.review.anchor.side;
+  const end = indexToLineNumber(fileDiff, side, match.line - 1 + match.span - 1);
+  const start = indexToLineNumber(fileDiff, side, match.line - 1);
+  return { start: start ?? end ?? 0, end: end ?? start ?? 0 };
+}
 
 export function toAnnotationSide(side: Side): AnnotationSide {
   return side === "old" ? "deletions" : "additions";
@@ -38,7 +58,11 @@ export function buildAnnotations(
   const byKey = new Map<string, { side: Side; lineNumber: number; matches: ForDiffMatch[] }>();
   for (const match of matches) {
     const side = match.review.anchor.side;
-    const lineNumber = indexToLineNumber(fileDiff, side, match.line - 1);
+    // Placed at the range's END line — falls back to the start line when
+    // the end doesn't map to a rendered line (e.g. a stale span reaching
+    // past the file's current length after edits elsewhere in the diff).
+    const endLineNumber = indexToLineNumber(fileDiff, side, match.line - 1 + match.span - 1);
+    const lineNumber = endLineNumber ?? indexToLineNumber(fileDiff, side, match.line - 1);
     if (lineNumber === null) continue;
     const key = `${side}:${lineNumber}`;
     const existing = byKey.get(key);
@@ -48,10 +72,12 @@ export function buildAnnotations(
 
   const annotations: DiffLineAnnotation<ReviewAnnotationMeta>[] = [];
   for (const { side, lineNumber, matches: list } of byKey.values()) {
+    const ranges: Record<string, { start: number; end: number }> = {};
+    for (const match of list) ranges[match.review.id] = matchLineRange(fileDiff, match);
     annotations.push({
       side: toAnnotationSide(side),
       lineNumber,
-      metadata: { kind: "reviews", side, matches: list },
+      metadata: { kind: "reviews", side, matches: list, ranges },
     });
   }
 

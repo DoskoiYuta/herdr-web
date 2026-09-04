@@ -11,7 +11,7 @@ function review(overrides: Partial<Review> = {}): Review {
     path: "a.txt",
     anchor: {
       side: "new",
-      line: "hello",
+      lines: ["hello"],
       before: [],
       after: [],
       lineHint: 1,
@@ -27,6 +27,7 @@ function review(overrides: Partial<Review> = {}): Review {
         body: "please fix",
         at: "2026-09-03T00:00:00.000Z",
         agentSession: null,
+        draft: false,
       },
     ],
     notify: { state: "pending", pane: null, at: null },
@@ -78,7 +79,9 @@ describe("reviewApi", () => {
 
   test("forDiff() POSTs /api/review/for-diff with the body and parses matches", async () => {
     const r = review();
-    fetchMock.mockResolvedValueOnce(jsonResponse([{ review: r, line: 3, confidence: "exact" }]));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([{ review: r, line: 3, span: 1, confidence: "exact" }]),
+    );
     const result = await reviewApi.forDiff({
       repo: "/repo/.git",
       from: "HEAD",
@@ -86,7 +89,7 @@ describe("reviewApi", () => {
       path: "a.txt",
       sideLines: { old: ["a"], new: ["a", "b"] },
     });
-    expect(result).toEqual([{ review: r, line: 3, confidence: "exact" }]);
+    expect(result).toEqual([{ review: r, line: 3, span: 1, confidence: "exact" }]);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/api/review/for-diff");
     expect(init?.method).toBe("POST");
@@ -134,6 +137,50 @@ describe("reviewApi", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
     const result = await reviewApi.notify("some-id");
     expect(result).toEqual({ ok: true });
+  });
+
+  test("counts() GETs /api/review/counts with repo/worktree and parses the response", async () => {
+    const body = {
+      byCommit: { abc: { unresolved: 1, drafts: 0 } },
+      worktree: { unresolved: 0, drafts: 2 },
+      pendingDrafts: 2,
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse(body));
+    const result = await reviewApi.counts({ repo: "/repo/.git", worktree: "/repo" });
+    expect(result).toEqual(body);
+    const href = String(fetchMock.mock.calls[0]![0]);
+    expect(href).toContain("/api/review/counts?");
+    expect(href).toContain("worktree=%2Frepo");
+  });
+
+  test("send() POSTs /api/review/send with repo/worktreeRoot and parses the sent reviews", async () => {
+    const r = review({ status: "open" });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ reviews: [r] }));
+    const result = await reviewApi.send({ repo: "/repo/.git", worktreeRoot: "/repo" });
+    expect(result).toEqual({ reviews: [r] });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/api/review/send");
+    expect(JSON.parse(init!.body as string)).toEqual({ repo: "/repo/.git", worktreeRoot: "/repo" });
+  });
+
+  test("editDraft() PUTs /api/review/:id/draft/:seq with the body and parses the updated Review", async () => {
+    const r = review();
+    fetchMock.mockResolvedValueOnce(jsonResponse(r));
+    const result = await reviewApi.editDraft(r.id, 0, "edited");
+    expect(result).toEqual(r);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain(`/api/review/${r.id}/draft/0`);
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(init!.body as string)).toEqual({ body: "edited" });
+  });
+
+  test("deleteDraft() DELETEs /api/review/:id/draft/:seq and parses { deleted, review }", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ deleted: true, review: null }));
+    const result = await reviewApi.deleteDraft("r1", 0);
+    expect(result).toEqual({ deleted: true, review: null });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/api/review/r1/draft/0");
+    expect(init?.method).toBe("DELETE");
   });
 
   test("throws on a non-ok response", async () => {

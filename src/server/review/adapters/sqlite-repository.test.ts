@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import type { Anchor, Review } from "../../../contract/review";
 import { openDb, type Db } from "../../db/client";
 import { applyMigrations } from "../../db/migrate";
@@ -7,7 +8,7 @@ import { createSqliteReviewRepository } from "./sqlite-repository";
 
 const ANCHOR: Anchor = {
   side: "new",
-  line: "x",
+  lines: ["x"],
   before: ["a"],
   after: ["b"],
   lineHint: 1,
@@ -26,7 +27,14 @@ function makeReview(overrides: Partial<Review> = {}): Review {
     viewedAs: { from: "WORKTREE", to: "WORKTREE" },
     status: "open",
     thread: [
-      { seq: 0, author: "user", body: "why?", at: "2026-01-01T00:00:00.000Z", agentSession: null },
+      {
+        seq: 0,
+        author: "user",
+        body: "why?",
+        at: "2026-01-01T00:00:00.000Z",
+        agentSession: null,
+        draft: false,
+      },
     ],
     notify: { state: "none", pane: null, at: null },
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -56,6 +64,49 @@ describe("createSqliteReviewRepository", () => {
     expect(await repo.get("missing")).toBeNull();
   });
 
+  test("round-trips the draft flag on a thread entry", async () => {
+    const repo = createSqliteReviewRepository(db);
+    const review = makeReview({
+      thread: [{ seq: 0, author: "user", body: "why?", at: "t", agentSession: null, draft: true }],
+    });
+    await repo.save(review);
+    expect((await repo.get(review.id))?.thread[0]?.draft).toBe(true);
+  });
+
+  test("delete removes the review and its thread entries", async () => {
+    const repo = createSqliteReviewRepository(db);
+    const review = makeReview();
+    await repo.save(review);
+    await repo.delete(review.id);
+    expect(await repo.get(review.id)).toBeNull();
+    expect(await repo.list({})).toHaveLength(0);
+  });
+
+  test("delete on an unknown id is a no-op", async () => {
+    const repo = createSqliteReviewRepository(db);
+    await expect(repo.delete("missing")).resolves.toBeUndefined();
+  });
+
+  // Without this: a review row written before the `lines` migration (still
+  // holding the old `{ line: string }` anchor shape) would fail Anchor
+  // validation on read instead of being normalized on the fly.
+  test("normalizes a pre-migration `{ line }` anchor to `{ lines: [line] }` on read", async () => {
+    const repo = createSqliteReviewRepository(db);
+    const review = makeReview();
+    await repo.save(review);
+    const oldShapeAnchor = JSON.stringify({
+      side: "new",
+      line: "old-shape",
+      before: [],
+      after: [],
+      lineHint: 1,
+      hash: "h",
+    });
+    db.run(sql`update reviews set anchor = ${oldShapeAnchor} where id = ${review.id}`);
+    const got = await repo.get(review.id);
+    expect(got?.anchor.lines).toEqual(["old-shape"]);
+  });
+
   test("save is an upsert and thread entries are replaced wholesale", async () => {
     const repo = createSqliteReviewRepository(db);
     const review = makeReview();
@@ -72,6 +123,7 @@ describe("createSqliteReviewRepository", () => {
           body: "done",
           at: "2026-01-02T00:00:00.000Z",
           agentSession: "s1",
+          draft: false,
         },
       ],
       updatedAt: "2026-01-02T00:00:00.000Z",
@@ -103,6 +155,7 @@ describe("createSqliteReviewRepository", () => {
           body: "concurrent",
           at: "2026-01-03T00:00:00.000Z",
           agentSession: null,
+          draft: false,
         },
       ],
       updatedAt: "2026-01-03T00:00:00.000Z",

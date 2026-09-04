@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Anchor, Review } from "../../../contract/review";
-import { createReview } from "../domain/transitions";
+import { createReview, send } from "../domain/transitions";
 import {
   FakeGitHistory,
   FakeIntroducingCommitFinder,
@@ -13,11 +13,11 @@ import { createLocks } from "./locks";
 import { reanchorAfterChangeUsecase } from "./reanchor-after-change";
 import { replyToReviewUsecase } from "./reply-to-review";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 const CLOCK = new ManualClock("2026-01-01T00:00:00.000Z");
 
 function makeReview(): Review {
-  return createReview(
+  const created = createReview(
     {
       id: "r1",
       repo: "/repo",
@@ -31,6 +31,8 @@ function makeReview(): Review {
     },
     CLOCK,
   );
+  // the agent reply below needs a sent user entry to be repliable
+  return send(created, CLOCK)._unsafeUnwrap();
 }
 
 /** A ReviewRepository wrapper whose `save` can be held open by the test until released. */
@@ -48,6 +50,7 @@ function gatedRepository(inner: FakeReviewRepository) {
       await inner.save(review);
     },
     updateNotify: inner.updateNotify.bind(inner),
+    delete: inner.delete.bind(inner),
     upsertRepo: inner.upsertRepo.bind(inner),
     getRepo: inner.getRepo.bind(inner),
     listRepos: inner.listRepos.bind(inner),

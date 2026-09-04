@@ -2,13 +2,12 @@ import type { PaneInfo } from "../../../contract/herdr";
 import type { HerdrGateway } from "../../herdr/gateway";
 import type { HerdrStateStore } from "../../herdr/state";
 import type { WorktreeResolver } from "../../herdr/tree";
-import type { AgentNotifier, GitHistory } from "../ports";
+import type { AgentNotifier } from "../ports";
 
 export type HerdrNotifierDeps = {
   state: HerdrStateStore;
   gateway: HerdrGateway;
   resolver: WorktreeResolver;
-  gitHistory: GitHistory;
   /** `{count}` を件数に置換する */
   template: string;
   logger?: Pick<typeof console, "warn" | "error">;
@@ -19,42 +18,47 @@ function effectiveCwd(pane: PaneInfo): string | null {
 }
 
 /**
- * plan §6.5 通知先: レビューの worktree を foreground_cwd に持つ pane を探し、
- * フォーカス pane が含まれればそこへ、無ければ最初のエージェント pane へ agent.prompt する。
- * commit 付きの場合は、その commit を HEAD に含む worktree の pane も候補にする。通知先は保存しない。
+ * plan §6.5 通知先: レビューの worktree を foreground_cwd に持つ pane だけを候補にする。
+ * 他の worktree にいる pane は、その HEAD がレビューの commit を含んでいても対象にならない
+ * — 別ワークスペースの agent へ黙って送ってしまうのを避けるため。
  */
 export function createHerdrNotifier(deps: HerdrNotifierDeps): AgentNotifier {
   const logger = deps.logger ?? console;
 
-  async function candidates(worktreeRoot: string, commit: string | null): Promise<PaneInfo[]> {
+  async function panesAt(worktreeRoot: string): Promise<PaneInfo[]> {
     const s = deps.state.get();
-    const byRoot = new Map<string, PaneInfo[]>();
+    const result: PaneInfo[] = [];
     for (const pane of s.panes.values()) {
       if (!pane.agent) continue;
       const cwd = effectiveCwd(pane);
       if (!cwd) continue;
       const info = await deps.resolver.resolve(cwd).catch(() => null);
-      if (!info) continue;
-      const list = byRoot.get(info.root) ?? [];
-      list.push(pane);
-      byRoot.set(info.root, list);
+      if (!info || info.root !== worktreeRoot) continue;
+      result.push(pane);
     }
-    const direct = byRoot.get(worktreeRoot) ?? [];
-    if (direct.length > 0 || !commit) return direct;
-    const viaCommit: PaneInfo[] = [];
-    for (const [root, panes] of byRoot) {
-      const head = await deps.gitHistory.headOf(root);
-      if (head && (await deps.gitHistory.isAncestor(root, commit, head))) viaCommit.push(...panes);
-    }
-    return viaCommit;
+    return result;
   }
 
   return {
-    async notify({ worktreeRoot, commit, reviewIds }) {
-      const panes = await candidates(worktreeRoot, commit);
-      if (panes.length === 0) return { result: "no_target", pane: null };
+    async targetsAt(worktreeRoot) {
+      const panes = await panesAt(worktreeRoot);
       const focusedId = deps.state.get().focusedPaneId;
-      const target = panes.find((p) => p.pane_id === focusedId) ?? panes[0]!;
+      return panes.map((p) => ({ pane: p.pane_id, focused: p.pane_id === focusedId }));
+    },
+
+    async notify({ worktreeRoot, reviewIds, pane }) {
+      const panes = await panesAt(worktreeRoot);
+      if (panes.length === 0) return { result: "no_target", pane: null };
+
+      let target: PaneInfo | undefined;
+      if (pane) {
+        target = panes.find((p) => p.pane_id === pane);
+        if (!target) return { result: "no_target", pane: null };
+      } else {
+        const focusedId = deps.state.get().focusedPaneId;
+        target = panes.find((p) => p.pane_id === focusedId) ?? panes[0]!;
+      }
+
       const text = deps.template.replaceAll("{count}", String(reviewIds.length));
       try {
         const outcome = await deps.gateway.agentPrompt(target.pane_id, text);

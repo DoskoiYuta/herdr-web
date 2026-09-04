@@ -23,7 +23,7 @@ describe("openDb + applyMigrations", () => {
       targetValue: "/repo",
       worktreeRoot: "/repo",
       path: "a.ts",
-      anchor: { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" },
+      anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
       createdAtHead: "head1",
       viewedFrom: "WORKTREE",
       viewedTo: "WORKTREE",
@@ -45,7 +45,7 @@ describe("openDb + applyMigrations", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.anchor).toEqual({
       side: "new",
-      line: "x",
+      lines: ["x"],
       before: [],
       after: [],
       lineHint: 1,
@@ -66,7 +66,7 @@ describe("openDb + applyMigrations", () => {
       targetValue: "deadbeef",
       worktreeRoot: "/repo",
       path: "a.ts",
-      anchor: { side: "old", line: "x", before: [], after: [], lineHint: 1, hash: "h" },
+      anchor: { side: "old", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
       createdAtHead: "head1",
       viewedFrom: "WORKTREE",
       viewedTo: "deadbeef",

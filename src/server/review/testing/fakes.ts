@@ -109,6 +109,10 @@ export class FakeReviewRepository implements ReviewRepository {
     this.reviews.set(id, { ...existing, notify });
   }
 
+  async delete(id: string): Promise<void> {
+    this.reviews.delete(id);
+  }
+
   async upsertRepo(repo: RepoRecord): Promise<void> {
     const existing = this.repos.get(repo.key);
     this.repos.set(repo.key, existing ? { ...repo, firstSeenAt: existing.firstSeenAt } : repo);
@@ -237,14 +241,20 @@ export class FakeWorktreeFileReader implements WorktreeFileReader {
 /* ------------------------------------------------------------------ */
 
 export class FakeAgentNotifier implements AgentNotifier {
-  calls: { worktreeRoot: string; commit: string | null; reviewIds: string[] }[] = [];
+  /** worktreeRoot -> agent pane 候補。`targetsAt` はここを引く */
+  targets = new Map<string, { pane: string; focused: boolean }[]>();
+  calls: { worktreeRoot: string; reviewIds: string[]; pane?: string }[] = [];
   nextResult: "sent" | "agent_blocked" | "no_target" = "sent";
   nextPane: string | null = "pane-1";
 
+  async targetsAt(worktreeRoot: string): Promise<{ pane: string; focused: boolean }[]> {
+    return this.targets.get(worktreeRoot) ?? [];
+  }
+
   async notify(input: {
     worktreeRoot: string;
-    commit: string | null;
     reviewIds: string[];
+    pane?: string;
   }): Promise<{ result: "sent" | "agent_blocked" | "no_target"; pane: string | null }> {
     this.calls.push(input);
     return { result: this.nextResult, pane: this.nextResult === "sent" ? this.nextPane : null };

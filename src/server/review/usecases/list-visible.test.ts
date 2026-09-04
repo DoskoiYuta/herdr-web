@@ -4,7 +4,7 @@ import { FakeGitHistory, FakeReviewRepository } from "../testing/fakes";
 import { createReview } from "../domain/transitions";
 import { listVisibleUsecase } from "./list-visible";
 
-const ANCHOR: Anchor = { side: "new", line: "x", before: [], after: [], lineHint: 1, hash: "h" };
+const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 const CLOCK = { now: () => new Date("2026-01-01T00:00:00.000Z") };
 
 function makeReview(overrides: Partial<Review> = {}): Review {

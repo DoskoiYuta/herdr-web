@@ -51,7 +51,7 @@ function reviewFixture(): Review {
     path: "src/foo.ts",
     anchor: {
       side: "new",
-      line: "const x = 1;",
+      lines: ["const x = 1;"],
       before: [],
       after: [],
       lineHint: 1,
@@ -67,6 +67,7 @@ function reviewFixture(): Review {
         body: "looks off",
         at: "2026-01-01T00:00:00.000Z",
         agentSession: null,
+        draft: false,
       },
     ],
     notify: { state: "pending", pane: null, at: null },

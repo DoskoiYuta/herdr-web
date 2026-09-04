@@ -24,13 +24,13 @@ function rv(anchor: Review["anchor"]): Review {
 describe("anchorGone", () => {
   const lines = ["one", "two", "three"];
   test("side=new: gone when the line is missing or the file is gone", () => {
-    const r = rv(buildAnchor(lines, 1, "new"));
+    const r = rv(buildAnchor(lines, 1, 1, "new"));
     expect(anchorGone(r, lines)).toBe(false);
     expect(anchorGone(r, ["one", "three"])).toBe(true);
     expect(anchorGone(r, null)).toBe(true);
   });
   test("side=old: gone only when the deleted line came back", () => {
-    const r = rv(buildAnchor(lines, 1, "old"));
+    const r = rv(buildAnchor(lines, 1, 1, "old"));
     expect(anchorGone(r, ["one", "three"])).toBe(false);
     expect(anchorGone(r, null)).toBe(false);
     expect(anchorGone(r, lines)).toBe(true);
@@ -44,7 +44,7 @@ describe("anchorGone", () => {
 
     test("side=old: a deleted anchored `}` is NOT considered reverted just because another `}` remains", () => {
       // anchor the first function's closing brace (before=["  return 1;"], after=["", "function b() {"])
-      const anchor = buildAnchor(braces, 2, "old");
+      const anchor = buildAnchor(braces, 2, 2, "old");
       const r = rv(anchor);
       // delete the first function entirely; only the second function's `}` remains, unrelated context
       const afterDelete = ["function b() {", "  return 2;", "}"];
@@ -52,7 +52,7 @@ describe("anchorGone", () => {
     });
 
     test("side=new: an anchored `}` that was deleted is gone even though another `}` remains", () => {
-      const anchor = buildAnchor(braces, 2, "new");
+      const anchor = buildAnchor(braces, 2, 2, "new");
       const r = rv(anchor);
       const afterDelete = ["function b() {", "  return 2;", "}"];
       expect(anchorGone(r, afterDelete)).toBe(true);
@@ -61,7 +61,7 @@ describe("anchorGone", () => {
     test("blank-line anchor: bare match on an unrelated blank line is not evidence", () => {
       const withBlanks = ["a", "", "b", "", "c"];
       // anchor the blank line between a and b (before=["a"], after=["b"])
-      const anchor = buildAnchor(withBlanks, 1, "new");
+      const anchor = buildAnchor(withBlanks, 1, 1, "new");
       const r = rv(anchor);
       // context around the annotated blank line is gone, but another blank line remains
       const mutated = ["x", "", "y"];

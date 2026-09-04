@@ -45,6 +45,7 @@ import { gitApi } from "@/lib/api";
 import { findHeaderClickItemId } from "./headerClick.ts";
 import { effectiveDiffStyle, fontMetrics } from "./reconcile.ts";
 import type { Settings } from "./state.ts";
+import { REVIEW_RANGE_CSS } from "@/components/review/rangeHighlight";
 
 const ZERO_OBJECT_ID = /^0+$/;
 
@@ -72,6 +73,10 @@ export interface DiffViewProps {
   /** F3-6: current line/range selection (comment composer target). */
   selectedLines?: CodeViewLineSelection | null;
   onSelectedLinesChange?(selection: CodeViewLineSelection | null): void;
+  /** Mouse-drag lifecycle of a line selection: `onSelectedLinesChange` fires
+   * from the first mousedown on, so the composer waits for `onLineSelectionEnd`. */
+  onLineSelectionStart?(): void;
+  onLineSelectionEnd?(): void;
   /** Per-file collapse: called with an item's id when its chevron toggle, or
    * anywhere else in its file header, is clicked. */
   onToggleCollapse?(id: string): void;
@@ -106,12 +111,16 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     onScrollTopChange,
     selectedLines,
     onSelectedLinesChange,
+    onLineSelectionStart,
+    onLineSelectionEnd,
     onToggleCollapse,
     renderAnnotation,
   },
   ref,
 ) {
   const codeViewRef = useRef<CodeViewHandle<ReviewAnnotationMeta>>(null);
+  const selectionStartRef = useRef(onLineSelectionStart);
+  const selectionEndRef = useRef(onLineSelectionEnd);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef(items);
   const onToastRef = useRef(onToast);
@@ -126,6 +135,8 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
   // @pierre/diffs (scroll handlers, the file loader) always see fresh props
   // without needing to be re-subscribed on every change.
   useLayoutEffect(() => {
+    selectionStartRef.current = onLineSelectionStart;
+    selectionEndRef.current = onLineSelectionEnd;
     itemsRef.current = items;
     onToastRef.current = onToast;
     onTopItemChangeRef.current = onTopItemChange;
@@ -273,6 +284,9 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
       hunkSeparators: "line-info",
       stickyHeaders: true,
       enableLineSelection: true,
+      unsafeCSS: REVIEW_RANGE_CSS,
+      onLineSelectionStart: () => selectionStartRef.current?.(),
+      onLineSelectionEnd: () => selectionEndRef.current?.(),
       expansionLineCount: 100,
       layout: { paddingTop: 12, paddingBottom: 96, gap: 12 },
       // diffHeaderHeight must travel alongside lineHeight, or CodeView falls

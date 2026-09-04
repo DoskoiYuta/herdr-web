@@ -4,6 +4,7 @@ import {
   type CommandDeps,
   type CommandResult,
   clientErrorResult,
+  EXIT_DOMAIN,
   EXIT_OK,
   usageError,
 } from "./types";
@@ -20,7 +21,15 @@ export async function reviewShowCommand(argv: string[], deps: CommandDeps): Prom
   }
 
   const result = await deps.client.getReview(id);
-  if (!result.ok) return clientErrorResult(result.error);
+  if (!result.ok) {
+    if (result.error.kind === "http" && result.error.type === "ambiguous") {
+      return {
+        exitCode: EXIT_DOMAIN,
+        stdout: "ambiguous id, use a longer suffix or the full id\n",
+      };
+    }
+    return clientErrorResult(result.error);
+  }
 
   const stdout = flagBool(flags, "json")
     ? `${JSON.stringify(result.value, null, 2)}\n`

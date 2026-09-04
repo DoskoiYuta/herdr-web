@@ -9,7 +9,7 @@ export const HELP_TEXT = `hw — herdr-web review CLI (plan §7 F6)
 
 Usage:
   hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--path <p>] [--worktree <path>] [--json]
-  hw review show <id> [--json]
+  hw review show <id> [--json]   (<id> may be the short id printed by 'hw review list')
   hw review reply <id> <text...>
   hw status [--worktree <path>] [--json]
   hw repo move <old-path> <new-path>
@@ -26,7 +26,7 @@ const REVIEW_HELP_TEXT = `hw review — manage reviews on the current worktree
 
 Usage:
   hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--path <p>] [--worktree <path>] [--json]
-  hw review show <id> [--json]
+  hw review show <id> [--json]   (<id> may be the short id printed by 'hw review list')
   hw review reply <id> <text...>
 `;
 

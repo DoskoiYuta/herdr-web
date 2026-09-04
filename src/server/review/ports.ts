@@ -23,6 +23,8 @@ export interface ReviewRepository {
    * review no longer exists (e.g. deleted between read and write in a test double).
    */
   updateNotify(id: string, notify: Notify): Promise<void>;
+  /** 下書きしか無かった review の削除に使う（deleteDraft usecase）。存在しない id なら no-op。 */
+  delete(id: string): Promise<void>;
   upsertRepo(repo: RepoRecord): Promise<void>;
   getRepo(key: string): Promise<RepoRecord | null>;
   listRepos(): Promise<RepoRecord[]>;
@@ -64,17 +66,28 @@ export interface WorktreeFileReader {
 export type NotifyResult = "sent" | "agent_blocked" | "no_target" | "unknown";
 
 export interface AgentNotifier {
+  /** worktreeRoot に foreground_cwd を持つ agent pane 一覧。フォーカス中かどうかを添える */
+  targetsAt(worktreeRoot: string): Promise<{ pane: string; focused: boolean }[]>;
   notify(input: {
     worktreeRoot: string;
-    commit: string | null;
     reviewIds: string[];
+    /** 指定時はその pane にのみ送る。`targetsAt` の候補外なら `no_target`。省略時はフォーカス pane、無ければ最初の pane */
+    pane?: string;
   }): Promise<{ result: NotifyResult; pane: string | null }>;
 }
 
 export type ReviewEvent =
   | {
       type: "review";
-      event: "created" | "replied" | "resolved" | "reanchored" | "outdated";
+      event:
+        | "created"
+        | "replied"
+        | "draft-updated"
+        | "deleted"
+        | "sent"
+        | "resolved"
+        | "reanchored"
+        | "outdated";
       review: Review;
     }
   | {

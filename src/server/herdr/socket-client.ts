@@ -6,12 +6,15 @@ import {
   HERDR_SUBSCRIPTIONS,
   HerdrEventEnvelopeSchema,
   PaneInfoSchema,
+  PaneLayoutSnapshotSchema,
+  PaneReadResultSchema,
   PingResultSchema,
   SessionSnapshotSchema,
   WorkspaceCreatedResultSchema,
   WorkspaceInfoResultSchema,
   type HerdrEventEnvelope,
   type PaneInfo,
+  type PaneLayoutSnapshot,
   type PingResult,
   type SessionSnapshot,
 } from "../../contract/herdr";
@@ -310,6 +313,21 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
         }
         throw err;
       }
+    },
+    async paneLayout(paneId: string): Promise<PaneLayoutSnapshot> {
+      const raw = await request<{ layout: unknown }>("pane.layout", { pane_id: paneId });
+      return v.parse(PaneLayoutSnapshotSchema, raw.layout);
+    },
+    async paneRead(paneId: string, lines: number): Promise<string> {
+      const raw = await request<{ read: unknown }>("pane.read", {
+        pane_id: paneId,
+        source: "recent",
+        format: "text",
+        strip_ansi: true,
+        lines,
+      });
+      const parsed = v.parse(PaneReadResultSchema, raw.read);
+      return parsed.text;
     },
     subscribe(handler: (event: HerdrEventEnvelope) => void): () => void {
       eventHandlers.add(handler);

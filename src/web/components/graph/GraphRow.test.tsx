@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import GraphRow from "./GraphRow";
 import { layoutGraph } from "./layout/layout";
@@ -173,6 +173,67 @@ describe("GraphRow", () => {
     const detail = container.querySelector(".graph-row-detail")!;
     expect(row).toHaveClass("px-2");
     expect(detail).toHaveClass("pl-2");
+  });
+
+  test("renders no review badge when unresolved and drafts are both 0", () => {
+    const commits = [{ hash: "c1", parents: [] }];
+    const { rows } = layoutGraph({ commits });
+    const { queryByLabelText } = render(
+      <GraphRow
+        row={rows[0]!}
+        laneCount={1}
+        commit={makeCommit({ hash: "c1" })}
+        refs={[]}
+        isHead={false}
+        selected={false}
+        reviewCount={{ unresolved: 0, drafts: 0 }}
+        onSelect={() => {}}
+      />,
+    );
+    expect(queryByLabelText(/未解決レビュー/)).not.toBeInTheDocument();
+    expect(queryByLabelText(/下書きレビュー/)).not.toBeInTheDocument();
+  });
+
+  test("renders an unresolved-count badge and a drafts badge when both are >0", () => {
+    const commits = [{ hash: "c1", parents: ["p1"] }];
+    const { rows } = layoutGraph({ commits });
+    const { getByLabelText } = render(
+      <GraphRow
+        row={rows[0]!}
+        laneCount={1}
+        commit={makeCommit({ hash: "c1", parents: ["p1"] })}
+        refs={[]}
+        isHead={false}
+        selected={false}
+        reviewCount={{ unresolved: 2, drafts: 3 }}
+        onSelect={() => {}}
+      />,
+    );
+    expect(getByLabelText("未解決レビュー 2 件")).toHaveTextContent("2");
+    expect(getByLabelText("下書きレビュー 3 件")).toHaveTextContent("下書き 3");
+  });
+
+  test("clicking the review badge opens the diff (same as double-clicking the row) without also selecting it", () => {
+    const commits = [{ hash: "c1", parents: ["p1"] }];
+    const { rows } = layoutGraph({ commits });
+    const onSelect = vi.fn();
+    const onOpenDiff = vi.fn();
+    const { getByLabelText } = render(
+      <GraphRow
+        row={rows[0]!}
+        laneCount={1}
+        commit={makeCommit({ hash: "c1", parents: ["p1"] })}
+        refs={[]}
+        isHead={false}
+        selected={false}
+        reviewCount={{ unresolved: 1, drafts: 0 }}
+        onSelect={onSelect}
+        onOpenDiff={onOpenDiff}
+      />,
+    );
+    fireEvent.click(getByLabelText("未解決レビュー 1 件"));
+    expect(onOpenDiff).toHaveBeenCalledWith("c1");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   test("renders ref badges for refs pointing at this commit", () => {

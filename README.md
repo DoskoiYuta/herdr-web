@@ -79,8 +79,9 @@ tailscale serve --bg 8080
 
 ## レビューの運用
 
-- レビューは **変更に付く**。未コミットなら worktree、コミット後は commit に紐づく。エージェントが今いる worktree から見えるレビュー（その worktree の未コミット分 + HEAD から到達可能な commit 分）が `hw review list` に出る。
-- 作成時、その worktree にいるエージェント pane へ `agent.prompt` で通知する（10 秒デバウンス）。通知状態はレビューに保存され、UI に `未通知` / `通知済み` / `入力待ちで未達` / `宛先なし` / `不明` として出る。エージェントが入力待ち（`blocked`）なら入力待ちを解消してから「再送」する。herdr 未接続中は保留のまま再試行し、サーバー再起動後も保留分を引き継ぐ。
+- レビューは **変更に付く**。未コミットなら worktree、コミット後は commit に紐づく。git graph は commit ごとのレビュー件数を表示する（旧 Review タブは廃止）。エージェントが今いる worktree から見えるレビュー（その worktree の未コミット分 + HEAD から到達可能な commit 分）が `hw review list` に出る。
+- ユーザーがコード行（複数行の範囲も可）にコメントを書くと、それは **下書き** になる。返信も同様に下書きになる。下書きのあいだはエージェントから見えず、何も通知されない。
+- Web UI の **送信** ボタンで、その worktree の下書きをまとめて送信する。送信すると各レビューは `open` に戻り（`resolved` だった場合も再オープン）、その worktree にいるエージェント pane へ `agent.prompt` で通知が 1 回だけ飛ぶ（件数入り、即時 = 待たない）。通知状態はレビューに保存され、UI に `未通知` / `通知済み` / `入力待ちで未達` / `宛先なし` / `不明` として出る。エージェントが入力待ち（`blocked`）なら入力待ちを解消してから「再送」する。herdr 未接続中は保留のまま再試行し、サーバー再起動後も保留分を引き継ぐ。
 - resolve できるのはユーザーだけ。エージェントは返信しかできない。
 - リポジトリのディレクトリを移動したら `hw repo move <old> <new>`。
 
@@ -90,7 +91,7 @@ tailscale serve --bg 8080
 
 ```
 レビューコメントの通知を受けたら `hw review list` で確認し、`hw review show <id>` で該当箇所を読む。
-対応後は `hw review reply <id> "<返答>"` で返答する。
+対応後は `hw review reply <id> "<返答>"` で返答する（この返信も下書きになり、ユーザーが送信するまでは届かない）。
 解決（resolve）の判断はユーザーが行うので、エージェントは resolve しない。
 ```
 
@@ -98,7 +99,7 @@ tailscale serve --bg 8080
 
 ```
 hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--json]
-hw review show <id> [--json]
+hw review show <id> [--json]   # <id> は `hw review list` が出す短縮 id（末尾一致）でよい
 hw review reply <id> <text>
 hw status
 hw repo move <old-path> <new-path>

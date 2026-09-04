@@ -349,3 +349,33 @@ export type HerdrAgentPromptErrorCode = (typeof HERDR_AGENT_PROMPT_ERROR_CODES)[
 
 export const HerdrErrorBodySchema = v.object({ code: v.string(), message: v.string() });
 export type HerdrErrorBody = v.InferOutput<typeof HerdrErrorBodySchema>;
+
+/** Rect shared by `pane.layout`'s `area` and per-pane `rect` (cell units). */
+export const HerdrRectSchema = v.looseObject({
+  x: v.number(),
+  y: v.number(),
+  width: v.number(),
+  height: v.number(),
+});
+export type HerdrRect = v.InferOutput<typeof HerdrRectSchema>;
+
+/** `pane.layout`'s successful result (`PaneLayoutSnapshot` in herdr's schema). */
+export const PaneLayoutSnapshotSchema = v.looseObject({
+  workspace_id: v.string(),
+  tab_id: v.string(),
+  zoomed: v.boolean(),
+  area: HerdrRectSchema,
+  focused_pane_id: v.nullish(v.string()),
+  panes: v.array(
+    v.looseObject({ pane_id: v.string(), focused: v.boolean(), rect: HerdrRectSchema }),
+  ),
+  splits: v.array(v.unknown()),
+});
+export type PaneLayoutSnapshot = v.InferOutput<typeof PaneLayoutSnapshotSchema>;
+
+/** `pane.read`'s successful result (`PaneReadResult` in herdr's schema). */
+export const PaneReadResultSchema = v.looseObject({
+  text: v.string(),
+  truncated: v.boolean(),
+});
+export type PaneReadResult = v.InferOutput<typeof PaneReadResultSchema>;

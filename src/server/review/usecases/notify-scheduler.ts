@@ -29,8 +29,14 @@ export type NotifySchedulerDeps = {
 };
 
 export type NotifyScheduler = {
-  /** レビュー作成時に呼ぶ。同じ worktreeRoot 宛はデバウンス窓内でまとめられる */
-  schedule(review: Review): void;
+  /**
+   * レビュー作成時、または送信時に呼ぶ。同じ worktreeRoot 宛はデバウンス窓内でまとめられる。
+   * `worktreeRoot` 省略時は `review.worktreeRoot`（review が作られた worktree）宛。
+   * send-drafts はここに送信を発行した worktree と、選んだ pane を渡す
+   * （通知先をレビュー作成時の worktree ではなく送信元にする）。
+   * `pane` は同じバッチ内では最後に渡されたものが勝つ（send は同じバッチの全 review に同じ pane を渡すので実質同一）。
+   */
+  schedule(review: Review, worktreeRoot?: string, pane?: string): void;
   /** デバウンス中の通知をすべて即時発火する（テスト用） */
   flush(): Promise<void>;
   /** 1 件だけ即時に再送する */
@@ -43,8 +49,9 @@ export type NotifyScheduler = {
 };
 
 type PendingEntry = {
-  commit: string | null;
   reviewIds: Set<string>;
+  /** send-drafts が選んだ通知先 pane。作成時通知（pane 未指定）では undefined */
+  pane?: string;
   handle: TimerHandle;
   /** item 3: current backoff delay while herdr stays disconnected. */
   backoffMs?: number;
@@ -107,7 +114,7 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
     );
     scheduleTimer(
       worktreeRoot,
-      { commit: entry.commit, reviewIds: entry.reviewIds, backoffMs, attempts },
+      { reviewIds: entry.reviewIds, pane: entry.pane, backoffMs, attempts },
       backoffMs,
     );
   }
@@ -146,8 +153,8 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
 
       const { result, pane } = await deps.notifier.notify({
         worktreeRoot,
-        commit: entry.commit,
         reviewIds: candidates.map((r) => r.id),
+        pane: entry.pane,
       });
       const at = deps.clock.now().toISOString();
       for (const review of candidates) {
@@ -169,18 +176,19 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
     }
   }
 
-  function schedule(review: Review): void {
-    const worktreeRoot = review.worktreeRoot;
-    const commit = review.target.kind === "commit" ? review.target.hash : null;
-
+  function schedule(
+    review: Review,
+    worktreeRoot: string = review.worktreeRoot,
+    pane?: string,
+  ): void {
     const existing = pending.get(worktreeRoot);
     if (existing) {
       existing.reviewIds.add(review.id);
-      if (commit) existing.commit = commit;
+      if (pane) existing.pane = pane;
       return;
     }
 
-    scheduleTimer(worktreeRoot, { commit, reviewIds: new Set([review.id]) }, debounceMs);
+    scheduleTimer(worktreeRoot, { reviewIds: new Set([review.id]), pane }, debounceMs);
   }
 
   return {
@@ -199,7 +207,6 @@ export function createNotifyScheduler(deps: NotifySchedulerDeps): NotifySchedule
       try {
         const { result, pane } = await deps.notifier.notify({
           worktreeRoot: review.worktreeRoot,
-          commit: review.target.kind === "commit" ? review.target.hash : null,
           reviewIds: [reviewId],
         });
         const at = deps.clock.now().toISOString();

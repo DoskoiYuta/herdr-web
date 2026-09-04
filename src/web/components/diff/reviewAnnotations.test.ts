@@ -2,7 +2,7 @@ import { parsePatchFiles } from "@pierre/diffs";
 import { expect, test } from "vitest";
 import type { Review } from "@contract/review";
 import type { ForDiffMatch } from "@/lib/api";
-import { buildAnnotations } from "./reviewAnnotations.ts";
+import { buildAnnotations, matchLineRange } from "./reviewAnnotations.ts";
 
 const PATCH = `diff --git a/a.txt b/a.txt
 index e69de29..d95f3ad 100644
@@ -27,11 +27,18 @@ function review(overrides: Partial<Review> = {}): Review {
     target: { kind: "worktree", root: "/repo" },
     worktreeRoot: "/repo",
     path: "a.txt",
-    anchor: { side: "new", line: "line2-changed", before: [], after: [], lineHint: 2, hash: "h" },
+    anchor: {
+      side: "new",
+      lines: ["line2-changed"],
+      before: [],
+      after: [],
+      lineHint: 2,
+      hash: "h",
+    },
     createdAtHead: "abc",
     viewedAs: { from: "HEAD", to: "WORKTREE" },
     status: "open",
-    thread: [{ seq: 0, author: "user", body: "x", at: "t", agentSession: null }],
+    thread: [{ seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false }],
     notify: { state: "pending", pane: null, at: null },
     createdAt: "t",
     updatedAt: "t",
@@ -42,21 +49,26 @@ function review(overrides: Partial<Review> = {}): Review {
 test("buildAnnotations converts a forDiff match's sideLines index to a real line number", () => {
   const file = parseFile();
   // "line2-changed" is additionLines index 1 -> real new-side line 2.
-  const match: ForDiffMatch = { review: review(), line: 2, confidence: "exact" };
+  const match: ForDiffMatch = { review: review(), line: 2, span: 1, confidence: "exact" };
   const annotations = buildAnnotations(file, [match], null);
   expect(annotations).toEqual([
     {
       side: "additions",
       lineNumber: 2,
-      metadata: { kind: "reviews", side: "new", matches: [match] },
+      metadata: {
+        kind: "reviews",
+        side: "new",
+        matches: [match],
+        ranges: { r1: { start: 2, end: 2 } },
+      },
     },
   ]);
 });
 
 test("buildAnnotations groups multiple matches at the same line", () => {
   const file = parseFile();
-  const a: ForDiffMatch = { review: review({ id: "a" }), line: 2, confidence: "exact" };
-  const b: ForDiffMatch = { review: review({ id: "b" }), line: 2, confidence: "context" };
+  const a: ForDiffMatch = { review: review({ id: "a" }), line: 2, span: 1, confidence: "exact" };
+  const b: ForDiffMatch = { review: review({ id: "b" }), line: 2, span: 1, confidence: "context" };
   const annotations = buildAnnotations(file, [a, b], null);
   expect(annotations).toHaveLength(1);
   expect(annotations[0]!.metadata).toMatchObject({ kind: "reviews", matches: [a, b] });
@@ -64,8 +76,34 @@ test("buildAnnotations groups multiple matches at the same line", () => {
 
 test("buildAnnotations drops matches whose sideLines index maps outside every hunk", () => {
   const file = parseFile();
-  const match: ForDiffMatch = { review: review(), line: 999, confidence: "line" };
+  const match: ForDiffMatch = { review: review(), line: 999, span: 1, confidence: "line" };
   expect(buildAnnotations(file, [match], null)).toEqual([]);
+});
+
+test("buildAnnotations places a multi-line match at the range's END line, not its start", () => {
+  const file = parseFile();
+  // match.line=2 (line2-changed) + span=2 covers line2-changed..line2b ->
+  // real new-side lines 2..3; must anchor at 3, not 2.
+  const match: ForDiffMatch = { review: review(), line: 2, span: 2, confidence: "exact" };
+  const annotations = buildAnnotations(file, [match], null);
+  expect(annotations).toEqual([
+    {
+      side: "additions",
+      lineNumber: 3,
+      metadata: {
+        kind: "reviews",
+        side: "new",
+        matches: [match],
+        ranges: { r1: { start: 2, end: 3 } },
+      },
+    },
+  ]);
+});
+
+test("matchLineRange returns the real start/end line numbers spanned by a match", () => {
+  const file = parseFile();
+  const match: ForDiffMatch = { review: review(), line: 2, span: 2, confidence: "exact" };
+  expect(matchLineRange(file, match)).toEqual({ start: 2, end: 3 });
 });
 
 test("buildAnnotations adds a composer annotation at the given real line/side", () => {

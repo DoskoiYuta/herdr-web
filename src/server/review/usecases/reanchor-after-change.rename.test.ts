@@ -46,7 +46,7 @@ describe("F10: reanchorAfterChange follows renames", () => {
     await git(root, "commit", "-q", "-m", "init");
     const createdAtHead = await git(root, "rev-parse", "HEAD");
 
-    const anchor = buildAnchor(lines, 1, "new"); // anchors "two"
+    const anchor = buildAnchor(lines, 1, 1, "new"); // anchors "two"
     const clock = new ManualClock("2026-01-01T00:00:00.000Z");
     const review = createReview(
       {
