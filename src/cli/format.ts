@@ -1,5 +1,6 @@
+import type { Ask, AskWithSession } from "../contract/ask";
 import type { Health } from "../contract/health";
-import type { Review } from "../contract/review";
+import type { Anchor, Review } from "../contract/review";
 
 /** First `n` chars of `s`, with any newlines collapsed to spaces first (for one-line summaries). */
 function firstChars(s: string, n: number): string {
@@ -18,10 +19,30 @@ export function formatTarget(review: Pick<Review, "target">): string {
     : `commit:${review.target.hash.slice(0, 7)}`;
 }
 
-function formatLineRange(anchor: Review["anchor"]): string {
+function formatLineRange(anchor: Anchor): string {
   const start = anchor.lineHint;
   if (anchor.lines.length <= 1) return `${start}`;
   return `${start}-${start + anchor.lines.length - 1}`;
+}
+
+function formatAnchorBlock(anchor: Anchor): string[] {
+  const lines: string[] = [];
+  for (const before of anchor.before) lines.push(`    ${before}`);
+  for (const anchorLine of anchor.lines) lines.push(`  > ${anchorLine}`);
+  for (const after of anchor.after) lines.push(`    ${after}`);
+  return lines;
+}
+
+function formatThread(
+  thread: { author: string; agentSession: string | null; at: string; body: string }[],
+): string[] {
+  const lines: string[] = [];
+  for (const entry of thread) {
+    const who = entry.agentSession ? `${entry.author} (${entry.agentSession})` : entry.author;
+    lines.push(`[${who}] ${entry.at}`);
+    for (const bodyLine of entry.body.split("\n")) lines.push(`  ${bodyLine}`);
+  }
+  return lines;
 }
 
 /** `<id-short(8)> <status> <path>:<anchor.lineHint>[-<end>] [<target>] <first 60 chars of thread[0].body>` */
@@ -48,24 +69,41 @@ export function formatReviewShow(review: Review): string {
   lines.push(`updatedAt: ${review.updatedAt}`);
   lines.push("");
   lines.push("anchor:");
-  for (const before of review.anchor.before) {
-    lines.push(`    ${before}`);
-  }
-  for (const anchorLine of review.anchor.lines) {
-    lines.push(`  > ${anchorLine}`);
-  }
-  for (const after of review.anchor.after) {
-    lines.push(`    ${after}`);
-  }
+  lines.push(...formatAnchorBlock(review.anchor));
   lines.push("");
   lines.push("thread:");
-  for (const entry of review.thread) {
-    const who = entry.agentSession ? `${entry.author} (${entry.agentSession})` : entry.author;
-    lines.push(`[${who}] ${entry.at}`);
-    for (const bodyLine of entry.body.split("\n")) {
-      lines.push(`  ${bodyLine}`);
-    }
-  }
+  lines.push(...formatThread(review.thread));
+  return lines.join("\n");
+}
+
+/** `<id-short(8)> <status> <path>:<anchor.lineHint>[-<end>] <first 60 chars of thread[0].body>` */
+export function formatAskLine(ask: Ask): string {
+  const firstBody = ask.thread[0]?.body ?? "";
+  return `${shortId(ask.id)} ${ask.status} ${ask.path}:${formatLineRange(ask.anchor)} ${firstChars(firstBody, 60)}`;
+}
+
+export function formatAskList(asks: Ask[]): string {
+  const lines = asks.map(formatAskLine);
+  lines.push(`${asks.length} 件`);
+  return lines.join("\n");
+}
+
+export function formatAskShow(ask: AskWithSession): string {
+  const lines: string[] = [];
+  lines.push(`id: ${ask.id}`);
+  lines.push(`repo: ${ask.repo}`);
+  lines.push(`path: ${ask.path}`);
+  lines.push(`status: ${ask.status}`);
+  lines.push(`worktreeRoot: ${ask.worktreeRoot}`);
+  lines.push(`session: ${ask.sessionStatus}`);
+  lines.push(`createdAt: ${ask.createdAt}`);
+  lines.push(`updatedAt: ${ask.updatedAt}`);
+  lines.push("");
+  lines.push("anchor:");
+  lines.push(...formatAnchorBlock(ask.anchor));
+  lines.push("");
+  lines.push("thread:");
+  lines.push(...formatThread(ask.thread));
   return lines.join("\n");
 }
 

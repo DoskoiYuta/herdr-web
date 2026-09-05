@@ -2,9 +2,33 @@
 // DOM — keep these testable with plain vitest (no jsdom needed).
 
 import type { FileDiffMetadata } from "@pierre/diffs";
+import type { GitStatus } from "@pierre/trees";
+import type { PathTreeDecoration } from "@/components/tree/PathTree";
+import { ADDITIONS_COLOR, DELETIONS_COLOR } from "@/components/tree/decorationColors";
 import { hunkStats } from "./reconcile.ts";
 
 export type FileStatus = "A" | "M" | "D" | "R" | "U";
+
+const STATUS_TO_GIT_STATUS: Record<FileStatus, GitStatus> = {
+  A: "added",
+  M: "modified",
+  D: "deleted",
+  R: "renamed",
+  U: "untracked",
+};
+
+/** Maps this module's single-letter status to PathTree's `gitStatus` vocabulary. */
+export function toGitStatus(status: FileStatus): GitStatus {
+  return STATUS_TO_GIT_STATUS[status];
+}
+
+/** Builds a PathTree row decoration ("+n −m") from a file's hunk stats. */
+export function statsDecoration(stats: FileStats): PathTreeDecoration {
+  const parts: { text: string; color?: string }[] = [];
+  if (stats.additions > 0) parts.push({ text: `+${stats.additions}`, color: ADDITIONS_COLOR });
+  if (stats.deletions > 0) parts.push({ text: `−${stats.deletions}`, color: DELETIONS_COLOR });
+  return { text: parts.map((p) => p.text).join(" "), parts };
+}
 
 /**
  * Derive the single-letter status shown in the tree row. An untracked file

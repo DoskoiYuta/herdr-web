@@ -128,3 +128,21 @@
     @apply font-sans;
   }
 }
+
+/* Files タブの MarkdownView (@wysimark/react): read-only プレビューなので
+ * ツールバーを非表示にする。ツールバーは $OuterContainer の
+ * `[data-slate-editor]` を持つ子要素の直前の兄弟としてレンダリングされる
+ * (node_modules/@wysimark/react/.dist/browser/index.esm.js の
+ * renderEditable) — wysimark に readOnly / hideToolbar プロパティが無いため
+ * DOM 構造に依存したセレクタで隠す。 */
+.md-readonly div:has(> [data-slate-editor]) > :first-child:not([data-slate-editor]) {
+  display: none;
+}
+
+/* wysimark は文字・コード・表の色を zinc 系の固定値で持ち、ダークテーマに
+ * 追従しない（暗い背景に rgb(39,39,42) の本文が乗る）。個別に上書きすると
+ * 要素種別ごとに漏れが出るので、プレビュー面そのものを常に白い「紙」にする。 */
+.md-readonly {
+  background: #fff;
+  color-scheme: light;
+}

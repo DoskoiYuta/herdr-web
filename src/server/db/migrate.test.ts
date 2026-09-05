@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { openDb, type Db } from "./client";
 import { applyMigrations } from "./migrate";
 import { embeddedMigrations } from "./migrations.generated";
-import { reviews } from "./schema";
+import { asks, reviews } from "./schema";
 
 type InternalSqliteDb = {
   dialect: {
@@ -63,5 +63,15 @@ describe("migration upgrade path", () => {
     expect(rows[0]?.notifyState).toBe("none");
     expect(rows[0]?.notifyPane).toBeNull();
     expect(rows[0]?.notifyAt).toBeNull();
+  });
+});
+
+describe("applyMigrations on an empty DB", () => {
+  // F10: without this, a fresh DB (first `hw`/server startup) would have no
+  // `asks`/`ask_entries` tables and every ask route would fail at the first query.
+  test("creates the asks table, usable via the drizzle query builder", () => {
+    const db = openDb(":memory:");
+    applyMigrations(db);
+    expect(db.select().from(asks).all()).toEqual([]);
   });
 });

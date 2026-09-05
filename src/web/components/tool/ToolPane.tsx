@@ -5,6 +5,7 @@ import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
 import type { SubRepo } from "@contract/git";
 import type { PaneRow, Repo } from "@contract/events";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
+import { FilesPanel, type FilesInitialLocation } from "@/components/files/FilesPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
 import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gitApi, reviewApi, SendTargetError } from "@/lib/api";
+import type { AskEvent } from "@/lib/askEvent";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { agentPanesAt } from "@/lib/sendTargets";
@@ -131,6 +133,15 @@ export interface ToolPaneProps {
   focusInfo?: ToolPaneFocusInfo | null;
   /** F5-9: review / review-notify WS イベントの購読（herdrStore から渡す）。 */
   subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
+  /** F10: ask / ask-notify WS イベントの購読（herdrStore から渡す）。herdrStore
+   * がまだこのイベントを持たない間は未指定で、FilesPanel の for-file ポーリング
+   * のみで追従する。 */
+  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
+  /** F10: 質問セッション行の「対象ファイルを開く」からのジャンプ先。Files タブへ
+   * 切り替え、該当ファイルを選択してスクロールする。一度消費したら親が null に
+   * 戻す想定（DiffPanel の `initialLocation` と同じ流儀）。 */
+  filesInitialLocation?: FilesInitialLocation | null;
+  onFilesInitialLocationConsumed?: () => void;
 }
 
 function ResumeCopyButton({ sessionId }: { sessionId: string }) {
@@ -235,10 +246,22 @@ export function ToolPane({
   onOpenPath,
   focusInfo,
   subscribeReviewEvents,
+  subscribeAskEvents,
+  filesInitialLocation = null,
+  onFilesInitialLocationConsumed,
 }: ToolPaneProps) {
   const [comparison, setComparison] = useState<CommitRange>(null);
-  const [activeTab, setActiveTab] = useState("diff");
+  const [activeTab, setActiveTab] = useState(() => (filesInitialLocation ? "files" : "diff"));
   const [initialLocation, setInitialLocation] = useState<DiffInitialLocation | null>(null);
+
+  // F10: 質問セッション行「対象ファイルを開く」が来たら Files タブへ切り替える
+  // （React 公式の「変化した prop から state を合わせ込む」パターン、
+  // `prevWorktreeRoot` と同じ発想）。
+  const [prevFilesInitialLocation, setPrevFilesInitialLocation] = useState(filesInitialLocation);
+  if (filesInitialLocation !== prevFilesInitialLocation) {
+    setPrevFilesInitialLocation(filesInitialLocation);
+    if (filesInitialLocation && activeTab !== "files") setActiveTab("files");
+  }
 
   // A commit comparison picked in one worktree's Graph tab is meaningless
   // (and can even reference a hash the new worktree doesn't have) once focus
@@ -464,6 +487,7 @@ export function ToolPane({
         <TabsList className="mx-2 mt-2 w-fit">
           <TabsTrigger value="diff">Diff</TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
         </TabsList>
 
         <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
@@ -512,6 +536,21 @@ export function ToolPane({
               reviewCounts={reviewCounts}
             />
           </div>
+        </TabsContent>
+
+        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
+          <FilesPanel
+            key={subRepoRoot}
+            repo={subRepoRoot}
+            repoChangedTick={repoChangedTick}
+            pollMs={subRepoPollMs}
+            repoKey={resolvedRepoKey}
+            worktreeRoot={worktreeRoot}
+            repos={repos}
+            subscribeAskEvents={subscribeAskEvents}
+            initialLocation={filesInitialLocation}
+            onInitialLocationConsumed={onFilesInitialLocationConsumed}
+          />
         </TabsContent>
       </Tabs>
     </div>

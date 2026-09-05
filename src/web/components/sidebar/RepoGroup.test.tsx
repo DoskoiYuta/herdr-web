@@ -1,15 +1,45 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { Repo } from "@contract/events";
+import type { PaneRow, Repo } from "@contract/events";
 import { RepoGroup } from "./RepoGroup";
 
+function pane(overrides: Partial<PaneRow> = {}): PaneRow {
+  return {
+    paneId: "p1",
+    workspaceId: "w1",
+    workspaceLabel: null,
+    tabId: "t1",
+    tabLabel: null,
+    label: null,
+    agent: "claude",
+    agentStatus: "working",
+    terminalTitleStripped: null,
+    focused: false,
+    cwd: "/repo",
+    foregroundCwd: "/repo",
+    ...overrides,
+  };
+}
+
 const createWorkspace = vi.fn();
+const listAsks = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   herdrApi: {
     createWorkspace: (...args: unknown[]) => createWorkspace(...args),
   },
+  askApi: {
+    list: (...args: unknown[]) => listAsks(...args),
+    resolve: vi.fn(),
+  },
 }));
+
+function render(ui: ReactElement) {
+  const client = new QueryClient();
+  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 function repo(overrides: Partial<Repo> = {}): Repo {
   return {
@@ -33,12 +63,15 @@ function defaultProps() {
     collapsed: false,
     onToggleCollapse: vi.fn(),
     onSelectPane: vi.fn(),
+    onOpenAskFile: vi.fn(),
   };
 }
 
 beforeEach(() => {
   createWorkspace.mockReset();
   createWorkspace.mockResolvedValue({ workspaceId: "new-w" });
+  listAsks.mockReset();
+  listAsks.mockResolvedValue([]);
 });
 
 describe("RepoGroup create-workspace flow", () => {
@@ -88,5 +121,40 @@ describe("RepoGroup create-workspace flow", () => {
     render(<RepoGroup {...defaultProps()} onToggleCollapse={onToggleCollapse} />);
     fireEvent.click(screen.getByTestId("create-workspace-/repo/.git"));
     expect(onToggleCollapse).not.toHaveBeenCalled();
+  });
+});
+
+describe("RepoGroup ask-session grouping", () => {
+  test("keeps an ask: workspace out of the normal workspace rows and lists it under 質問セッション instead", () => {
+    const withAsk = repo({
+      worktrees: [
+        {
+          root: "/repo",
+          branch: "main",
+          isMain: true,
+          panes: [
+            pane({ paneId: "p1", workspaceId: "w1", workspaceLabel: "normal-ws" }),
+            pane({
+              paneId: "ask-p1",
+              workspaceId: "w-ask",
+              workspaceLabel: "ask:abc12345",
+              ask: true,
+            }),
+          ],
+        },
+      ],
+    });
+
+    render(<RepoGroup {...defaultProps()} repo={withAsk} />);
+
+    expect(screen.getByTestId("workspace-row-w1")).toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-row-w-ask")).not.toBeInTheDocument();
+    expect(screen.getByTestId("ask-session-group-header")).toBeInTheDocument();
+    expect(screen.getByText("ask:abc12345")).toBeInTheDocument();
+  });
+
+  test("shows no ask-session group when the repo has no ask workspaces", () => {
+    render(<RepoGroup {...defaultProps()} />);
+    expect(screen.queryByTestId("ask-session-group-header")).not.toBeInTheDocument();
   });
 });

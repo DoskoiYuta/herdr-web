@@ -6,6 +6,8 @@ import { Terminal } from "@/components/terminal/Terminal";
 import { configApi } from "@/lib/api";
 import { ToolPane } from "@/components/tool/ToolPane";
 import { createHerdrStore, useHerdrStore } from "@/lib/herdrStore";
+import type { AskFileLocation } from "@/components/sidebar/AskSessionGroup";
+import type { FilesInitialLocation } from "@/components/files/FilesPanel";
 import {
   DEFAULT_LAYOUT,
   LAYOUT_STORAGE_KEY,
@@ -109,6 +111,25 @@ export function App() {
     [store],
   );
 
+  // F10: 質問セッション行「対象ファイルを開く」。ask の worktree がツールペインの
+  // 現在の worktree と違えば、手動パスフォームと同じ `handleOpenPath` 経路
+  // （pin して worktree を切り替える）でその worktree をまず表示させる。
+  const [filesInitialLocation, setFilesInitialLocation] = useState<FilesInitialLocation | null>(
+    null,
+  );
+  const handleOpenAskFile = useCallback(
+    (location: AskFileLocation) => {
+      if (location.worktreeRoot !== worktreeRoot) {
+        handleOpenPath(location.worktreeRoot);
+      }
+      setFilesInitialLocation({ path: location.path, line: location.line });
+    },
+    [worktreeRoot, handleOpenPath],
+  );
+  const handleFilesInitialLocationConsumed = useCallback(() => {
+    setFilesInitialLocation(null);
+  }, []);
+
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
   const handleSidebarLayoutChange = useCallback(
     (next: { width: number; collapsed: boolean }) => {
@@ -128,6 +149,8 @@ export function App() {
         onSelectPane={handleSelectPane}
         layout={sidebarLayout}
         onLayoutChange={handleSidebarLayoutChange}
+        onOpenAskFile={handleOpenAskFile}
+        subscribeAskEvents={store.subscribeAskEvents}
       />
 
       <main className="min-w-0 flex-1">
@@ -174,6 +197,9 @@ export function App() {
             onOpenPath={handleOpenPath}
             focusInfo={worktreeRoot ? focusInfo : null}
             subscribeReviewEvents={store.subscribeReviewEvents}
+            subscribeAskEvents={store.subscribeAskEvents}
+            filesInitialLocation={filesInitialLocation}
+            onFilesInitialLocationConsumed={handleFilesInitialLocationConsumed}
           />
         )}
       </aside>

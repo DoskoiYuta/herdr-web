@@ -23,6 +23,8 @@ export interface FakeHerdr extends HerdrGateway {
   closePane(paneId: string): void;
   /** Make the next `agentPrompt` targeting this pane resolve with `agent_blocked` instead of sending. */
   simulateAgentBlocked(paneId: string, blocked?: boolean): void;
+  /** Make the next `agentStart` targeting this pane reject, simulating a herdr RPC failure. */
+  failAgentStart(paneId: string, fail?: boolean): void;
   setStatus(status: HerdrStatus): void;
   /** Directly mutate a pane record and emit `pane_updated` (for arbitrary field changes in tests). */
   updatePane(paneId: string, patch: Partial<PaneInfo>): void;
@@ -57,6 +59,7 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
   const failingLayoutPanes = new Set<string>();
   const paneReadTexts = new Map<string, string>();
   const failingReadPanes = new Set<string>();
+  const failingAgentStartPanes = new Set<string>();
   let nextWorkspaceNumber = workspaces.size + 1;
 
   const subscribers = new Set<(event: HerdrEventEnvelope) => void>();
@@ -116,6 +119,7 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
       cwd: string | null;
       label?: string | null;
       focus?: boolean;
+      env?: Record<string, string>;
     }): Promise<WorkspaceInfo> {
       const number = nextWorkspaceNumber++;
       const workspaceId = `fw${number}`;
@@ -159,7 +163,12 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
         focusedTabId = tabId;
         focusedPaneId = paneId;
       }
+      // Mirrors real herdr 0.8.2: workspace.create brings a tab and a root pane
+      // with it, and the subscribe stream emits them pane -> workspace -> tab
+      // (verified live against a running herdr), not creation order.
+      emit({ event: "pane_created", data: { type: "pane_created", pane } });
       emit({ event: "workspace_created", data: { type: "workspace_created", workspace } });
+      emit({ event: "tab_created", data: { type: "tab_created", tab } });
       return workspace;
     },
     async workspaceRename(workspaceId: string, label: string): Promise<WorkspaceInfo> {
@@ -188,6 +197,36 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
         event: "workspace_closed",
         data: { type: "workspace_closed", workspace_id: workspaceId, workspace: existing },
       });
+    },
+    async agentStart(params: {
+      name: string;
+      kind: string;
+      paneId: string;
+      timeoutMs?: number;
+      args?: string[];
+    }): Promise<PaneInfo> {
+      if (failingAgentStartPanes.has(params.paneId))
+        throw new Error(`fake herdr: agent.start failed for ${params.paneId}`);
+      const pane = requirePane(params.paneId);
+      // real herdr reports the agent *kind* here; the name only addresses the agent
+      const next: PaneInfo = { ...pane, agent: params.kind, agent_status: "idle" };
+      panes.set(params.paneId, next);
+      emit({
+        event: "pane_agent_detected",
+        data: {
+          type: "pane_agent_detected",
+          pane_id: params.paneId,
+          workspace_id: pane.workspace_id,
+          agent: params.name,
+          final_status: "idle",
+        },
+      });
+      return next;
+    },
+    async paneList(workspaceId?: string | null): Promise<PaneInfo[]> {
+      return [...panes.values()].filter(
+        (p) => workspaceId == null || p.workspace_id === workspaceId,
+      );
     },
     async paneLayout(paneId: string): Promise<PaneLayoutSnapshot> {
       if (failingLayoutPanes.has(paneId))
@@ -271,6 +310,11 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
     simulateAgentBlocked(paneId: string, blocked = true): void {
       if (blocked) blockedPanes.add(paneId);
       else blockedPanes.delete(paneId);
+    },
+
+    failAgentStart(paneId: string, fail = true): void {
+      if (fail) failingAgentStartPanes.add(paneId);
+      else failingAgentStartPanes.delete(paneId);
     },
 
     setStatus(next: HerdrStatus): void {

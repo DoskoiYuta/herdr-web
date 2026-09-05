@@ -63,4 +63,24 @@ describe("agentPanesAt", () => {
   test("returns an empty list when the worktree root has no match", () => {
     expect(agentPanesAt([], "/missing")).toEqual([]);
   });
+
+  test("excludes ask-session panes — a review must not be sendable to a question session", () => {
+    const repos: Repo[] = [
+      repo({
+        worktrees: [
+          {
+            root: "/wt-a",
+            branch: "main",
+            isMain: true,
+            panes: [
+              pane({ paneId: "claude-1", agent: "claude" }),
+              pane({ paneId: "ask-1", agent: "claude", ask: true }),
+            ],
+          },
+        ],
+      }),
+    ];
+
+    expect(agentPanesAt(repos, "/wt-a").map((p) => p.paneId)).toEqual(["claude-1"]);
+  });
 });

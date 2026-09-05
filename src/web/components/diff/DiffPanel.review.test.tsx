@@ -94,6 +94,18 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+// Stub PathTree the same way DiffPanel.test.tsx does — this file exercises
+// review annotations, not tree rendering.
+vi.mock("@/components/tree/PathTree", () => ({
+  PathTree: ({ paths }: { paths: string[] }) => (
+    <div data-testid="path-tree-stub">
+      {paths.map((p) => (
+        <div key={p}>{p}</div>
+      ))}
+    </div>
+  ),
+}));
+
 const { default: DiffPanel } = await import("./DiffPanel.tsx");
 
 function patchFor(fileName: string) {

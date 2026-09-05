@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { PaneRow, Repo } from "@contract/events";
-import { groupByWorkspace } from "./repoWorkspaces";
+import { askWorkspacesFor, groupByWorkspace } from "./repoWorkspaces";
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
@@ -92,5 +92,47 @@ describe("groupByWorkspace", () => {
 
   test("a repo with no worktrees produces no workspace groups", () => {
     expect(groupByWorkspace(repo({ worktrees: [] }))).toEqual([]);
+  });
+
+  test("excludes ask-session panes, so they don't appear as ordinary workspaces", () => {
+    const r = repo({
+      worktrees: [
+        {
+          root: "/repo",
+          branch: "main",
+          isMain: true,
+          panes: [
+            pane({ paneId: "p1", workspaceId: "w1" }),
+            pane({ paneId: "ask-p1", workspaceId: "w-ask", ask: true }),
+          ],
+        },
+      ],
+    });
+
+    expect(groupByWorkspace(r).map((g) => g.workspaceId)).toEqual(["w1"]);
+  });
+});
+
+describe("askWorkspacesFor", () => {
+  test("returns only the ask-session workspaces, grouped like groupByWorkspace", () => {
+    const r = repo({
+      worktrees: [
+        {
+          root: "/repo",
+          branch: "main",
+          isMain: true,
+          panes: [
+            pane({ paneId: "p1", workspaceId: "w1" }),
+            pane({ paneId: "ask-p1", workspaceId: "w-ask", workspaceLabel: "ask:abc", ask: true }),
+          ],
+        },
+      ],
+    });
+
+    const groups = askWorkspacesFor(r);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ workspaceId: "w-ask", workspaceLabel: "ask:abc" });
+    expect(groups[0]!.panes.map((p) => p.paneId)).toEqual(["ask-p1"]);
   });
 });

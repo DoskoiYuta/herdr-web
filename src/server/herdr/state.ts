@@ -62,8 +62,11 @@ function withPane(state: HerdrState, pane: PaneInfo): HerdrState {
  */
 function mergePaneUpdate(state: HerdrState, pane: PaneInfo): HerdrState {
   const existing = state.panes.get(pane.pane_id);
-  if (!existing || existing.agent !== pane.agent || pane.agent == null)
-    return withPane(state, pane);
+  // A closed pane can still have an update/move event in flight (herdr's
+  // ordering isn't guaranteed under close): without this guard the update
+  // resurrects it as a pane the store otherwise has no way to know is gone.
+  if (!existing) return state;
+  if (existing.agent !== pane.agent || pane.agent == null) return withPane(state, pane);
   return withPane(state, {
     ...pane,
     agent_session: pane.agent_session ?? existing.agent_session,
@@ -85,6 +88,13 @@ function withWorkspace(state: HerdrState, workspace: WorkspaceInfo): HerdrState 
   const workspaces = new Map(state.workspaces);
   workspaces.set(workspace.workspace_id, workspace);
   return { ...state, workspaces };
+}
+
+/** For update-only events (never creation): a late update for a workspace
+ * already closed must not resurrect it. */
+function updateWorkspace(state: HerdrState, workspace: WorkspaceInfo): HerdrState {
+  if (!state.workspaces.has(workspace.workspace_id)) return state;
+  return withWorkspace(state, workspace);
 }
 
 function withWorkspaces(state: HerdrState, list: readonly WorkspaceInfo[]): HerdrState {
@@ -180,37 +190,50 @@ function applyPaneAgentStatusChanged(
 /** Pure reducer over the herdr event union (ts-pattern `.exhaustive()` — new EventKinds fail to compile). */
 export function applyEvent(state: HerdrState, envelope: HerdrEventEnvelope): HerdrState {
   const data: HerdrEventData = envelope.data;
-  return match(data)
-    .with({ type: "pane_created" }, (d) => withPane(state, d.pane))
-    .with({ type: "pane_updated" }, (d) => mergePaneUpdate(state, d.pane))
-    .with({ type: "pane_moved" }, (d) => mergePaneUpdate(state, d.pane))
-    .with({ type: "pane_closed" }, (d) => withoutPane(state, d.pane_id))
-    .with({ type: "pane_exited" }, (d) => withoutPane(state, d.pane_id))
-    .with({ type: "pane_focused" }, (d) => ({
-      ...state,
-      focusedPaneId: d.pane_id,
-      focusedWorkspaceId: d.workspace_id,
-    }))
-    .with({ type: "pane_agent_detected" }, (d) => applyPaneAgentDetected(state, d))
-    .with({ type: "pane_agent_status_changed" }, (d) => applyPaneAgentStatusChanged(state, d))
-    .with({ type: "workspace_created" }, (d) => withWorkspace(state, d.workspace))
-    .with({ type: "workspace_updated" }, (d) => withWorkspace(state, d.workspace))
-    .with({ type: "workspace_metadata_updated" }, (d) => withWorkspace(state, d.workspace))
-    .with({ type: "workspace_closed" }, (d) => withoutWorkspace(state, d.workspace_id))
-    .with({ type: "workspace_renamed" }, (d) => renameWorkspace(state, d.workspace_id, d.label))
-    .with({ type: "workspace_moved" }, (d) => withWorkspaces(state, d.workspaces))
-    .with({ type: "workspace_reordered" }, (d) => withWorkspaces(state, d.workspaces))
-    .with({ type: "workspace_focused" }, (d) => ({ ...state, focusedWorkspaceId: d.workspace_id }))
-    .with({ type: "worktree_created" }, () => state)
-    .with({ type: "worktree_opened" }, () => state)
-    .with({ type: "worktree_removed" }, () => state)
-    .with({ type: "tab_created" }, (d) => withTab(state, d.tab))
-    .with({ type: "tab_closed" }, (d) => withoutTab(state, d.tab_id))
-    .with({ type: "tab_renamed" }, (d) => renameTab(state, d.tab_id, d.label))
-    .with({ type: "tab_moved" }, (d) => withTabs(state, d.tabs))
-    .with({ type: "tab_focused" }, (d) => ({ ...state, focusedTabId: d.tab_id }))
-    .with({ type: "layout_updated" }, () => state)
-    .exhaustive();
+  return (
+    match(data)
+      // Live creation order from herdr 0.8.2 is pane -> workspace -> tab, so a
+      // pane/tab_created legitimately arrives before its workspace exists in
+      // this store. The out-of-order-replay case (a stray creation for an
+      // already-closed workspace) is handled by the settle window in
+      // createHerdrState, not by guarding on workspace existence here.
+      .with({ type: "pane_created" }, (d) => withPane(state, d.pane))
+      .with({ type: "pane_updated" }, (d) => mergePaneUpdate(state, d.pane))
+      .with({ type: "pane_moved" }, (d) => mergePaneUpdate(state, d.pane))
+      .with({ type: "pane_closed" }, (d) => withoutPane(state, d.pane_id))
+      .with({ type: "pane_exited" }, (d) => withoutPane(state, d.pane_id))
+      .with({ type: "pane_focused" }, (d) =>
+        state.panes.has(d.pane_id)
+          ? { ...state, focusedPaneId: d.pane_id, focusedWorkspaceId: d.workspace_id }
+          : state,
+      )
+      .with({ type: "pane_agent_detected" }, (d) => applyPaneAgentDetected(state, d))
+      .with({ type: "pane_agent_status_changed" }, (d) => applyPaneAgentStatusChanged(state, d))
+      .with({ type: "workspace_created" }, (d) => withWorkspace(state, d.workspace))
+      .with({ type: "workspace_updated" }, (d) => updateWorkspace(state, d.workspace))
+      .with({ type: "workspace_metadata_updated" }, (d) => updateWorkspace(state, d.workspace))
+      .with({ type: "workspace_closed" }, (d) => withoutWorkspace(state, d.workspace_id))
+      .with({ type: "workspace_renamed" }, (d) => renameWorkspace(state, d.workspace_id, d.label))
+      .with({ type: "workspace_moved" }, (d) => withWorkspaces(state, d.workspaces))
+      .with({ type: "workspace_reordered" }, (d) => withWorkspaces(state, d.workspaces))
+      .with({ type: "workspace_focused" }, (d) =>
+        state.workspaces.has(d.workspace_id)
+          ? { ...state, focusedWorkspaceId: d.workspace_id }
+          : state,
+      )
+      .with({ type: "worktree_created" }, () => state)
+      .with({ type: "worktree_opened" }, () => state)
+      .with({ type: "worktree_removed" }, () => state)
+      .with({ type: "tab_created" }, (d) => withTab(state, d.tab))
+      .with({ type: "tab_closed" }, (d) => withoutTab(state, d.tab_id))
+      .with({ type: "tab_renamed" }, (d) => renameTab(state, d.tab_id, d.label))
+      .with({ type: "tab_moved" }, (d) => withTabs(state, d.tabs))
+      .with({ type: "tab_focused" }, (d) =>
+        state.tabs.has(d.tab_id) ? { ...state, focusedTabId: d.tab_id } : state,
+      )
+      .with({ type: "layout_updated" }, () => state)
+      .exhaustive()
+  );
 }
 
 /** What downstream (tree/focus/hub) needs to know changed, without diffing full state. */
@@ -260,12 +283,38 @@ export interface HerdrStateStore {
 
 export type Logger = Pick<typeof console, "error" | "warn">;
 
+export interface HerdrStateOptions {
+  /**
+   * herdr 0.8.2's `events.subscribe` replays a buffer of past events right after
+   * `subscription_started`, on every (re)connect, and NOT in chronological order
+   * (e.g. `workspace_closed` before `workspace_created` for the same id) — a raw
+   * subscribe confirmed this against a live herdr while `session.snapshot` at the
+   * same moment was already clean. There is no replay/since option in
+   * `events.subscribe`'s params. Applying the replay straight into the reducer
+   * therefore resurrects workspaces/panes the snapshot says are gone ("ghost"
+   * entries in the sidebar) until the next reconnect happens to clean it up.
+   *
+   * The fix: treat the stream as still replaying until `replaySettleMs` passes
+   * with no event, discarding everything received during that window, then load
+   * `session.snapshot` (which supersedes whatever arrived) and only apply events
+   * from that point on. `replayMaxMs` bounds the wait in case events never stop.
+   */
+  replaySettleMs?: number;
+  replayMaxMs?: number;
+}
+
 /**
  * Loads the snapshot on connect, applies events as they arrive, and re-snapshots
  * whenever the gateway (re)connects — including the very first connection, so
  * callers don't need to special-case startup (plan.md deliverable 4).
  */
-export function createHerdrState(gateway: HerdrGateway, logger: Logger = console): HerdrStateStore {
+export function createHerdrState(
+  gateway: HerdrGateway,
+  logger: Logger = console,
+  options: HerdrStateOptions = {},
+): HerdrStateStore {
+  const replaySettleMs = options.replaySettleMs ?? 300;
+  const replayMaxMs = options.replayMaxMs ?? 3000;
   let state = emptyState();
   const listeners = new Set<(change: StateChange) => void>();
 
@@ -302,7 +351,43 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
     }
   }
 
+  // See HerdrStateOptions.replaySettleMs: everything on the subscribe stream
+  // between (re)connect and the settle timer firing is a possibly-stale,
+  // possibly-out-of-order replay and must not touch the reducer.
+  let replaying = false;
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  let capTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearReplayTimers(): void {
+    if (settleTimer != null) clearTimeout(settleTimer);
+    if (capTimer != null) clearTimeout(capTimer);
+    settleTimer = null;
+    capTimer = null;
+  }
+
+  function finishReplay(): void {
+    if (!replaying) return;
+    replaying = false;
+    clearReplayTimers();
+    void loadSnapshot();
+  }
+
+  function startReplayWindow(): void {
+    replaying = true;
+    clearReplayTimers();
+    settleTimer = setTimeout(finishReplay, replaySettleMs);
+    capTimer = setTimeout(finishReplay, replayMaxMs);
+  }
+
   gateway.subscribe((event) => {
+    if (replaying) {
+      // Still quiet-waiting for the replay to end: bump the settle timer (the
+      // cap timer is untouched, so a busy replay can't stall this forever),
+      // and discard the event — the snapshot fetched once we settle wins.
+      if (settleTimer != null) clearTimeout(settleTimer);
+      settleTimer = setTimeout(finishReplay, replaySettleMs);
+      return;
+    }
     try {
       state = applyEvent(state, event);
       notify(describeChange(event));
@@ -317,17 +402,19 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
 
   let wasConnected = gateway.status().connected;
   gateway.onStatus((status) => {
-    if (status.connected && !wasConnected) void loadSnapshot();
+    if (status.connected && !wasConnected) startReplayWindow();
     if (!status.connected && wasConnected) {
       // herdr disconnected: drop the stale snapshot so the notifier (and anything
       // else reading the store) can never target a pane that may no longer exist —
       // "ghost panes" would otherwise linger until the next reconnect's snapshot.
+      replaying = false;
+      clearReplayTimers();
       state = emptyState();
       notify({ kind: "reset" });
     }
     wasConnected = status.connected;
   });
-  if (gateway.status().connected) void loadSnapshot();
+  if (gateway.status().connected) startReplayWindow();
 
   return {
     get: () => state,

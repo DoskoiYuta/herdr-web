@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { createApp } from "./app";
+// TODO(ask-session): swap for createHerdrAskLauncher (src/server/herdr/ask-session.ts)
+import { createAskRuntime } from "./ask/runtime";
+import { createHerdrAskLauncher } from "./herdr/ask-session";
 import { createFetchRunner } from "./git/fetch";
 import { serveEmbedded } from "./static";
 import type { WebAssets } from "./web-assets";
@@ -14,7 +17,8 @@ import {
   createRuntime,
   herdrSocketPath,
 } from "./bootstrap";
-import { applyEnvOverrides, loadConfig, resolveDbPath } from "./config";
+import { applyEnvOverrides, configDir, loadConfig, resolveDbPath } from "./config";
+import { ensureHwShim } from "./hw-shim";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
 import { spawnHerdr } from "./terminal/pty";
 import { createTermWss } from "./terminal/ws";
@@ -81,6 +85,24 @@ attachWorktreeMissingToReview(runtime, review);
 // F5: pick back up any notification a debounce timer lost when the process last exited.
 await review.notifyScheduler.drainPending();
 
+const hwBinDir = await ensureHwShim({
+  configDir: configDir(),
+  mode: isProd ? "production" : "dev",
+});
+
+const ask = createAskRuntime({
+  config,
+  db: reviewDb,
+  launcher: createHerdrAskLauncher({
+    gateway: runtime.gateway,
+    state: runtime.state,
+    config: { maxSessions: config.ask.maxSessions },
+    hwBinDir,
+    hwUrl: `http://127.0.0.1:${config.port}`,
+  }),
+  onEvent: (e) => runtime.hub.broadcast(e),
+});
+
 const fetchRunner = createFetchRunner();
 
 const api = createApp({
@@ -95,6 +117,7 @@ const api = createApp({
   repo: review.repoRoutes,
   hw: { state: runtime.state, resolver: runtime.resolver },
   herdr: { gateway: runtime.gateway, state: runtime.state, allowedRoots: config.allowedRoots },
+  ask: ask.routes,
 });
 
 const app = new Hono().route("/", api);

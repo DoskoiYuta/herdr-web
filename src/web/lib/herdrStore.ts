@@ -3,6 +3,7 @@
  * (plan.md §6.4, §6.6, §9.2). Wired to `/ws/events` via `eventsSocket.ts` from
  * `App.tsx`; consumed by the sidebar and `App`'s focus-follow logic.
  */
+import type { AskEvent } from "@contract/ask";
 import type {
   ClientEventMessage,
   FocusMessage,
@@ -19,6 +20,7 @@ import { reduceRepos } from "./herdrReducer";
 export type ReviewEvent = ReviewMessage | ReviewNotifyMessage;
 
 const REVIEW_RING_SIZE = 50;
+const ASK_RING_SIZE = 50;
 
 export type RepoChangedEntry = { head: string | null; tick: number };
 
@@ -39,6 +41,9 @@ export type HerdrStore = {
   subscribe: (cb: () => void) => () => void;
   subscribeReviewEvents: (cb: (event: ReviewEvent) => void) => () => void;
   getReviewEvents: () => ReviewEvent[];
+  /** 「質問」(ask) events, forwarded the same way review events are (mirrors `subscribeReviewEvents`). */
+  subscribeAskEvents: (cb: (event: AskEvent) => void) => () => void;
+  getAskEvents: () => AskEvent[];
   send: (message: ClientEventMessage) => void;
   open: () => void;
   close: () => void;
@@ -66,6 +71,8 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
   const listeners = new Set<() => void>();
   const reviewListeners = new Set<(event: ReviewEvent) => void>();
   const reviewEvents: ReviewEvent[] = [];
+  const askListeners = new Set<(event: AskEvent) => void>();
+  const askEvents: AskEvent[] = [];
 
   function setState(next: HerdrStoreState) {
     state = next;
@@ -106,6 +113,12 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
         for (const cb of reviewListeners) cb(message);
         return;
       }
+      case "ask": {
+        askEvents.push(message);
+        while (askEvents.length > ASK_RING_SIZE) askEvents.shift();
+        for (const cb of askListeners) cb(message);
+        return;
+      }
       default: {
         const exhaustiveCheck: never = message;
         return exhaustiveCheck;
@@ -141,6 +154,11 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
       return () => reviewListeners.delete(cb);
     },
     getReviewEvents: () => [...reviewEvents],
+    subscribeAskEvents(cb) {
+      askListeners.add(cb);
+      return () => askListeners.delete(cb);
+    },
+    getAskEvents: () => [...askEvents],
     send: (m) => handle?.send(m),
     open,
     close,

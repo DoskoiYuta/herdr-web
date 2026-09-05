@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { fileStatus, fileStats, buildTree } from "./tree.ts";
+import { fileStatus, fileStats, buildTree, toGitStatus, statsDecoration } from "./tree.ts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 
 function fileDiff(overrides: Partial<FileDiffMetadata> = {}): FileDiffMetadata {
@@ -38,6 +38,29 @@ test("fileStatus: untracked -> U regardless of type", () => {
   assert.equal(fileStatus(fileDiff({ type: "change" }), true), "U");
   assert.equal(fileStatus(fileDiff({ type: "new" }), true), "U");
   assert.equal(fileStatus(fileDiff({ type: "deleted" }), true), "U");
+});
+
+// ---------------------------------------------------------------------------
+// toGitStatus
+// ---------------------------------------------------------------------------
+
+test("toGitStatus: maps each single-letter status to PathTree's GitStatus", () => {
+  assert.equal(toGitStatus("A"), "added");
+  assert.equal(toGitStatus("M"), "modified");
+  assert.equal(toGitStatus("D"), "deleted");
+  assert.equal(toGitStatus("R"), "renamed");
+  assert.equal(toGitStatus("U"), "untracked");
+});
+
+// ---------------------------------------------------------------------------
+// statsDecoration
+// ---------------------------------------------------------------------------
+
+test("statsDecoration: shows +additions/-deletions, omitting zero parts", () => {
+  assert.equal(statsDecoration({ additions: 3, deletions: 1 }).text, "+3 −1");
+  assert.equal(statsDecoration({ additions: 5, deletions: 0 }).text, "+5");
+  assert.equal(statsDecoration({ additions: 0, deletions: 8 }).text, "−8");
+  assert.equal(statsDecoration({ additions: 0, deletions: 0 }).text, "");
 });
 
 // ---------------------------------------------------------------------------

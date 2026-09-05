@@ -9,8 +9,15 @@ import {
   GraphResponseSchema,
   PatchResponseSchema,
   RootResponseSchema,
+  StatusResponseSchema,
   SubReposResponseSchema,
 } from "../../contract/git";
+import {
+  FileResponseSchema,
+  LsResponseSchema,
+  TrashResponseSchema,
+  UploadResponseSchema,
+} from "../../contract/fs";
 import {
   type CreateReviewRequest,
   ForDiffMatchSchema,
@@ -24,7 +31,18 @@ import {
 } from "../../contract/review";
 import { WorkspaceInfoSchema } from "../../contract/herdr";
 import { PanePreviewResponseSchema } from "../../contract/herdr-ops";
+import {
+  type AskReplyRequest,
+  AskCountsResponseSchema,
+  AskSchema,
+  AskWithSessionSchema,
+  type CreateAskRequest,
+  ForFileMatchSchema,
+  type ForFileRequest,
+  type ListAskQuery,
+} from "../../contract/ask";
 export type { ForDiffMatch } from "../../contract/review";
+export type { Ask, AskWithSession, ForFileMatch } from "../../contract/ask";
 
 /**
  * Hono RPC クライアント。`AppType` は type-only import のみ許可されている
@@ -56,6 +74,54 @@ export class SendTargetError extends Error {
     this.name = "SendTargetError";
     this.type = type;
     this.targets = targets;
+  }
+}
+
+/** Thrown by `fsApi.file` when the server reports the path missing (HTTP 404). */
+export class FileNotFoundError extends Error {
+  path: string;
+  constructor(path: string) {
+    super(`not found: ${path}`);
+    this.name = "FileNotFoundError";
+    this.path = path;
+  }
+}
+
+/** Thrown by `fsApi.upload` when the server reports a destination already
+ * exists (HTTP 409). `paths` are relative to the upload's `dir`. */
+export class UploadConflictError extends Error {
+  paths: string[];
+  constructor(paths: string[]) {
+    super("既存のファイルと衝突しました");
+    this.name = "UploadConflictError";
+    this.paths = paths;
+  }
+}
+
+/** Thrown by `fsApi.trash` when the server has no OS-trash backend (HTTP 501). */
+export class TrashUnavailableError extends Error {
+  constructor() {
+    super("この環境ではゴミ箱に移動できません");
+    this.name = "TrashUnavailableError";
+  }
+}
+
+/** Thrown by `askApi.create` when the repo/worktree already has the max
+ * number of open ask sessions (HTTP 409 `limit_reached`). */
+export class AskLimitError extends Error {
+  limit: number;
+  constructor(limit: number) {
+    super(`質問セッションの上限 (${limit}) に達しています。解決して閉じてください`);
+    this.name = "AskLimitError";
+    this.limit = limit;
+  }
+}
+
+/** Thrown by `askApi.create` when herdr isn't connected (HTTP 503 `herdr_unavailable`). */
+export class AskUnavailableError extends Error {
+  constructor() {
+    super("herdr 未接続");
+    this.name = "AskUnavailableError";
   }
 }
 
@@ -136,6 +202,77 @@ export const gitApi = {
     const res = await client.api.git.subrepos.$get({ query: { repo } });
     if (!res.ok) throw new Error(`GET /api/git/subrepos failed: ${res.status}`);
     return v.parse(SubReposResponseSchema, await res.json());
+  },
+
+  async status(repo: string) {
+    const res = await client.api.git.status.$get({ query: { repo } });
+    if (!res.ok) throw new Error(`GET /api/git/status failed: ${res.status}`);
+    return v.parse(StatusResponseSchema, await res.json());
+  },
+};
+
+export const fsApi = {
+  /** One directory's own (non-recursive) entries; `dir: ""` is `root` itself. */
+  async ls(params: { root: string; dir: string }) {
+    const res = await client.api.fs.ls.$get({ query: params });
+    if (!res.ok) throw new Error(`GET /api/fs/ls failed: ${res.status}`);
+    return v.parse(LsResponseSchema, await res.json());
+  },
+
+  /** Throws `FileNotFoundError` on HTTP 404 (a tracked file deleted from the
+   * worktree, or a path that vanished between tree fetch and click). */
+  async file(params: { root: string; path: string }) {
+    const res = await client.api.fs.file.$get({ query: params });
+    if (res.status === 404) throw new FileNotFoundError(params.path);
+    if (!res.ok) throw new Error(`GET /api/fs/file failed: ${res.status}`);
+    return v.parse(FileResponseSchema, await res.json());
+  },
+
+  /** URL for an image/PDF preview (F9-4), served by `GET /api/fs/raw`. Not
+   * fetched through here — used directly as an `<img src>`/`<iframe src>`.
+   * `tick` (`repoChangedTick`) is appended so a file change on disk busts
+   * the browser's own cache for that URL, not just TanStack Query's. */
+  rawUrl(params: { root: string; path: string; tick: number }): string {
+    const url = client.api.fs.raw.$url({ query: { root: params.root, path: params.path } });
+    url.searchParams.set("t", String(params.tick));
+    return url.toString();
+  },
+
+  /** DnD import of dropped files/folders (F9-7). Each `File`'s `.name` is
+   * sent as the multipart part filename, which the server treats as the
+   * path relative to `dir` — pass a relative path (e.g. `photos/a.jpg`) as
+   * the `File`'s name for a dropped folder's contents. The Hono RPC `form`
+   * option can't send repeated `file` parts, so this builds `FormData` and
+   * hits the URL directly rather than going through `hc`.
+   * Throws `UploadConflictError` on HTTP 409, a generic `Error` otherwise. */
+  async upload(params: { root: string; dir: string; files: File[]; overwrite?: boolean }) {
+    const url = client.api.fs.upload.$url({
+      query: {
+        root: params.root,
+        dir: params.dir,
+        ...(params.overwrite !== undefined ? { overwrite: String(params.overwrite) } : {}),
+      },
+    });
+    const formData = new FormData();
+    for (const file of params.files) {
+      formData.append("file", file, file.name);
+    }
+    const res = await fetch(url, { method: "POST", body: formData });
+    if (res.status === 409) {
+      const body = (await res.json()) as { paths: string[] };
+      throw new UploadConflictError(body.paths);
+    }
+    if (!res.ok) throw new Error(`POST /api/fs/upload failed: ${res.status}`);
+    return v.parse(UploadResponseSchema, await res.json());
+  },
+
+  /** Moves `path` to the OS trash (never `rm`). Throws `TrashUnavailableError`
+   * on HTTP 501 (no backend on this machine), a generic `Error` otherwise. */
+  async trash(params: { root: string; path: string }) {
+    const res = await client.api.fs.trash.$post({ query: params });
+    if (res.status === 501) throw new TrashUnavailableError();
+    if (!res.ok) throw new Error(`POST /api/fs/trash failed: ${res.status}`);
+    return v.parse(TrashResponseSchema, await res.json());
   },
 };
 
@@ -287,6 +424,75 @@ export const herdrApi = {
     const res = await client.api.herdr["pane-preview"].$get({ query: { pane } });
     if (!res.ok) throw new Error(`GET /api/herdr/pane-preview failed: ${res.status}`);
     return v.parse(PanePreviewResponseSchema, await res.json());
+  },
+};
+
+export const askApi = {
+  async list(query: ListAskQuery) {
+    const res = await client.api.ask.$get({
+      query: {
+        ...(query.repo !== undefined ? { repo: query.repo } : {}),
+        ...(query.worktree !== undefined ? { worktree: query.worktree } : {}),
+        ...(query.status !== undefined ? { status: query.status } : {}),
+        ...(query.path !== undefined ? { path: query.path } : {}),
+      },
+    });
+    if (!res.ok) throw new Error(`GET /api/ask failed: ${res.status}`);
+    return v.parse(v.array(AskSchema), await res.json());
+  },
+
+  async create(body: CreateAskRequest) {
+    const res = await client.api.ask.$post({ json: body });
+    if (res.status === 409) {
+      const errBody = (await res.json()) as { error: "limit_reached"; limit: number };
+      throw new AskLimitError(errBody.limit);
+    }
+    if (res.status === 503) throw new AskUnavailableError();
+    if (!res.ok) throw new Error(`POST /api/ask failed: ${res.status}`);
+    return v.parse(AskSchema, await res.json());
+  },
+
+  async get(id: string) {
+    const res = await client.api.ask[":id"].$get({ param: { id } });
+    if (!res.ok) throw new Error(`GET /api/ask/:id failed: ${res.status}`);
+    return v.parse(AskWithSessionSchema, await res.json());
+  },
+
+  async reply(id: string, body: AskReplyRequest) {
+    const res = await client.api.ask[":id"].reply.$post({ param: { id }, json: body });
+    if (!res.ok) throw new Error(`POST /api/ask/:id/reply failed: ${res.status}`);
+    return v.parse(AskSchema, await res.json());
+  },
+
+  async resolve(id: string) {
+    const res = await client.api.ask[":id"].resolve.$post({ param: { id } });
+    if (!res.ok) throw new Error(`POST /api/ask/:id/resolve failed: ${res.status}`);
+    return v.parse(AskSchema, await res.json());
+  },
+
+  async resend(id: string) {
+    const res = await client.api.ask[":id"].resend.$post({ param: { id } });
+    if (!res.ok) throw new Error(`POST /api/ask/:id/resend failed: ${res.status}`);
+    return v.parse(AskSchema, await res.json());
+  },
+
+  async focus(id: string) {
+    const res = await client.api.ask[":id"].focus.$post({ param: { id } });
+    if (!res.ok) throw new Error(`POST /api/ask/:id/focus failed: ${res.status}`);
+    return (await res.json()) as { ok: true };
+  },
+
+  async forFile(body: ForFileRequest) {
+    const res = await client.api.ask["for-file"].$post({ json: body });
+    if (!res.ok) throw new Error(`POST /api/ask/for-file failed: ${res.status}`);
+    const parsed = v.parse(v.object({ matches: v.array(ForFileMatchSchema) }), await res.json());
+    return parsed.matches;
+  },
+
+  async counts(params: { repo: string; worktree: string }) {
+    const res = await client.api.ask.counts.$get({ query: params });
+    if (!res.ok) throw new Error(`GET /api/ask/counts failed: ${res.status}`);
+    return v.parse(AskCountsResponseSchema, await res.json());
   },
 };
 

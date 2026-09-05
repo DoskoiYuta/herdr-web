@@ -1,5 +1,9 @@
 import * as v from "valibot";
+import type { AskEvent } from "../../contract/ask";
 import { ConfigSchema } from "../../contract/config";
+import { createAskRuntime } from "../ask/runtime";
+import type { AskSessionLauncher } from "../ask/ports";
+import { createFakeAskLauncher } from "../ask/testing/fake-launcher";
 import { openDb } from "../db/client";
 import { applyMigrations } from "../db/migrate";
 import type { FetchRunner } from "../git/fetch";
@@ -17,6 +21,8 @@ export type TestAppOptions = {
   resolver?: WorktreeResolver;
   events?: ReviewEvent[];
   fetchRunner?: FetchRunner;
+  askLauncher?: AskSessionLauncher;
+  askEvents?: AskEvent[];
 };
 
 const emptySnapshot = {
@@ -37,7 +43,11 @@ export function createTestApp(opts: TestAppOptions = {}) {
   const db = openDb(":memory:");
   applyMigrations(db);
   const fake = opts.fake ?? createFakeHerdr(emptySnapshot);
-  const state = createHerdrState(fake, { error() {}, warn() {} });
+  const state = createHerdrState(
+    fake,
+    { error() {}, warn() {} },
+    { replaySettleMs: 0, replayMaxMs: 0 },
+  );
   const resolver = opts.resolver ?? gitWorktreeResolver;
   const events: ReviewEvent[] = opts.events ?? [];
   const review = createReviewRuntime({
@@ -45,6 +55,14 @@ export function createTestApp(opts: TestAppOptions = {}) {
     db,
     herdr: { state, gateway: fake, resolver },
     onEvent: (e) => events.push(e),
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const askEvents: AskEvent[] = opts.askEvents ?? [];
+  const ask = createAskRuntime({
+    config: v.parse(ConfigSchema, {}),
+    db,
+    launcher: opts.askLauncher ?? createFakeAskLauncher().launcher,
+    onEvent: (e) => askEvents.push(e),
     logger: { info() {}, warn() {}, error() {} },
   });
   const deps: AppDeps = {
@@ -59,6 +77,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     repo: review.repoRoutes,
     hw: { state, resolver },
     herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
+    ask: ask.routes,
   };
-  return { app: createApp(deps), fake, state, review, events, db };
+  return { app: createApp(deps), fake, state, review, events, ask, askEvents, db };
 }

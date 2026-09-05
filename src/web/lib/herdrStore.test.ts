@@ -1,6 +1,25 @@
 import { describe, expect, test, vi } from "vitest";
+import type { Ask } from "@contract/ask";
 import type { Review } from "@contract/review";
 import { createHerdrStore } from "./herdrStore";
+
+function ask(overrides: Partial<Ask> = {}): Ask {
+  return {
+    id: "q1",
+    repo: "/repo/.git",
+    worktreeRoot: "/repo",
+    path: "a.txt",
+    anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
+    createdAtHead: "abc",
+    status: "open",
+    session: null,
+    thread: [{ seq: 0, author: "user", body: "why is this here?", at: "t", agentSession: null }],
+    lastPrompt: null,
+    createdAt: "t",
+    updatedAt: "t",
+    ...overrides,
+  };
+}
 
 function review(overrides: Partial<Review> = {}): Review {
   return {
@@ -221,6 +240,20 @@ describe("createHerdrStore", () => {
     expect(events).toHaveLength(50);
     expect((events[0] as { reviewId: string }).reviewId).toBe("r5");
     expect((events[49] as { reviewId: string }).reviewId).toBe("r54");
+  });
+
+  test("ask messages feed their own ring buffer and subscribers, without touching main state or review's", () => {
+    const { store, socket } = createStore();
+    const events: unknown[] = [];
+    store.subscribeAskEvents((e) => events.push(e));
+    const reviewEvents: unknown[] = [];
+    store.subscribeReviewEvents((e) => reviewEvents.push(e));
+
+    socket.simulateMessage(JSON.stringify({ type: "ask", action: "created", ask: ask() }));
+
+    expect(events).toHaveLength(1);
+    expect(store.getAskEvents()).toHaveLength(1);
+    expect(reviewEvents).toHaveLength(0);
   });
 
   test("send() forwards to the underlying socket", () => {

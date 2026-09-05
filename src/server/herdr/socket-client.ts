@@ -2,11 +2,13 @@ import * as net from "node:net";
 import * as v from "valibot";
 import {
   AgentPromptedResultSchema,
+  AgentStartedResultSchema,
   HERDR_AGENT_PROMPT_ERROR_CODES,
   HERDR_SUBSCRIPTIONS,
   HerdrEventEnvelopeSchema,
   PaneInfoSchema,
   PaneLayoutSnapshotSchema,
+  PaneListResultSchema,
   PaneReadResultSchema,
   PingResultSchema,
   SessionSnapshotSchema,
@@ -187,15 +189,23 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     subSocket = sock;
     sock.on("connect", () => {
       subBackoff = backoffInitialMs;
-      void pingAndSetStatus();
-      const id = `hw-sub-${nextId++}`;
-      sock.write(
-        JSON.stringify({
-          id,
-          method: "events.subscribe",
-          params: { subscriptions: HERDR_SUBSCRIPTIONS },
-        }) + "\n",
-      );
+      // Ping (and its `connected` status flip) must complete before we send
+      // events.subscribe: herdr replays a stale, out-of-order event buffer right
+      // after the subscribe ack, and createHerdrState starts discarding that
+      // replay on the status's false->true transition — sending them concurrently
+      // could let replay events reach subscribers before status (and thus the
+      // replay guard) has flipped on.
+      void pingAndSetStatus().then(() => {
+        if (subSocket !== sock) return; // superseded by a newer connection attempt
+        const id = `hw-sub-${nextId++}`;
+        sock.write(
+          JSON.stringify({
+            id,
+            method: "events.subscribe",
+            params: { subscriptions: HERDR_SUBSCRIPTIONS },
+          }) + "\n",
+        );
+      });
     });
     sock.on(
       "data",
@@ -275,11 +285,17 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     async workspaceFocus(workspaceId: string): Promise<void> {
       await request<unknown>("workspace.focus", { workspace_id: workspaceId });
     },
-    async workspaceCreate(params: { cwd: string | null; label?: string | null; focus?: boolean }) {
+    async workspaceCreate(params: {
+      cwd: string | null;
+      label?: string | null;
+      focus?: boolean;
+      env?: Record<string, string>;
+    }) {
       const raw = await request<unknown>("workspace.create", {
         cwd: params.cwd,
         label: params.label ?? null,
         focus: params.focus ?? false,
+        env: params.env ?? undefined,
       });
       const parsed = v.parse(WorkspaceCreatedResultSchema, raw);
       return parsed.workspace;
@@ -313,6 +329,35 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
         }
         throw err;
       }
+    },
+    async agentStart(params: {
+      name: string;
+      kind: string;
+      paneId: string;
+      timeoutMs?: number;
+      args?: string[];
+    }): Promise<PaneInfo> {
+      // herdr's own startup timeout (default 60s here) runs inside the request;
+      // give the socket request itself a little headroom beyond that.
+      const timeoutMs = params.timeoutMs ?? 60_000;
+      const raw = await request<unknown>(
+        "agent.start",
+        {
+          name: params.name,
+          kind: params.kind,
+          pane_id: params.paneId,
+          timeout_ms: timeoutMs,
+          args: params.args ?? [],
+        },
+        Math.max(requestTimeoutMs, timeoutMs + 5_000),
+      );
+      const parsed = v.parse(AgentStartedResultSchema, raw);
+      return parsed.agent;
+    },
+    async paneList(workspaceId?: string | null): Promise<PaneInfo[]> {
+      const raw = await request<unknown>("pane.list", { workspace_id: workspaceId ?? null });
+      const parsed = v.parse(PaneListResultSchema, raw);
+      return parsed.panes;
     },
     async paneLayout(paneId: string): Promise<PaneLayoutSnapshot> {
       const raw = await request<{ layout: unknown }>("pane.layout", { pane_id: paneId });

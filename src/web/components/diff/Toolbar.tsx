@@ -5,10 +5,12 @@
 // with the shadcn Button component instead of raw CSS.
 
 import { Button } from "@/components/ui/button";
+import { ViewerControls } from "@/components/tool/ViewerControls";
 import type { Settings } from "./state.ts";
 
 export interface ToolbarProps {
   settings: Settings;
+  showTree: boolean;
   onToggleTree(): void;
   onToggleDiffStyle(): void;
   onToggleOverflow(): void;
@@ -24,6 +26,7 @@ export interface ToolbarProps {
 
 export default function Toolbar({
   settings,
+  showTree,
   onToggleTree,
   onToggleDiffStyle,
   onToggleOverflow,
@@ -36,18 +39,13 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <div id="toolbar" className="flex items-center gap-1 border-b border-border p-1">
-      <Button
-        id="btn-tree"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="ファイルツリー"
-        aria-pressed={settings.showTree}
-        onClick={onToggleTree}
+      <ViewerControls
+        showTree={showTree}
+        onToggleTree={onToggleTree}
+        onFontDec={onFontDec}
+        onFontInc={onFontInc}
         disabled={disabled}
-      >
-        ☰ tree
-      </Button>
+      />
       <Button
         id="btn-diffstyle"
         type="button"
@@ -69,28 +67,6 @@ export default function Toolbar({
         disabled={disabled}
       >
         {settings.overflow === "wrap" ? "↵ wrap" : "⇥ scroll"}
-      </Button>
-      <Button
-        id="btn-font-dec"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="文字を小さく"
-        onClick={onFontDec}
-        disabled={disabled}
-      >
-        A-
-      </Button>
-      <Button
-        id="btn-font-inc"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="文字を大きく"
-        onClick={onFontInc}
-        disabled={disabled}
-      >
-        A+
       </Button>
       <Button
         id="btn-collapse-all"

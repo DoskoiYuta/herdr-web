@@ -31,4 +31,15 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "757640d65b660d3124fc81665fa401ce29e7359f73b84219af9a5c7de22669e7",
     bps: true,
   },
+  {
+    sql: [
+      "CREATE TABLE `ask_entries` (\n\t`ask_id` text NOT NULL,\n\t`seq` integer NOT NULL,\n\t`author` text NOT NULL,\n\t`body` text NOT NULL,\n\t`at` text NOT NULL,\n\t`agent_session` text,\n\tPRIMARY KEY(`ask_id`, `seq`),\n\tFOREIGN KEY (`ask_id`) REFERENCES `asks`(`id`) ON UPDATE no action ON DELETE cascade\n);\n",
+      "\nCREATE TABLE `asks` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`repo` text NOT NULL,\n\t`worktree_root` text NOT NULL,\n\t`path` text NOT NULL,\n\t`anchor` text NOT NULL,\n\t`created_at_head` text,\n\t`status` text NOT NULL,\n\t`session` text,\n\t`last_prompt_state` text,\n\t`last_prompt_at` text,\n\t`created_at` text NOT NULL,\n\t`updated_at` text NOT NULL\n);\n",
+      "\nCREATE INDEX `asks_repo_status_idx` ON `asks` (`repo`,`status`);",
+      "\nCREATE INDEX `asks_repo_worktree_path_idx` ON `asks` (`repo`,`worktree_root`,`path`);",
+    ],
+    folderMillis: 1788601928877,
+    hash: "07d726cdac9ed82fa08d7345511113d31b81b2e89fe9ba8d01f8371a4fe71d4d",
+    bps: true,
+  },
 ];

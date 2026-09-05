@@ -34,14 +34,17 @@ export function livePanes(state: HerdrState): PaneInfo[] {
   return [...state.panes.values()].filter((p) => state.workspaces.has(p.workspace_id));
 }
 
+const ASK_WORKSPACE_LABEL_PREFIX = "ask:";
+
 export function toPaneRow(
   pane: PaneInfo,
   state?: Pick<HerdrState, "workspaces" | "tabs">,
 ): PaneRow {
+  const workspaceLabel = state?.workspaces.get(pane.workspace_id)?.label ?? null;
   return {
     paneId: pane.pane_id,
     workspaceId: pane.workspace_id,
-    workspaceLabel: state?.workspaces.get(pane.workspace_id)?.label ?? null,
+    workspaceLabel,
     tabId: pane.tab_id,
     tabLabel: state?.tabs.get(pane.tab_id)?.label ?? null,
     label: pane.label ?? null,
@@ -51,6 +54,7 @@ export function toPaneRow(
     focused: pane.focused,
     cwd: pane.cwd ?? null,
     foregroundCwd: pane.foreground_cwd ?? null,
+    ask: workspaceLabel?.startsWith(ASK_WORKSPACE_LABEL_PREFIX) ?? false,
   };
 }
 

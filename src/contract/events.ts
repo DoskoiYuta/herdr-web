@@ -4,6 +4,7 @@
  * so `src/web` (contract-only) and `src/server/events` share one definition.
  */
 import * as v from "valibot";
+import { AskEventSchema } from "./ask";
 import { AgentSessionInfoSchema, AgentStatusSchema } from "./herdr";
 import { ReviewSchema } from "./review";
 
@@ -24,6 +25,15 @@ export const PaneRowSchema = v.object({
   focused: v.boolean(),
   cwd: v.nullable(v.string()),
   foregroundCwd: v.nullable(v.string()),
+  /**
+   * True for panes whose workspace is a 「質問」(ask) session (workspace label
+   * starts with `ask:`, src/server/herdr/ask-session.ts). Optional so existing
+   * `PaneRow` literals elsewhere don't need updating; absent means false.
+   * The sidebar groups these out of the normal worktree/workspace listing,
+   * and `agentPanesAt` (review send-target picker) excludes them — a review
+   * should never be sent to a question session.
+   */
+  ask: v.optional(v.boolean()),
 });
 export type PaneRow = v.InferOutput<typeof PaneRowSchema>;
 
@@ -150,6 +160,7 @@ export const ServerEventMessageSchema = v.variant("type", [
   ReviewMessageSchema,
   ReviewNotifyMessageSchema,
   HerdrStatusMessageSchema,
+  AskEventSchema,
 ]);
 export type ServerEventMessage = v.InferOutput<typeof ServerEventMessageSchema>;
 

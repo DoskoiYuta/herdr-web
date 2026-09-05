@@ -243,3 +243,34 @@ export const SubReposResponseSchema = v.object({
   repos: v.array(SubRepoSchema),
 });
 export type SubReposResponse = v.InferOutput<typeof SubReposResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// /api/git/status  (file viewer row decoration: worktree status vs HEAD/index)
+// ---------------------------------------------------------------------------
+
+export const StatusQuerySchema = v.object({
+  repo: v.pipe(v.string(), v.minLength(1)),
+});
+export type StatusQuery = v.InferOutput<typeof StatusQuerySchema>;
+
+export const TreeEntryStatusSchema = v.picklist([
+  "added",
+  "modified",
+  "deleted",
+  "renamed",
+  "untracked",
+]);
+export type TreeEntryStatus = v.InferOutput<typeof TreeEntryStatusSchema>;
+
+export const TreeStatusEntrySchema = v.object({
+  /** Path relative to `repo`, `/`-separated. */
+  path: v.string(),
+  status: TreeEntryStatusSchema,
+});
+export type TreeStatusEntry = v.InferOutput<typeof TreeStatusEntrySchema>;
+
+export const StatusResponseSchema = v.object({
+  /** Worktree status vs HEAD/index for paths that differ (from `git status --porcelain`). */
+  status: v.array(TreeStatusEntrySchema),
+});
+export type StatusResponse = v.InferOutput<typeof StatusResponseSchema>;

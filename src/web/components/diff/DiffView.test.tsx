@@ -1,9 +1,8 @@
 import { cleanup, render } from "@testing-library/react";
 import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, expect, test, vi } from "vitest";
-import { fontMetrics } from "./reconcile.ts";
+import { fontMetrics } from "@/lib/codeFont";
 import { DEFAULT_SETTINGS } from "./state.ts";
-import type { Settings } from "./state.ts";
 
 // Minimal stand-in for @pierre/diffs/react's CodeView: just forwards
 // `containerRef` onto a real DOM node so the CSS-custom-property writes have
@@ -27,11 +26,12 @@ afterEach(() => {
   document.documentElement.classList.remove("dark");
 });
 
-function renderDiffView(settings: Settings) {
+function renderDiffView(fontSize: number) {
   return render(
     <DiffView
       items={[]}
-      settings={settings}
+      settings={DEFAULT_SETTINGS}
+      fontSize={fontSize}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}
@@ -39,10 +39,12 @@ function renderDiffView(settings: Settings) {
   );
 }
 
+const DEFAULT_FONT_SIZE = 15;
+
 test("CSS custom properties are applied to the container on first render", () => {
-  const { getByTestId } = renderDiffView(DEFAULT_SETTINGS);
+  const { getByTestId } = renderDiffView(DEFAULT_FONT_SIZE);
   const node = getByTestId("scroll-root") as HTMLDivElement;
-  const metrics = fontMetrics(DEFAULT_SETTINGS.fontSize);
+  const metrics = fontMetrics(DEFAULT_FONT_SIZE);
 
   expect(node.style.getPropertyValue("--diffs-font-size")).toBe(`${metrics.fontSize}px`);
   expect(node.style.getPropertyValue("--diffs-line-height")).toBe(`${metrics.lineHeight}px`);
@@ -55,7 +57,7 @@ test("the CodeView container gets the scroll-root sizing/overflow classes", () =
   // scrollbar (there is no `.scroll-root` CSS rule anywhere in the app —
   // that id is just a DOM hook — so scrolling depends entirely on these
   // Tailwind classes landing on CodeView's own container element).
-  const { getByTestId } = renderDiffView(DEFAULT_SETTINGS);
+  const { getByTestId } = renderDiffView(DEFAULT_FONT_SIZE);
   const node = getByTestId("scroll-root") as HTMLDivElement;
 
   expect(node.classList.contains("h-full")).toBe(true);
@@ -64,21 +66,22 @@ test("the CodeView container gets the scroll-root sizing/overflow classes", () =
 });
 
 test("CSS custom properties stay in sync when fontSize changes", () => {
-  const { getByTestId, rerender } = renderDiffView(DEFAULT_SETTINGS);
+  const { getByTestId, rerender } = renderDiffView(DEFAULT_FONT_SIZE);
   const node = getByTestId("scroll-root") as HTMLDivElement;
 
-  const nextSettings: Settings = { ...DEFAULT_SETTINGS, fontSize: DEFAULT_SETTINGS.fontSize + 4 };
+  const nextFontSize = DEFAULT_FONT_SIZE + 4;
   rerender(
     <DiffView
       items={[]}
-      settings={nextSettings}
+      settings={DEFAULT_SETTINGS}
+      fontSize={nextFontSize}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}
     />,
   );
 
-  const metrics = fontMetrics(nextSettings.fontSize);
+  const metrics = fontMetrics(nextFontSize);
   expect(node.style.getPropertyValue("--diffs-font-size")).toBe(`${metrics.fontSize}px`);
   expect(node.style.getPropertyValue("--diffs-line-height")).toBe(`${metrics.lineHeight}px`);
 });

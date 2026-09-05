@@ -1,3 +1,6 @@
+import { askListCommand } from "./commands/ask-list";
+import { askReplyCommand } from "./commands/ask-reply";
+import { askShowCommand } from "./commands/ask-show";
 import { reviewListCommand } from "./commands/list";
 import { repoMoveCommand } from "./commands/repo-move";
 import { reviewReplyCommand } from "./commands/reply";
@@ -5,12 +8,15 @@ import { reviewShowCommand } from "./commands/show";
 import { statusCommand } from "./commands/status";
 import { type CommandDeps, type CommandResult, EXIT_OK, usageError } from "./commands/types";
 
-export const HELP_TEXT = `hw — herdr-web review CLI (plan §7 F6)
+export const HELP_TEXT = `hw — herdr-web review CLI (plan §7 F6, F10)
 
 Usage:
   hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--path <p>] [--worktree <path>] [--json]
   hw review show <id> [--json]   (<id> may be the short id printed by 'hw review list')
   hw review reply <id> <text...>
+  hw ask list [--all] [--path <p>] [--worktree <path>] [--json]
+  hw ask show <id> [--json]   (<id> may be the short id printed by 'hw ask list')
+  hw ask reply <id> <text...>
   hw status [--worktree <path>] [--json]
   hw repo move <old-path> <new-path>
   hw --help
@@ -28,6 +34,14 @@ Usage:
   hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--path <p>] [--worktree <path>] [--json]
   hw review show <id> [--json]   (<id> may be the short id printed by 'hw review list')
   hw review reply <id> <text...>
+`;
+
+const ASK_HELP_TEXT = `hw ask — answer 質問 (F10) attached to a place in the code
+
+Usage:
+  hw ask list [--all] [--path <p>] [--worktree <path>] [--json]
+  hw ask show <id> [--json]   (<id> may be the short id printed by 'hw ask list')
+  hw ask reply <id> <text...>
 `;
 
 function helpResult(text: string): CommandResult {
@@ -51,6 +65,17 @@ export async function runCli(argv: string[], deps: CommandDeps): Promise<Command
     if (sub === "show") return reviewShowCommand(subArgv, deps);
     if (sub === "reply") return reviewReplyCommand(subArgv, deps);
     return usageError(`unknown subcommand: hw review ${sub}`);
+  }
+
+  if (head === "ask") {
+    const [sub, ...subArgv] = rest;
+    if (sub === undefined || sub === "--help" || sub === "-h") {
+      return helpResult(ASK_HELP_TEXT);
+    }
+    if (sub === "list") return askListCommand(subArgv, deps);
+    if (sub === "show") return askShowCommand(subArgv, deps);
+    if (sub === "reply") return askReplyCommand(subArgv, deps);
+    return usageError(`unknown subcommand: hw ask ${sub}`);
   }
 
   if (head === "status") return statusCommand(rest, deps);

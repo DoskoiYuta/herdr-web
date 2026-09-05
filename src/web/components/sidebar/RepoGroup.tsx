@@ -5,8 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { herdrApi } from "@/lib/api";
-import { groupByWorkspace } from "@/lib/repoWorkspaces";
+import type { AskEvent } from "@/lib/askEvent";
+import { askWorkspacesFor, groupByWorkspace } from "@/lib/repoWorkspaces";
 import { cn } from "@/lib/utils";
+import { AskSessionGroup, type AskFileLocation } from "./AskSessionGroup";
 import { RepoWorkspaceRow } from "./RepoWorkspaceRow";
 
 export type RepoGroupProps = {
@@ -18,6 +20,9 @@ export type RepoGroupProps = {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onSelectPane: (paneId: string) => void;
+  /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
+  onOpenAskFile: (location: AskFileLocation) => void;
+  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
 };
 
 /** plan.md F8-1 / F8-4: repository ヘッダーに名前と blocked/done バッジ（blocked を
@@ -37,12 +42,16 @@ export function RepoGroup({
   collapsed,
   onToggleCollapse,
   onSelectPane,
+  onOpenAskFile,
+  subscribeAskEvents,
 }: RepoGroupProps) {
   const workspaces = groupByWorkspace(repo);
+  const askWorkspaces = askWorkspacesFor(repo);
   const [creating, setCreating] = useState(false);
   const [label, setLabel] = useState(repo.name);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askCollapsed, setAskCollapsed] = useState(false);
 
   const mainRoot = repo.worktrees.find((w) => w.isMain)?.root ?? repo.worktrees[0]?.root ?? null;
 
@@ -154,6 +163,15 @@ export function RepoGroup({
               onSelectPane={onSelectPane}
             />
           ))}
+          <AskSessionGroup
+            workspaces={askWorkspaces}
+            repoKey={repo.key}
+            collapsed={askCollapsed}
+            onToggleCollapse={() => setAskCollapsed((prev) => !prev)}
+            onSelectPane={onSelectPane}
+            onOpenAskFile={onOpenAskFile}
+            subscribeAskEvents={subscribeAskEvents}
+          />
         </div>
       )}
     </div>

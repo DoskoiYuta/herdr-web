@@ -37,6 +37,31 @@ export const ConfigSchema = v.object({
     }),
     {},
   ),
+  ask: v.optional(
+    v.object({
+      template: v.optional(
+        v.string(),
+        [
+          "これは herdr-web の質問 (ask) {id} です。コードベースの既存箇所についての質問で、変更依頼ではありません。",
+          "対象: {path} 行 {startLine}-{endLine}",
+          "```",
+          "{code}",
+          "```",
+          "質問: {question}",
+          "",
+          '回答は `hw ask reply {id} "<本文>"` で返してください（何度でも可）。詳細は `hw ask show {id}`。',
+          '`hw` が見つからない場合は `bun run hw ask reply {id} "<本文>"` をリポジトリルートで実行してください。',
+          "ファイルを編集したくなった場合は、先に `hw ask reply` で提案を伝え、ユーザーの許可を得てから編集してください。",
+        ].join("\n"),
+      ),
+      replyTemplate: v.optional(
+        v.string(),
+        "質問 {id} にユーザーから返信があります。`hw ask show {id}` で読み、`hw ask reply {id}` で回答してください。",
+      ),
+      maxSessions: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)), 5),
+    }),
+    {},
+  ),
 });
 export type Config = v.InferOutput<typeof ConfigSchema>;
 export type ConfigInput = v.InferInput<typeof ConfigSchema>;

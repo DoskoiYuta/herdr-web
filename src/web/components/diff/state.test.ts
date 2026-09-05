@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
-  clampTreeWidth,
   DEFAULT_SETTINGS,
   initialBannerState,
-  MAX_TREE_WIDTH,
-  MIN_TREE_WIDTH,
   reduceBanner,
   updateBanner,
   validateSettings,
@@ -23,37 +20,14 @@ test("validateSettings: returns defaults for null/non-object input", () => {
 });
 
 test("validateSettings: accepts each valid field", () => {
-  const out = validateSettings({
-    diffStyle: "unified",
-    overflow: "scroll",
-    fontSize: 20,
-    showTree: false,
-    treeWidth: 300,
-  });
-  assert.deepEqual(out, {
-    diffStyle: "unified",
-    overflow: "scroll",
-    fontSize: 20,
-    showTree: false,
-    treeWidth: 300,
-  });
+  const out = validateSettings({ diffStyle: "unified", overflow: "scroll" });
+  assert.deepEqual(out, { diffStyle: "unified", overflow: "scroll" });
 });
 
 test("validateSettings: a bad field falls back to its own default, others unaffected", () => {
-  const out = validateSettings({ diffStyle: "sideways", overflow: "scroll", fontSize: 999 });
+  const out = validateSettings({ diffStyle: "sideways", overflow: "scroll" });
   assert.equal(out.diffStyle, DEFAULT_SETTINGS.diffStyle);
   assert.equal(out.overflow, "scroll");
-  assert.equal(out.fontSize, DEFAULT_SETTINGS.fontSize);
-});
-
-test("validateSettings: treeWidth is clamped via clampTreeWidth", () => {
-  assert.equal(validateSettings({ treeWidth: 10 }).treeWidth, MIN_TREE_WIDTH);
-  assert.equal(validateSettings({ treeWidth: 9999 }).treeWidth, MAX_TREE_WIDTH);
-});
-
-test("clampTreeWidth: non-finite falls back to the default", () => {
-  assert.equal(clampTreeWidth(Number.NaN), DEFAULT_SETTINGS.treeWidth);
-  assert.equal(clampTreeWidth("240"), DEFAULT_SETTINGS.treeWidth);
 });
 
 // ---------------------------------------------------------------------------

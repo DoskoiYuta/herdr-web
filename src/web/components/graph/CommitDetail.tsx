@@ -1,7 +1,8 @@
 import { useMemo } from "react";
+import { PathTree } from "@/components/tree/PathTree";
+import { useViewerSettings } from "@/lib/viewerSettings";
 import { useCommit, UNCOMMITTED_HASH } from "./hooks/useCommit";
-import { buildFileTree } from "./tree";
-import FileTree from "./FileTree";
+import { buildDecorations, buildGitStatus } from "./fileDecorations";
 
 export interface CommitDetailProps {
   repo: string;
@@ -23,7 +24,11 @@ function formatDate(epochSeconds: number): string {
 export default function CommitDetail({ repo, hash, onOpenDiff, note }: CommitDetailProps) {
   const isUncommitted = hash === UNCOMMITTED_HASH;
   const query = useCommit(repo, hash);
-  const fileTree = useMemo(() => buildFileTree(query.data?.files ?? []), [query.data]);
+  const [viewerSettings] = useViewerSettings();
+  const files = useMemo(() => query.data?.files ?? [], [query.data]);
+  const paths = useMemo(() => files.map((f) => f.path), [files]);
+  const gitStatus = useMemo(() => buildGitStatus(files), [files]);
+  const decorations = useMemo(() => buildDecorations(files), [files]);
 
   return (
     <div className="px-2 py-1 text-sm" role="region" aria-label="commit detail">
@@ -78,7 +83,23 @@ export default function CommitDetail({ repo, hash, onOpenDiff, note }: CommitDet
             {query.data.subject}
             {query.data.body ? `\n\n${query.data.body}` : ""}
           </pre>
-          <FileTree nodes={fileTree} />
+          <div
+            className="rounded-sm border border-border"
+            // Sized to the file count (rows are ~24px; ancestor directory
+            // rows are mostly flattened away) and capped — the tree scrolls
+            // internally beyond that.
+            style={{ height: Math.min(320, 24 * paths.length + 32) }}
+          >
+            <PathTree
+              paths={paths}
+              gitStatus={gitStatus}
+              decorations={decorations}
+              initialExpansion="open"
+              fontSize={viewerSettings.fontSize}
+              selectedPath={null}
+              search={false}
+            />
+          </div>
         </div>
       ) : null}
     </div>

@@ -7,7 +7,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/layout";
 import { repoDisplayNames } from "@/lib/repoDisplay";
 import { buildWorkspaceView } from "@/lib/workspaceView";
+import type { AskEvent } from "@/lib/askEvent";
 import { RepoGroup } from "./RepoGroup";
+import type { AskFileLocation } from "./AskSessionGroup";
 import { WorkspaceGroup } from "./WorkspaceGroup";
 
 export type SidebarMode = "repository" | "workspace";
@@ -23,6 +25,9 @@ export type SidebarProps = {
   onSelectPane: (paneId: string) => void;
   layout: SidebarLayout;
   onLayoutChange: (next: SidebarLayout) => void;
+  /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
+  onOpenAskFile: (location: AskFileLocation) => void;
+  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
 };
 
 const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
@@ -44,6 +49,8 @@ export function Sidebar({
   onSelectPane,
   layout,
   onLayoutChange,
+  onOpenAskFile,
+  subscribeAskEvents,
 }: SidebarProps) {
   const [mode, setMode] = useState<SidebarMode>("repository");
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
@@ -152,6 +159,8 @@ export function Sidebar({
                 collapsed={collapsedRepos.has(repo.key)}
                 onToggleCollapse={() => toggleRepo(repo.key)}
                 onSelectPane={onSelectPane}
+                onOpenAskFile={onOpenAskFile}
+                subscribeAskEvents={subscribeAskEvents}
               />
             ))}
 

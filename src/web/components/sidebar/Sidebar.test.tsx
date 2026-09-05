@@ -1,7 +1,23 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PaneRow, Repo } from "@contract/events";
 import { Sidebar, type SidebarProps } from "./Sidebar";
+
+const listAsks = vi.fn();
+
+vi.mock("@/lib/api", () => ({
+  askApi: {
+    list: (...args: unknown[]) => listAsks(...args),
+    resolve: vi.fn(),
+  },
+}));
+
+function render(ui: ReactElement) {
+  const client = new QueryClient();
+  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
@@ -41,8 +57,14 @@ function defaultProps(): SidebarProps {
     onSelectPane: vi.fn(),
     layout: { width: 240, collapsed: false },
     onLayoutChange: vi.fn(),
+    onOpenAskFile: vi.fn(),
   };
 }
+
+beforeEach(() => {
+  listAsks.mockReset();
+  listAsks.mockResolvedValue([]);
+});
 
 describe("Sidebar", () => {
   test("renders repo header and a workspace row (leaf, no per-pane rows)", () => {

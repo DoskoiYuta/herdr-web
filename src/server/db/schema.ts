@@ -49,3 +49,40 @@ export const reviewEntries = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.reviewId, t.seq] })],
 );
+
+export const asks = sqliteTable(
+  "asks",
+  {
+    id: text("id").primaryKey(),
+    repo: text("repo").notNull(),
+    worktreeRoot: text("worktree_root").notNull(),
+    path: text("path").notNull(),
+    anchor: text("anchor", { mode: "json" }).notNull(),
+    createdAtHead: text("created_at_head"),
+    status: text("status").notNull(), // "open" | "replied" | "resolved" | "outdated"
+    session: text("session", { mode: "json" }), // AskSession | null
+    lastPromptState: text("last_prompt_state"), // AskPromptState | null
+    lastPromptAt: text("last_prompt_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("asks_repo_status_idx").on(t.repo, t.status),
+    index("asks_repo_worktree_path_idx").on(t.repo, t.worktreeRoot, t.path),
+  ],
+);
+
+export const askEntries = sqliteTable(
+  "ask_entries",
+  {
+    askId: text("ask_id")
+      .notNull()
+      .references(() => asks.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    author: text("author").notNull(), // "user" | "agent"
+    body: text("body").notNull(),
+    at: text("at").notNull(),
+    agentSession: text("agent_session"),
+  },
+  (t) => [primaryKey({ columns: [t.askId, t.seq] })],
+);

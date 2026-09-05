@@ -9,18 +9,25 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
+import { PathTree } from "@/components/tree/PathTree";
 import type { PatchResponse } from "@contract/git";
 import type { ReviewTarget, Side } from "@contract/review";
 import { buildAnchor } from "@/lib/anchor";
 import { gitApi, reviewApi, type ForDiffMatch } from "@/lib/api";
 import type { ReviewEvent } from "@/lib/herdrStore";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
+import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
+import {
+  DEFAULT_VIEWER_SETTINGS,
+  MAX_TREE_WIDTH,
+  MIN_TREE_WIDTH,
+  useViewerSettings,
+} from "@/lib/viewerSettings";
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
 import { annotationSignature, withAnnotationRev, withCollapsedVersion } from "./annotationVersion";
 import Banners from "./Banners.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
-import FileTree from "./FileTree.tsx";
 import { usePatch } from "./hooks/usePatch.ts";
 import { reconcile, summarize } from "./reconcile.ts";
 import type { FileMap } from "./reconcile.ts";
@@ -34,15 +41,13 @@ import { lineNumberToIndex, sideLines } from "./sideLines.ts";
 import {
   DEFAULT_SETTINGS,
   initialBannerState,
-  MAX_TREE_WIDTH,
-  MIN_TREE_WIDTH,
   reduceBanner,
   updateBanner as deriveUpdateBanner,
   validateSettings,
 } from "./state.ts";
 import type { BannerState, Settings } from "./state.ts";
 import StatusLine from "./StatusLine.tsx";
-import { buildTree, fileStats, fileStatus } from "./tree.ts";
+import { buildTree, fileStats, fileStatus, statsDecoration, toGitStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
 
 const FOR_DIFF_DEBOUNCE_MS = 200;
@@ -143,13 +148,17 @@ export function DiffPanel({
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   useEffect(() => saveSettings(settings), [settings]);
 
+  const [viewerSettings, updateViewerSettings] = useViewerSettings();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
-  const treeWidth = dragWidth ?? settings.treeWidth;
+  const treeWidth = dragWidth ?? viewerSettings.treeWidth;
   const handleTreeResize = useCallback((width: number) => setDragWidth(width), []);
-  const handleTreeResizeEnd = useCallback((width: number) => {
-    setDragWidth(null);
-    setSettings((s) => ({ ...s, treeWidth: width }));
-  }, []);
+  const handleTreeResizeEnd = useCallback(
+    (width: number) => {
+      setDragWidth(null);
+      updateViewerSettings({ treeWidth: width });
+    },
+    [updateViewerSettings],
+  );
 
   const fileMapRef = useRef<FileMap>(new Map());
   const [items, setItems] = useState<CodeViewDiffItem[]>([]);
@@ -163,15 +172,6 @@ export function DiffPanel({
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diffViewRef = useRef<DiffViewHandle>(null);
-  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
-  const toggleDir = useCallback((path: string) => {
-    setCollapsedDirs((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
 
   // -------------------------------------------------------------------
   // Per-file collapse (M3 follow-up). Keyed by file name rather than item id
@@ -299,6 +299,29 @@ export function DiffPanel({
   // never clones items (see order.ts).
   const orderedItems = useMemo(() => orderItemsByTree(items, treeNodes), [items, treeNodes]);
 
+  // PathTree inputs: a flat list of changed file paths plus their status/
+  // stats, keyed by name — PathTree infers the directory nesting itself
+  // from the paths' `/` segments (unlike buildTree above, which this
+  // component still needs for the right pane's display order).
+  const treePaths = useMemo(() => items.map((item) => item.fileDiff.name), [items]);
+  const treeGitStatus = useMemo(
+    () =>
+      items.map((item) => {
+        const untracked = !!untrackedByName.get(item.fileDiff.name);
+        return {
+          path: item.fileDiff.name,
+          status: toGitStatus(fileStatus(item.fileDiff, untracked)),
+        };
+      }),
+    [items, untrackedByName],
+  );
+  const treeDecorations = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof statsDecoration>>();
+    for (const item of items)
+      map.set(item.fileDiff.name, statsDecoration(fileStats(item.fileDiff)));
+    return map;
+  }, [items]);
+
   // -------------------------------------------------------------------
   // File selection follows the rendered items. Adjusted during render
   // (React's documented pattern for "state that depends on a prop/derived
@@ -346,6 +369,19 @@ export function DiffPanel({
       setPendingScrollId(id);
     },
     [items, collapsedNames],
+  );
+
+  const selectedPath = useMemo(() => {
+    const item = items.find((i) => i.id === selectedId);
+    return item ? item.fileDiff.name : null;
+  }, [items, selectedId]);
+
+  const handleTreeSelectFile = useCallback(
+    (name: string) => {
+      const item = items.find((i) => i.fileDiff.name === name);
+      if (item) selectFile(item.id);
+    },
+    [items, selectFile],
   );
 
   useEffect(() => {
@@ -726,15 +762,20 @@ export function DiffPanel({
     <div id="diff-panel" className="flex h-full min-h-0 flex-col">
       <Toolbar
         settings={settings}
-        onToggleTree={() => setSettings((s) => ({ ...s, showTree: !s.showTree }))}
+        showTree={viewerSettings.showTree}
+        onToggleTree={() => updateViewerSettings({ showTree: !viewerSettings.showTree })}
         onToggleDiffStyle={() =>
           setSettings((s) => ({ ...s, diffStyle: s.diffStyle === "split" ? "unified" : "split" }))
         }
         onToggleOverflow={() =>
           setSettings((s) => ({ ...s, overflow: s.overflow === "wrap" ? "scroll" : "wrap" }))
         }
-        onFontDec={() => setSettings((s) => ({ ...s, fontSize: Math.max(10, s.fontSize - 1) }))}
-        onFontInc={() => setSettings((s) => ({ ...s, fontSize: Math.min(24, s.fontSize + 1) }))}
+        onFontDec={() =>
+          updateViewerSettings({ fontSize: Math.max(MIN_FONT_SIZE, viewerSettings.fontSize - 1) })
+        }
+        onFontInc={() =>
+          updateViewerSettings({ fontSize: Math.min(MAX_FONT_SIZE, viewerSettings.fontSize + 1) })
+        }
         onRefresh={applyPending}
         onCollapseAll={collapseAll}
         onExpandAll={expandAll}
@@ -742,21 +783,24 @@ export function DiffPanel({
       />
       <div className="border-b border-border px-2 py-1 text-xs text-muted-foreground">{label}</div>
       <div className="flex min-h-0 flex-1">
-        {settings.showTree && (
+        {viewerSettings.showTree && (
           <>
-            <FileTree
-              nodes={treeNodes}
-              activeId={selectedId}
-              onSelect={selectFile}
-              collapsed={collapsedDirs}
-              onToggleDir={toggleDir}
-              width={treeWidth}
+            <PathTree
+              paths={treePaths}
+              gitStatus={treeGitStatus}
+              decorations={treeDecorations}
+              initialExpansion="open"
+              fontSize={viewerSettings.fontSize}
+              selectedPath={selectedPath}
+              onSelectFile={handleTreeSelectFile}
+              style={{ width: treeWidth }}
+              className="h-full min-h-0 shrink-0"
             />
             <ResizeHandle
               width={treeWidth}
               min={MIN_TREE_WIDTH}
               max={MAX_TREE_WIDTH}
-              defaultWidth={DEFAULT_SETTINGS.treeWidth}
+              defaultWidth={DEFAULT_VIEWER_SETTINGS.treeWidth}
               onResize={handleTreeResize}
               onResizeEnd={handleTreeResizeEnd}
             />
@@ -780,6 +824,7 @@ export function DiffPanel({
               ref={diffViewRef}
               items={itemsWithAnnotations}
               settings={settings}
+              fontSize={viewerSettings.fontSize}
               repo={repo}
               onToast={showToast}
               onTopItemChange={handleTopItemChange}

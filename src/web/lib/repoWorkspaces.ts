@@ -23,12 +23,13 @@ export type WorkspaceGroup = {
   panes: WorkspacePaneRow[];
 };
 
-export function groupByWorkspace(repo: Repo): WorkspaceGroup[] {
+function buildWorkspaceGroups(repo: Repo, include: (pane: PaneRow) => boolean): WorkspaceGroup[] {
   const order: string[] = [];
   const panesByWorkspace = new Map<string, WorkspacePaneRow[]>();
 
   for (const worktree of repo.worktrees) {
     for (const pane of worktree.panes) {
+      if (!include(pane)) continue;
       let panes = panesByWorkspace.get(pane.workspaceId);
       if (!panes) {
         panes = [];
@@ -51,4 +52,18 @@ export function groupByWorkspace(repo: Repo): WorkspaceGroup[] {
       workspaceId,
     panes: panesByWorkspace.get(workspaceId)!,
   }));
+}
+
+/** Ordinary (non-ask) workspaces: `repository > workspace > pane` (plan.md F8). */
+export function groupByWorkspace(repo: Repo): WorkspaceGroup[] {
+  return buildWorkspaceGroups(repo, (pane) => pane.ask !== true);
+}
+
+/**
+ * 「質問」(ask) workspaces only — shown in their own collapsible group under
+ * the repo, not mixed into `groupByWorkspace`'s listing (a question session
+ * isn't a workspace a user manages the same way; F10).
+ */
+export function askWorkspacesFor(repo: Repo): WorkspaceGroup[] {
+  return buildWorkspaceGroups(repo, (pane) => pane.ask === true);
 }

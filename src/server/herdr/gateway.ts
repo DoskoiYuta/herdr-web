@@ -33,11 +33,16 @@ export interface HerdrGateway {
   paneGet(paneId: string): Promise<PaneInfo>;
   paneFocus(paneId: string): Promise<PaneInfo>;
   workspaceFocus(workspaceId: string): Promise<void>;
-  /** `workspace.create`: creates a workspace rooted at `cwd`, optionally labeled and focused. */
+  /**
+   * `workspace.create`: creates a workspace rooted at `cwd`, optionally
+   * labeled and focused. `env` is merged into the environment of the shell
+   * herdr starts in the workspace's root pane.
+   */
   workspaceCreate(params: {
     cwd: string | null;
     label?: string | null;
     focus?: boolean;
+    env?: Record<string, string>;
   }): Promise<WorkspaceInfo>;
   /** `workspace.rename`. */
   workspaceRename(workspaceId: string, label: string): Promise<WorkspaceInfo>;
@@ -47,6 +52,20 @@ export interface HerdrGateway {
    */
   workspaceClose(workspaceId: string): Promise<void>;
   agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome>;
+  /**
+   * `agent.start`: launches an agent in `paneId`, which must be at a shell
+   * prompt. Resolves once herdr detects the agent and it is ready (or rejects
+   * on herdr's own startup timeout / a pane that isn't a bare shell).
+   */
+  agentStart(params: {
+    name: string;
+    kind: string;
+    paneId: string;
+    timeoutMs?: number;
+    args?: string[];
+  }): Promise<PaneInfo>;
+  /** `pane.list`, optionally filtered to one workspace. */
+  paneList(workspaceId?: string | null): Promise<PaneInfo[]>;
   /** `pane.layout`: the tab's split layout containing this pane. */
   paneLayout(paneId: string): Promise<PaneLayoutSnapshot>;
   /** `pane.read`: the pane's recent scrollback, ANSI stripped, as plain text. */

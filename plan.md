@@ -66,6 +66,7 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 - diff へのレビュー（worktree / コミットへの紐付け、内容アンカー、スレッド、下書き + 送信、状態管理）と、エージェント向け CLI `hw`
 - 送信操作による `agent.prompt` エージェント通知
 - git graph 上のコミットごとのレビュー件数バッジ
+- 読み取り専用のファイルビューア（ファイルツリー + 単一ファイル表示、Markdown はプレビュー）
 - 単一プロセス・単一コマンドでの開発起動、単一バイナリへのビルド
 - `127.0.0.1` バインドのまま `tailscale serve` 経由で tailnet から利用できること
 
@@ -238,7 +239,7 @@ src/cli                      → contract のみ
 
 ### F3. diff ビューア（tdiff から移植）
 
-- F3-1. 変更ファイル一覧（未ステージ / ステージ / 未追跡、上限 200）とファイルツリー。
+- F3-1. 変更ファイル一覧（未ステージ / ステージ / 未追跡、上限 200）とファイルツリー（`@pierre/trees` ベースの共通 `PathTree` コンポーネント、F4/F9 のツリーと共有）。
 - F3-2. unified / side-by-side。狭幅では unified に自動切替。シンタックスハイライトは `@pierre/diffs`。
 - F3-3. 比較対象: 作業ツリー vs HEAD（既定、staged + unstaged）、ステージ vs HEAD、任意の 2 commit（F4 から渡す）。
 - F3-4. 変更検知は 1 秒間隔の git ポーリング（tdiff の poller）。フォーカス中の worktree だけをポーリングし、`repo-changed` を配信する。
@@ -310,6 +311,27 @@ src/cli                      → contract のみ
 - F8-8. リポジトリ見出しに「ワークスペースを作成」ボタンを出す。開くインラインフォームの label 初期値はリポジトリ名、cwd はそのリポジトリの main worktree root。`workspace.create({ cwd, label, focus: true })` を呼ぶ（`POST /api/herdr/workspace`、cwd は git ルートと同じ allowed-roots 検査を通す）。
 - F8-9. workspace 行を右クリックすると「名前を変更」「削除」を持つカスタムコンテキストメニューを出す（キーボードの Shift+F10 / コンテキストメニューキーでも開ける）。「名前を変更」は現在の label を初期値にしたダイアログから `workspace.rename`、「削除」は pane / agent がすべて終了する旨を明示した確認ダイアログから `workspace.close`（`confirm: true` 必須）を呼ぶ。
 
+### F9. ファイルビューア
+
+- F9-1. 読み取り専用。書き込み・保存操作は持たない（将来拡張として編集を検討する。§15）。
+- F9-2. ツリーは git を経由しない素の `readdir`（`GET /api/fs/ls?root=&dir=`）で、ディレクトリが展開されたときにその 1 階層分だけを遅延取得する。ドットファイルや `.git` も含め `ls -a` が見せるものはすべて列挙し、上限は無い。シンボリックリンクは種別 `symlink` として表示するだけで辿らない。ツリー描画は `@pierre/trees`。
+- F9-3. `git status --porcelain` 由来の変更状態（追加・変更・削除・リネーム・未追跡）を `GET /api/git/status?repo=` から取得し、ツリーの行装飾としてのみ表示する（一覧そのものには影響しない）。
+- F9-4. ファイルを選択すると単一ファイルの内容を表示する。`.md` / `.markdown` は `@wysimark/react` でプレビューする（編集機能を持つエディタを選んだのは、将来 F9-1 を解除して保存に対応する計画があるため。v3 に `readOnly` プロパティが無いため、DOM 上で `contenteditable` を無効化して読み取り専用にする）。それ以外は `@pierre/diffs` の `File` でシンタックスハイライト表示する。画像 / PDF は `GET /api/fs/raw` の生バイトを `<img>` / `<iframe>` で直接プレビューする。
+- F9-5. バイナリファイルとサイズ上限（2 MiB）超のファイルは内容を取得せず、種別とサイズだけを表示する。
+- F9-6. `repo-changed` イベント（F3-4 のポーリングを含む）でツリーと選択中ファイルを再取得する。サブリポジトリ選択中は F3-4 と同じポーリングにフォールバックする。
+- F9-7. ツリーへのファイル/フォルダのドラッグ&ドロップでインポートできる（`POST /api/fs/upload`）。ドロップされたファイル群はドロップ先ディレクトリ配下にそのパス構造のまま書き込まれる。既存パスと衝突する場合は書き込まず、上書きの確認を経てから `overwrite=true` で再送する。これは git 操作ではなく素の書き込み（`fs.writeFile` 相当）であり、Web UI が行うファイルシステム書き込みは import と trash（F9-9）のみである。削除は常に OS のゴミ箱への移動（`trash` / Finder / `gio trash`）であり、`rm` は使わない。書き込み後の反映は F9-6 の `repo-changed` / ポーリングに乗る。
+- F9-8. フォントサイズ・ツリー表示 on/off・ツリー幅は F3（diff ビューア）と共有する設定（`herdr-web:viewer-settings`）。エディタの見た目を揃えるため、既定フォントサイズは F3 の 15px ではなく F9 側の 13px を両者の既定値とする。
+- F9-9. ツリーの行を右クリックすると「相対パスをコピー」「絶対パスをコピー」「ゴミ箱に移動」の 3 項目を持つメニューを出す。「ファイル自体をコピー」は提供しない（ブラウザはファイルを OS クリップボードに乗せられない）。「ゴミ箱に移動」は確認ダイアログ（ディレクトリの場合は中身ごと移動する旨を明示）を経てから `POST /api/fs/trash` を呼ぶ。成功するとヘッダーに一時メッセージを出し、ツリーを再取得し、選択中のファイルが移動対象かその配下だった場合は選択を解除する。バックエンドが無い環境（501）では「この環境ではゴミ箱に移動できません」と表示する。
+
+### F10. 質問（コード箇所への会話）
+
+- F10-1. 「質問」(ask) はコードベースの場所（`path` + レビューと同じ内容アンカー、`side` は常に `"new"`）に付く会話で、変更依頼ではない。レビュー（F5）とは別テーブル・別 API を持ち、下書き・一括送信・コミットへの追従は無い。作成 = 即送信。
+- F10-2. 状態遷移は `open` →（エージェント返信）→ `replied` →（ユーザー解決）→ `resolved`。`replied` へのユーザー返信は `open` に戻す。解決はユーザーのみでき、同時にエージェントセッションを閉じる。
+- F10-3. アンカーが worktree の現在のファイル内容に一致しなくなったら（Files タブで都度判定）、未解決の質問は `outdated` になる。再び一致すれば `open` に戻る。コミットへの再アンカーは行わない。
+- F10-4. 回答するエージェントは「専用 herdr ワークスペース（`target.kind: "new"`、label は `ask:<id 末尾 8 文字>`、サーバーが worktree で claude を起動し初回プロンプトを送る）」か「既存のエージェント pane（`target.kind: "pane"`）」のいずれかで動く。専用ワークスペースの起動・プロンプト送受信は `AskSessionLauncher` ポート（`src/server/ask/ports.ts`）の背後に隠す。セッション状態（`working`/`blocked`/...）はユーザーにのみ見え、herdr で開く操作を提供する。
+- F10-5. 専用ワークスペースの起動に失敗したら（herdr 未接続 / 上限到達 / その他失敗）質問自体を保存しない。既存 pane 宛ての質問は、プロンプト送信が失敗しても（`agent_blocked` など）保存する — ユーザーが「再送」できる。
+- F10-6. `hw ask list` / `hw ask show <id>` / `hw ask reply <id> <text>` を提供する。`reply` は常に author=agent。短縮 id（末尾 4 文字以上）による解決はレビューと同じ規則。
+
 ## 8. 非機能要件
 
 - N1. `127.0.0.1` に固定。`tailscale serve --bg 8080` で公開する手順を README に書く。`--host` は緊急用で非 loopback なら警告。
@@ -355,8 +377,19 @@ src/cli                      → contract のみ
 | GET      | `/api/git/files?repo=&path=&prev=&type=&oldHash=&newHash=` | hunk 展開用の全文（tdiff の `resolveFiles`）                                                                                                                            |
 | GET      | `/api/git/graph?repo=&max=&all=`                           | tgg 形式: `{ commits, refs, head, stashes, hasUncommitted, truncated }`                                                                                                 |
 | GET      | `/api/git/commit/:hash?repo=`                              | tgg 形式: メタ + `files: CommitFile[]`                                                                                                                                  |
+| GET      | `/api/git/status?repo=`                                    | ファイルビューアの行装飾用 worktree 状態（F9-3）: `{ status: TreeStatusEntry[] }`                                                                                       |
 
-### 9.4 Hono RPC — review（Web UI と `hw` が共用）
+### 9.4 Hono RPC — fs（`root` = 任意のディレクトリルート、git 操作ではない素のファイルシステム操作）
+
+| メソッド | パス                                   | 説明                                                                                                                                                                                             |
+| -------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET      | `/api/fs/ls?root=&dir=`                | ファイルビューアの 1 ディレクトリの `readdir`（F9-2）: `{ entries: {name, kind}[] }`                                                                                                             |
+| GET      | `/api/fs/file?root=&path=`             | ファイルビューアの単一ファイル（F9-4/F9-5）: `{ kind: "text", contents, size } \| { kind: "binary", size } \| { kind: "too-large", size }`                                                       |
+| GET      | `/api/fs/raw?root=&path=`              | ファイルビューアの画像/PDF プレビュー（F9-4）: 対応拡張子の生バイトをそのまま返す。非対応拡張子は 415、50 MiB 超は 413                                                                           |
+| POST     | `/api/fs/upload?root=&dir=&overwrite=` | ツリーへの DnD インポート（F9-7）、`multipart/form-data` の `file` パート群（ファイル名は `dir` からの相対パス）: `{ written: string[] }`。既存パスと衝突すると 409 `{ error: "exists", paths }` |
+| POST     | `/api/fs/trash?root=&path=`            | ツリーの右クリックメニューからの OS ゴミ箱移動（F9-9）: `{ trashed: path }`。`.git` 自身/配下と空文字は 400 `forbidden-path`/`invalid-path`、バックエンド無しは 501 `no-trash-backend`           |
+
+### 9.5 Hono RPC — review（Web UI と `hw` が共用）
 
 | メソッド | パス                                                                                 | 説明                                                                                                                                                                 |
 | -------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -375,7 +408,21 @@ src/cli                      → contract のみ
 | GET      | `/api/hw/whoami?pane=`                                                               | pane から `foreground_cwd`、worktree、`agent_session` を解決                                                                                                         |
 | POST     | `/api/repo/move`                                                                     | `{ from, to }`                                                                                                                                                       |
 
-### 9.5 herdr socket API の利用一覧
+### 9.x Hono RPC — ask（Web UI と `hw` が共用、F10）
+
+| メソッド | パス                                     | 説明                                                                                                                                                         |
+| -------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET      | `/api/ask?repo=&worktree=&status=&path=` | 一覧。`status` は comma-separated。既定は `open,replied`                                                                                                     |
+| GET      | `/api/ask/counts?repo=&worktree=`        | Files タブのバッジ用の集計（未解決件数、path ごとの件数）                                                                                                    |
+| GET      | `/api/ask/:id`                           | 1 件 + 現在のセッション状態（`sessionStatus`）。`:id` は完全な id か 4 文字以上の末尾一致。複数件に当たると 409                                              |
+| POST     | `/api/ask/for-file`                      | `{ repo, worktreeRoot, path, lines }` → 現在の行内容に対するアンカー一致（Files タブ用、`outdated`/`open` 遷移もここで持続化する）                           |
+| POST     | `/api/ask`                               | `{ repo, worktreeRoot, path, anchor, createdAtHead, body, target }` で作成し即送信。失敗時は保存せず 409（`limit_reached`）/ 503（`herdr_unavailable`）/ 500 |
+| POST     | `/api/ask/:id/reply`                     | `{ body, author, agentSession? }`。user は `open` に戻し返信テンプレートを送信、agent は `replied`（resolved なら維持）で送信なし                            |
+| POST     | `/api/ask/:id/resolve`                   | user のみ。`resolved` にしてセッションを閉じる                                                                                                               |
+| POST     | `/api/ask/:id/resend`                    | 直近のユーザー発言を再送する（`agent_blocked` からの「再送」ボタン用）                                                                                       |
+| POST     | `/api/ask/:id/focus`                     | herdr でセッションを開く（`pane.focus` / 必要なら `workspace.focus` を先に）                                                                                 |
+
+### 9.6 herdr socket API の利用一覧
 
 | 用途               | メソッド / イベント                                                                                |
 | ------------------ | -------------------------------------------------------------------------------------------------- |
@@ -490,3 +537,4 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - サイドバーからの workspace / worktree 操作
 - worktree 横断比較
 - git の書き込み操作
+- ファイル編集（Files タブからの保存）

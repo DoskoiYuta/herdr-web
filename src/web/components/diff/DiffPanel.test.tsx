@@ -41,6 +41,27 @@ vi.mock("@pierre/diffs/react", () => {
   return { CodeView };
 });
 
+// Stub PathTree with one button per path, mirroring FilesPanel.test.tsx's
+// pattern — the real @pierre/trees rendering is exercised by PathTree's own
+// tests, not by DiffPanel's.
+vi.mock("@/components/tree/PathTree", () => ({
+  PathTree: ({
+    paths,
+    onSelectFile,
+  }: {
+    paths: string[];
+    onSelectFile?: (path: string) => void;
+  }) => (
+    <div data-testid="path-tree-stub">
+      {paths.map((p) => (
+        <button key={p} type="button" onClick={() => onSelectFile?.(p)}>
+          {p}
+        </button>
+      ))}
+    </div>
+  ),
+}));
+
 const { default: DiffPanel } = await import("./DiffPanel.tsx");
 
 function patch(hash: string, files: { name: string; contentLine: string }[]) {
@@ -272,7 +293,7 @@ test("toolbar すべて折りたたむ/すべて展開 collapse and expand every
   expect(collapsedOf("b.txt")).toBe("false");
 });
 
-test("clicking a file in the FileTree expands it (if collapsed) and scrolls to it", async () => {
+test("clicking a file in the PathTree expands it (if collapsed) and scrolls to it", async () => {
   renderPanel({ repo: "/repo", repoChangedTick: 0 });
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
 
@@ -282,9 +303,7 @@ test("clicking a file in the FileTree expands it (if collapsed) and scrolls to i
   fireEvent.click(screen.getByText("すべて折りたたむ"));
   expect(collapsedOfA()).toBe("true");
 
-  // The FileTree row (basename label, distinct DOM node from the item-order
-  // <li> above which shows the item id).
-  fireEvent.click(screen.getByText("a.txt", { selector: ".tree-file .tree-label" }));
+  fireEvent.click(screen.getByRole("button", { name: "a.txt" }));
 
   await waitFor(() => expect(collapsedOfA()).toBe("false"));
   await waitFor(() => expect(scrollToItemMock).toHaveBeenCalled());

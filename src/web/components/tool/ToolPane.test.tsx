@@ -71,6 +71,32 @@ vi.mock("@/components/diff/DiffPanel", () => ({
   },
 }));
 
+vi.mock("@/components/files/FilesPanel", () => ({
+  FilesPanel: ({
+    repo,
+    initialLocation,
+    onInitialLocationConsumed,
+  }: {
+    repo: string;
+    initialLocation?: { path: string; line: number } | null;
+    onInitialLocationConsumed?: () => void;
+  }) => (
+    <div data-testid="files-panel-stub">
+      {repo}
+      {initialLocation && (
+        <span data-testid="files-panel-initial-location">
+          {initialLocation.path}:{initialLocation.line}
+        </span>
+      )}
+      {initialLocation && (
+        <button type="button" onClick={onInitialLocationConsumed}>
+          consume
+        </button>
+      )}
+    </div>
+  ),
+}));
+
 vi.mock("@/components/graph/GraphPanel", () => ({
   GraphPanel: ({
     repo,
@@ -243,6 +269,40 @@ describe("ToolPane", () => {
     expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project:WORKTREE:HEAD",
     );
+  });
+
+  test("switching to the Files tab renders FilesPanel with the current repo", () => {
+    render(
+      <ToolPane
+        worktreeRoot="/Users/dev/project"
+        pinned={false}
+        onPinToggle={vi.fn()}
+        repoChangedTick={0}
+        onOpenPath={vi.fn()}
+      />,
+    );
+    selectTab("Files");
+    expect(screen.getByTestId("files-panel-stub")).toHaveTextContent("/Users/dev/project");
+  });
+
+  test("filesInitialLocation switches to the Files tab and passes the location down to FilesPanel", () => {
+    const onFilesInitialLocationConsumed = vi.fn();
+    render(
+      <ToolPane
+        worktreeRoot="/Users/dev/project"
+        pinned={false}
+        onPinToggle={vi.fn()}
+        repoChangedTick={0}
+        onOpenPath={vi.fn()}
+        filesInitialLocation={{ path: "src/a.ts", line: 42 }}
+        onFilesInitialLocationConsumed={onFilesInitialLocationConsumed}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active");
+    expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("src/a.ts:42");
+
+    fireEvent.click(screen.getByRole("button", { name: "consume" }));
+    expect(onFilesInitialLocationConsumed).toHaveBeenCalled();
   });
 
   test("pin toggle calls onPinToggle and reflects pressed state", () => {

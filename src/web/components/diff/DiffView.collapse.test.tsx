@@ -63,6 +63,7 @@ test("clicking the chevron toggle reports the item id exactly once", () => {
     <DiffView
       items={[makeItem("diff:a.ts#1", "a.ts")]}
       settings={DEFAULT_SETTINGS}
+      fontSize={15}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}
@@ -81,6 +82,7 @@ test("the chevron reflects collapsed state via aria-expanded and label", () => {
     <DiffView
       items={[makeItem("diff:a.ts#1", "a.ts", true)]}
       settings={DEFAULT_SETTINGS}
+      fontSize={15}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}
@@ -98,6 +100,7 @@ test("clicking anywhere else in the file header also toggles collapse", () => {
     <DiffView
       items={[makeItem("diff:a.ts#1", "a.ts")]}
       settings={DEFAULT_SETTINGS}
+      fontSize={15}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}
@@ -117,6 +120,7 @@ test("clicking the code body (outside the header) does not toggle collapse", () 
     <DiffView
       items={[makeItem("diff:a.ts#1", "a.ts")]}
       settings={DEFAULT_SETTINGS}
+      fontSize={15}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}
@@ -135,6 +139,7 @@ test("clicking a different file's header toggles that file, not others", () => {
     <DiffView
       items={[makeItem("diff:a.ts#1", "a.ts"), makeItem("diff:b.ts#1", "b.ts")]}
       settings={DEFAULT_SETTINGS}
+      fontSize={15}
       repo="/repo"
       onToast={() => {}}
       onTopItemChange={() => {}}

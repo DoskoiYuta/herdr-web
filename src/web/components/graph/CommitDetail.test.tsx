@@ -2,8 +2,19 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import CommitDetail from "./CommitDetail";
 import type { CommitDetail as CommitDetailWire } from "@contract/git";
+
+vi.mock("@/components/tree/PathTree", () => ({
+  PathTree: ({ paths }: { paths: string[] }) => (
+    <div data-testid="path-tree-stub" role="tree">
+      {paths.map((p) => (
+        <div key={p}>{p}</div>
+      ))}
+    </div>
+  ),
+}));
+
+const { default: CommitDetail } = await import("./CommitDetail");
 
 function wrapper() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -57,12 +68,9 @@ describe("CommitDetail", () => {
     await waitFor(() => expect(screen.getByText(/Fix foo/)).toBeInTheDocument());
     const calledUrl = String(fetchMock.mock.calls[0]?.[0]);
     expect(calledUrl).toContain(`/api/git/commit/${detail.hash}`);
-    // Files render inside a FileTree: "a.ts" and "c.ts" (renamed from
-    // "src/b.ts") both live under a collapsed "src" directory node.
     expect(screen.getByRole("tree")).toBeInTheDocument();
-    expect(screen.getByText(/a\.ts/)).toBeInTheDocument();
-    expect(screen.getByText(/c\.ts/)).toBeInTheDocument();
-    expect(screen.getByText(/src\/b\.ts/)).toBeInTheDocument();
+    expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+    expect(screen.getByText("src/c.ts")).toBeInTheDocument();
   });
 
   test("renders an error message on failure", async () => {

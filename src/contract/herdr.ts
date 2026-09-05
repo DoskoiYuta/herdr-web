@@ -337,6 +337,24 @@ export const WorkspaceInfoResultSchema = v.looseObject({
 });
 export type WorkspaceInfoResult = v.InferOutput<typeof WorkspaceInfoResultSchema>;
 
+/** `pane.list`'s successful result: `{ type: "pane_list", panes: PaneInfo[] }` (per `herdr api schema --json`). */
+export const PaneListResultSchema = v.looseObject({
+  type: v.literal("pane_list"),
+  panes: v.array(PaneInfoSchema),
+});
+export type PaneListResult = v.InferOutput<typeof PaneListResultSchema>;
+
+/**
+ * `agent.start`'s successful result: `{ type: "agent_started", agent, argv }`
+ * (per `herdr api schema --json`). `agent` has the same shape as `PaneInfo`.
+ */
+export const AgentStartedResultSchema = v.looseObject({
+  type: v.literal("agent_started"),
+  agent: PaneInfoSchema,
+  argv: v.array(v.string()),
+});
+export type AgentStartedResult = v.InferOutput<typeof AgentStartedResultSchema>;
+
 /**
  * herdr's error codes are untyped strings (`ErrorBody.code`). The two we treat
  * specially per plan.md §3: `agent.prompt` rejects with `agent_blocked` before

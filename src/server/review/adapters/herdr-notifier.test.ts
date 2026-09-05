@@ -25,7 +25,11 @@ async function settle() {
 describe("createHerdrNotifier", () => {
   test("prompts the focused pane in the worktree, else the first agent pane, else no_target", async () => {
     const fake = createFakeHerdr(snapshot);
-    const state = createHerdrState(fake, { error() {}, warn() {} });
+    const state = createHerdrState(
+      fake,
+      { error() {}, warn() {} },
+      { replaySettleMs: 0, replayMaxMs: 0 },
+    );
     await settle();
     const panes = [...state.get().panes.values()].filter((p) => p.agent);
     expect(panes.length).toBeGreaterThan(1);
@@ -69,7 +73,11 @@ describe("createHerdrNotifier", () => {
   // deliver a review's prompt to an agent in a different workspace's worktree.
   test("a pane in another worktree is not a target, even for a worktree with no pane of its own", async () => {
     const fake = createFakeHerdr(snapshot);
-    const state = createHerdrState(fake, { error() {}, warn() {} });
+    const state = createHerdrState(
+      fake,
+      { error() {}, warn() {} },
+      { replaySettleMs: 0, replayMaxMs: 0 },
+    );
     await settle();
     const panes = [...state.get().panes.values()].filter((p) => p.agent);
     const a = panes[0]!;
@@ -150,7 +158,11 @@ describe("createHerdrNotifier", () => {
   // the pane the caller resolved via targetsAt.
   test("an explicit pane is prompted exactly, even when it is not the focused pane", async () => {
     const fake = createFakeHerdr(snapshot);
-    const state = createHerdrState(fake, { error() {}, warn() {} });
+    const state = createHerdrState(
+      fake,
+      { error() {}, warn() {} },
+      { replaySettleMs: 0, replayMaxMs: 0 },
+    );
     await settle();
     const panes = [...state.get().panes.values()].filter((p) => p.agent);
     expect(panes.length).toBeGreaterThan(1);
@@ -186,7 +198,11 @@ describe("createHerdrNotifier", () => {
   // dropped by applyEvent, so the pane's stale `agent: "claude"` lingered in state.
   test("a pane whose agent was cleared by pane_agent_detected is no longer a target", async () => {
     const fake = createFakeHerdr(snapshot);
-    const state = createHerdrState(fake, { error() {}, warn() {} });
+    const state = createHerdrState(
+      fake,
+      { error() {}, warn() {} },
+      { replaySettleMs: 0, replayMaxMs: 0 },
+    );
     await settle();
     const pane = [...state.get().panes.values()].find((p) => p.agent)!;
     const cwd = pane.foreground_cwd ?? pane.cwd ?? "";

@@ -1,5 +1,7 @@
 import { hc } from "hono/client";
 import * as v from "valibot";
+import type { Ask, AskWithSession } from "../contract/ask";
+import { AskSchema, AskWithSessionSchema } from "../contract/ask";
 import type { Health } from "../contract/health";
 import { HealthSchema } from "../contract/health";
 import type { WhoamiResponse } from "../contract/hw";
@@ -135,5 +137,43 @@ export function createHwClient(baseUrl: string) {
     moveRepo(from: string, to: string): Promise<ClientResult<RepoMoveResult>> {
       return call(() => client.api.repo.move.$post({ json: { from, to } }), RepoMoveResultSchema);
     },
+
+    listAsks(params: ListAsksParams): Promise<ClientResult<Ask[]>> {
+      return call(
+        () =>
+          client.api.ask.$get({
+            query: {
+              ...(params.repo !== undefined ? { repo: params.repo } : {}),
+              ...(params.worktree !== undefined ? { worktree: params.worktree } : {}),
+              ...(params.status !== undefined ? { status: params.status } : {}),
+              ...(params.path !== undefined ? { path: params.path } : {}),
+            },
+          }),
+        v.array(AskSchema),
+      );
+    },
+
+    getAsk(id: string): Promise<ClientResult<AskWithSession>> {
+      return call(() => client.api.ask[":id"].$get({ param: { id } }), AskWithSessionSchema);
+    },
+
+    replyToAsk(id: string, body: string, agentSession: string | null): Promise<ClientResult<Ask>> {
+      return call(
+        () =>
+          client.api.ask[":id"].reply.$post({
+            param: { id },
+            json: { body, author: "agent", agentSession },
+          }),
+        AskSchema,
+      );
+    },
   };
 }
+
+export type ListAsksParams = {
+  repo?: string;
+  worktree?: string;
+  /** comma-separated AskStatus */
+  status?: string;
+  path?: string;
+};

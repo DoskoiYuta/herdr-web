@@ -42,8 +42,10 @@ import {
   useState,
 } from "react";
 import { gitApi } from "@/lib/api";
+import { fontMetrics } from "@/lib/codeFont";
+import { useIsDark } from "@/lib/useIsDark";
 import { findHeaderClickItemId } from "./headerClick.ts";
-import { effectiveDiffStyle, fontMetrics } from "./reconcile.ts";
+import { effectiveDiffStyle } from "./reconcile.ts";
 import type { Settings } from "./state.ts";
 import { REVIEW_RANGE_CSS } from "@/components/review/rangeHighlight";
 
@@ -60,6 +62,9 @@ export interface DiffViewHandle {
 export interface DiffViewProps {
   items: readonly CodeViewDiffItem<ReviewAnnotationMeta>[];
   settings: Settings;
+  /** Shared with Files (plan.md F9) via `@/lib/viewerSettings`, so it's a
+   * separate prop rather than part of `Settings`. */
+  fontSize: number;
   /** worktree root passed through to gitApi.files() as `&repo=`. */
   repo: string;
   onToast(message: string): void;
@@ -87,24 +92,11 @@ export interface DiffViewProps {
   ): ReactNode;
 }
 
-function useIsDark(): boolean {
-  const [isDark, setIsDark] = useState(
-    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
-  );
-  useLayoutEffect(() => {
-    if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
-    const el = document.documentElement;
-    const observer = new MutationObserver(() => setIsDark(el.classList.contains("dark")));
-    observer.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-  return isDark;
-}
-
 const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
   {
     items,
     settings,
+    fontSize,
     repo,
     onToast,
     onTopItemChange,
@@ -160,7 +152,7 @@ const DiffView = forwardRef<DiffViewHandle, DiffViewProps>(function DiffView(
     [],
   );
 
-  const metrics = fontMetrics(settings.fontSize);
+  const metrics = fontMetrics(fontSize);
 
   // Responsive split->unified: observe the scroll root's width. jsdom has no
   // ResizeObserver, in which case the width stays unknown and the setting wins.

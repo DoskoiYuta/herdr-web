@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { reconcile, summarize, fontMetrics } from "./reconcile.ts";
+import { reconcile, summarize } from "./reconcile.ts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 
 function fileDiff(name: string, extra: Record<string, unknown> = {}): FileDiffMetadata {
@@ -161,23 +161,6 @@ test("summarize: handles files with no hunks", () => {
 
 test("summarize: empty list", () => {
   assert.deepEqual(summarize([]), { files: 0, additions: 0, deletions: 0 });
-});
-
-test("fontMetrics: computes lineHeight as 1.5x fontSize, rounded, plus diffHeaderHeight = lineHeight + 24 (C1)", () => {
-  // diffHeaderHeight + 24 mirrors @pierre/diffs' own default: lineHeight 20 /
-  // diffHeaderHeight 44 (see node_modules/@pierre/diffs/dist/constants.js
-  // DEFAULT_VIRTUAL_FILE_METRICS), and its header min-height of `1lh + gap*3`
-  // with the library's default 8px gap (8*3 = 24).
-  assert.deepEqual(fontMetrics(15), { fontSize: 15, lineHeight: 23, diffHeaderHeight: 47 });
-  assert.deepEqual(fontMetrics(14), { fontSize: 14, lineHeight: 21, diffHeaderHeight: 45 });
-  assert.deepEqual(fontMetrics(13), { fontSize: 13, lineHeight: 20, diffHeaderHeight: 44 });
-});
-
-test("fontMetrics: clamps size to 10..24", () => {
-  assert.equal(fontMetrics(5).fontSize, 10);
-  assert.equal(fontMetrics(100).fontSize, 24);
-  assert.equal(fontMetrics(10).fontSize, 10);
-  assert.equal(fontMetrics(24).fontSize, 24);
 });
 
 test("effectiveDiffStyle: narrow containers fall back to unified, split otherwise", async () => {

@@ -1,9 +1,10 @@
-import { lstat, readlink, realpath, readFile } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { lstat, readlink, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { FilesErrorCode, FilesResponse } from "../../contract/git";
 import { gitBlobHash } from "./blobHash";
 import { catFileBlob, runGit } from "./run";
 import { isBinary } from "./isBinary";
+import { resolveInsideRoot } from "../fs/resolveInsideRoot";
 
 const HASH_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
@@ -111,25 +112,14 @@ export async function resolveFiles({
         buf = contents;
         effectiveHash = computedHash;
       } else {
-        let realAbs: string;
-        try {
-          realAbs = await realpath(abs);
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-            return { status: 404, body: { error: "not-found" } };
-          }
-          return { status: 400, body: { error: "outside-repo" } };
+        const inside = await resolveInsideRoot(root, abs);
+        if (!inside.ok) {
+          return {
+            status: inside.error === "not-found" ? 404 : 400,
+            body: { error: inside.error },
+          };
         }
-
-        let realRoot: string;
-        try {
-          realRoot = await realpath(root);
-        } catch {
-          realRoot = root;
-        }
-        if (realAbs !== realRoot && !realAbs.startsWith(realRoot + sep)) {
-          return { status: 400, body: { error: "outside-repo" } };
-        }
+        const realAbs = inside.real;
 
         let contents: Buffer;
         try {

@@ -10,6 +10,8 @@ import {
   PatchQuerySchema,
   RootQuerySchema,
   type RootResponse,
+  StatusQuerySchema,
+  type StatusResponse,
   SubReposQuerySchema,
   type SubReposResponse,
 } from "../../contract/git";
@@ -20,6 +22,7 @@ import { buildGraph } from "../git/graph";
 import { InvalidComparisonError, generatePatch } from "../git/patch";
 import { invalidateAll, resolveWorktree } from "../git/resolve";
 import { listSubRepos } from "../git/subrepos";
+import { listStatus } from "../git/worktreeStatus";
 import { isAllowedRoot, pathExists } from "./allowed-roots";
 
 export interface GitRoutesDeps {
@@ -160,6 +163,17 @@ export function gitRoutes(deps: GitRoutesDeps = {}) {
           500,
         );
       }
+    })
+    .get("/status", vValidator("query", StatusQuerySchema), async (c) => {
+      const { repo } = c.req.valid("query");
+
+      if (!(await isAllowed(repo, allowedRoots))) {
+        if (!(await exists(repo))) return c.json({ error: "not-found" as const }, 404);
+        return c.json({ error: "forbidden" as const }, 403);
+      }
+
+      const body: StatusResponse = { status: await listStatus(repo) };
+      return c.json(body, 200);
     })
     .get(
       "/commit/:hash",

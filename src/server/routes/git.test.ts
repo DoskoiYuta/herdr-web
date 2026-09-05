@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath as realpathAsync } from "node:fs/promises";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath as realpathAsync, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -360,6 +359,29 @@ describe("GET /api/git/subrepos", () => {
     const app = makeApp([]); // nothing allowed beyond $HOME, and dir is under tmpdir
 
     const res = await app.request(`/api/git/subrepos?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/git/status", () => {
+  test("reports worktree status for an allowed repo", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    await writeFile(join(dir, "a.txt"), "changed\n");
+    const app = makeApp([dir]);
+
+    const res = await app.request(`/api/git/status?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.status).toContainEqual({ path: "a.txt", status: "modified" });
+  });
+
+  test("repo outside allowed roots -> 403", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([]);
+
+    const res = await app.request(`/api/git/status?repo=${encodeURIComponent(dir)}`);
     expect(res.status).toBe(403);
   });
 });

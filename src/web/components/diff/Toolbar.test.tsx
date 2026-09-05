@@ -6,6 +6,7 @@ import Toolbar from "./Toolbar.tsx";
 function baseProps() {
   return {
     settings: DEFAULT_SETTINGS,
+    showTree: true,
     onToggleTree: vi.fn(),
     onToggleDiffStyle: vi.fn(),
     onToggleOverflow: vi.fn(),
