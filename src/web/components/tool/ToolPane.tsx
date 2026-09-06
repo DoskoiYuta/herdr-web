@@ -5,8 +5,10 @@ import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
 import type { SubRepo } from "@contract/git";
 import type { PaneRow, Repo } from "@contract/events";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
+import { DockerPanel } from "@/components/docker/DockerPanel";
 import { FilesPanel, type FilesInitialLocation } from "@/components/files/FilesPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
+import { ProcessPanel } from "@/components/process/ProcessPanel";
 import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -488,6 +490,8 @@ export function ToolPane({
           <TabsTrigger value="diff">Diff</TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
           <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="docker">Docker</TabsTrigger>
+          <TabsTrigger value="process">Process</TabsTrigger>
         </TabsList>
 
         <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
@@ -551,6 +555,14 @@ export function ToolPane({
             initialLocation={filesInitialLocation}
             onInitialLocationConsumed={onFilesInitialLocationConsumed}
           />
+        </TabsContent>
+
+        <TabsContent value="docker" className="min-h-0 flex-1 overflow-hidden">
+          <DockerPanel key={subRepoRoot} root={subRepoRoot} />
+        </TabsContent>
+
+        <TabsContent value="process" className="min-h-0 flex-1 overflow-hidden">
+          <ProcessPanel key={subRepoRoot} root={subRepoRoot} />
         </TabsContent>
       </Tabs>
     </div>

@@ -332,6 +332,29 @@ src/cli                      → contract のみ
 - F10-5. 専用ワークスペースの起動に失敗したら（herdr 未接続 / 上限到達 / その他失敗）質問自体を保存しない。既存 pane 宛ての質問は、プロンプト送信が失敗しても（`agent_blocked` など）保存する — ユーザーが「再送」できる。
 - F10-6. `hw ask list` / `hw ask show <id>` / `hw ask reply <id> <text>` を提供する。`reply` は常に author=agent。短縮 id（末尾 4 文字以上）による解決はレビューと同じ規則。
 
+### F11. Docker タブ
+
+- F11-1. 表示中の worktree（サブリポジトリ選択中はその root。以下「root」）に紐づくコンテナの一覧を、Diff / Graph / Files と並ぶタブで表示する。閲覧のみで、起動・停止・削除は持たない（§15）。ログの閲覧は F11-9。
+- F11-2. コンテナと root の対応は Docker 自身が持たないため、ラベルから推定する。`com.docker.compose.project.working_dir`（docker compose）または `devcontainer.local_folder`（devcontainer）が root と一致するか root 配下（`sep` 区切りの子孫）にあるものを対象とする。compose ファイルがサブディレクトリにある場合 working_dir もサブディレクトリになるため、完全一致ではなく前方一致にする。どちらのラベルも持たないコンテナ（素の `docker run`、bind mount のみ）は対象外で、一覧には出さない（§15）。
+- F11-3. `docker ps -a` 相当で running 以外（exited / created / paused など）も取得し、表示する。ポートを塞いでいる停止し損ねたコンテナを見つけるため。running を上に、次に状態、名前の順で並べる。
+- F11-4. compose プロジェクト（`com.docker.compose.project`）ごとにグループ化し、各行に service 名、コンテナ名、状態と状態文字列（`Up 3 hours` 等）、image、公開ポート（host → container）、作成からの経過時間を表示する。devcontainer は `local_folder` の basename をグループ名にする。
+- F11-5. 取得は `GET /api/docker/containers?root=` で、サーバーが `docker ps -a --format` を 1 回実行して全コンテナを取り、F11-2 の判定をサーバー側で行う（docker の `--filter label=` は前方一致できないため使わない）。`--format '{{json .}}'` は使わない — `Labels` フィールドが `k=v,k=v` 文字列で、値にカンマを含むラベル（`config_files` の複数ファイルなど）があると分割できないため、必要なフィールドとラベルだけをタブ区切りで明示的に指定する。`docker inspect` は使わない。root は `isAllowedRoot` で検査する。
+- F11-6. 更新はタブ表示中のみの 5 秒間隔ポーリング（`refetchInterval`）。git の `repo-changed` とは無関係なので使わず、F3-4 のサブリポジトリ用 `pollMs` とも分ける。非表示タブはアンマウントされるためポーリングは止まる（既存の Tabs の挙動に乗る）。タブ見出しに件数バッジは付けない（非表示時のポーリングが必要になるため）。`docker events` は使わない。
+- F11-7. 失敗は 3 種類を区別して表示する。(a) `docker` コマンドが無い（`ENOENT`、501）→「docker が見つかりません」。(b) daemon に繋がらない（非ゼロ終了。`Cannot connect to the Docker daemon` 等の stderr を添える、503）→「Docker daemon に接続できません」。(c) 該当コンテナが 0 件（200、空配列）→「この worktree に紐づくコンテナはありません（compose / devcontainer のラベルで判定）」。daemon が固まると `docker ps` が返らないことがあるため 5 秒でタイムアウトし（504）、前回取得した一覧を残したままヘッダーにエラーを出す。
+- F11-8. サーバーは `docker ps` の結果を 2 秒キャッシュし、同時要求は 1 本にまとめる（複数ブラウザで走査が増えないように）。
+
+- F11-9. 行をクリックすると、その行の下にログ領域を展開し、`docker logs --follow --tail 200 --timestamps <id>` の出力をストリーミング表示する。ポーリングではなく WebSocket `/ws/docker-logs?root=&id=&tail=`（§9.y）で、サーバーは接続ごとに `docker logs` を 1 プロセス起動し、stdout / stderr を到着順にテキストフレームで送り、ソケットが閉じたら子プロセスを kill する（展開を閉じる・タブを離れる・worktree が切り替わる・ブラウザを閉じる、のいずれでも止まる）。サーバーは接続時に `id` が root に紐づくコンテナ（F11-2 の判定）であることを確認し、違えば 403 相当のメッセージを送って閉じる（root 検査だけでは任意コンテナのログが読めてしまうため）。`docker logs` が終了したら（コンテナ停止など）終了コードを添えた終了フレームを送って閉じる。クライアントは末尾 2000 行だけ保持し、最下部にいるときだけ自動スクロールする（上にスクロールしたら追従を止め、「最新へ」ボタンで戻る）。展開できるのは同時に 1 コンテナ。
+
+### F12. Process タブ
+
+- F12-1. root 配下を cwd とするプロセスの一覧を、Docker タブと並ぶタブで表示する。閲覧のみで、kill / シグナル送信は持たない（§15）。
+- F12-2. 「その worktree のプロセス」は cwd 基準で決める。全プロセスの cwd を取り、root と一致するか root 配下のものを対象とする。herdr の pane から起動されたかどうかは問わない（nohup や別ターミナルからの起動も拾うため。pane 起点の判定は `pane.process_info` が必要で、取りこぼしが増える）。既知の取りこぼしは、起動後に cwd を root 外へ移したプロセスと、cwd は root 外だが root のファイルを触っているプロセス。
+- F12-3. 対象プロセス同士の親子関係（ppid）でツリー表示する。親が対象外のプロセスはツリーのルートになる。pane の shell → claude → `bun dev` のような階層がそのまま見える。herdr-web 自身や走査用の一時プロセスは特別扱いしない。
+- F12-4. 各行に PID、コマンド（argv0 の basename + 引数を 1 行に短縮、ホバーで全文）、CPU%、RSS、経過時間、LISTEN 中の TCP ポートを表示する。ポートは主目的（「この dev server は何番で待っているか」）であり、行の先頭側に置く。
+- F12-5. 取得は `GET /api/proc/list?root=` で、サーバーが `ps -axo pid,ppid,pcpu,rss,etime,command` と `lsof -n -d cwd -Fpn`（cwd）と `lsof -nP -iTCP -sTCP:LISTEN -Fpn`（ポート）を 1 セット実行し、PID で結合して F12-2 の判定をサーバー側で行う。macOS と Linux で同じコマンドを使う。root は `isAllowedRoot` で検査する。
+- F12-6. 更新はタブ表示中のみの 3 秒間隔ポーリング。F11-6 と同じ理由で `repo-changed` とバッジは使わない。サーバーは走査結果を 2 秒キャッシュし同時要求を 1 本にまとめる（走査は約 0.3 秒 / 1000 プロセス）。
+- F12-7. 失敗は次を区別する。`lsof` が無い（501）→「lsof が見つかりません」。`ps` / `lsof` の非ゼロ終了（503）→ stderr を添えて表示。タイムアウト 5 秒（504）→ 前回値を残してヘッダーにエラー。対象 0 件（200）→「この worktree を cwd とするプロセスはありません」。他ユーザーのプロセスは cwd を読めないため一覧に出ない（仕様として表示文言に含めない、README に書く）。
+
 ## 8. 非機能要件
 
 - N1. `127.0.0.1` に固定。`tailscale serve --bg 8080` で公開する手順を README に書く。`--host` は緊急用で非 loopback なら警告。
@@ -421,6 +444,24 @@ src/cli                      → contract のみ
 | POST     | `/api/ask/:id/resolve`                   | user のみ。`resolved` にしてセッションを閉じる                                                                                                               |
 | POST     | `/api/ask/:id/resend`                    | 直近のユーザー発言を再送する（`agent_blocked` からの「再送」ボタン用）                                                                                       |
 | POST     | `/api/ask/:id/focus`                     | herdr でセッションを開く（`pane.focus` / 必要なら `workspace.focus` を先に）                                                                                 |
+
+### 9.y Hono RPC — docker（`root` = worktree ルートまたはサブリポジトリ root、F11）
+
+| メソッド | パス                           | 説明                                                                                                                                                                                                                                                                             |
+| -------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/api/docker/containers?root=` | root に紐づくコンテナ（F11-2）: `{ groups: { kind: "compose" \| "devcontainer", name, workingDir, containers: { id, name, service, state, status, image, ports: { host, container, proto }[], createdAt }[] }[] }`。501 = docker 無し、503 = daemon 接続不可、504 = タイムアウト |
+
+#### WebSocket `/ws/docker-logs`（F11-9）
+
+- クエリ: `?root=&id=&tail=`（`tail` 既定 200、上限 5000）
+- サーバー → クライアント（テキストフレーム、JSON）: `{ type: "line", stream: "stdout" | "stderr", text }`（`--timestamps` のタイムスタンプは `text` の先頭に含む）、`{ type: "exit", code }`、`{ type: "error", code: "forbidden" | "not-found" | "docker-unavailable" | "failed", message }`。error のあとサーバーが閉じる。
+- クライアント → サーバー: なし。閉じると子プロセスを kill する。
+
+### 9.z Hono RPC — proc（`root` = worktree ルートまたはサブリポジトリ root、F12）
+
+| メソッド | パス                   | 説明                                                                                                                                                                                                                                |
+| -------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/api/proc/list?root=` | root を cwd とするプロセス（F12-2）: `{ processes: { pid, ppid, command, argv0, cpu, rss, elapsedSec, cwd, listen: { port, addr }[] }[] }`（フラット。ツリー化はクライアント）。501 = lsof 無し、503 = 実行失敗、504 = タイムアウト |
 
 ### 9.6 herdr socket API の利用一覧
 
@@ -529,6 +570,7 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - **M4: graph** — tgg 移植、`/api/git/graph` `/api/git/commit`、選択 → diff。
 - **M5: レビュー + `hw`** — sqlite、domain、usecases、通知、git graph の件数バッジ、CLI、再アンカー。
 - **M6: ビルド・配布** — 単一バイナリ、設定、README。
+- **M7: Docker / Process タブ** — F11、F12、`/api/docker/containers`、`/api/proc/list`、サーバー側キャッシュ、失敗 3 種の表示。
 
 ## 15. 将来拡張
 
@@ -538,3 +580,5 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - worktree 横断比較
 - git の書き込み操作
 - ファイル編集（Files タブからの保存）
+- Docker タブの操作（stop / restart）と、compose / devcontainer ラベルを持たないコンテナの表示（bind mount の source で紐づける。Docker Desktop for Mac は source を `/host_mnt/...` で報告する）
+- Process タブからの kill / シグナル送信、herdr pane との対応付け（`pane.process_info`）

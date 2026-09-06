@@ -18,6 +18,10 @@ import {
   herdrSocketPath,
 } from "./bootstrap";
 import { applyEnvOverrides, configDir, loadConfig, resolveDbPath } from "./config";
+import { createDockerCache } from "./docker/cache";
+import { createDockerLogsWss } from "./docker/logsWs";
+import { spawnDockerLogs } from "./docker/logsSpawn";
+import { createDockerRunner } from "./docker/runner";
 import { ensureHwShim } from "./hw-shim";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
 import { spawnHerdr } from "./terminal/pty";
@@ -105,6 +109,11 @@ const ask = createAskRuntime({
 
 const fetchRunner = createFetchRunner();
 
+// Shared with `/ws/docker-logs` (main.ts's upgradeRouter.add below) so both
+// the containers list and the per-connection root/id check reuse one
+// TTL/single-flight `docker ps` instead of doubling the polling load.
+const dockerCache = createDockerCache({ runner: createDockerRunner() });
+
 const api = createApp({
   version: "0.1.0",
   herdrStatus: runtime.herdrStatus,
@@ -118,6 +127,8 @@ const api = createApp({
   hw: { state: runtime.state, resolver: runtime.resolver },
   herdr: { gateway: runtime.gateway, state: runtime.state, allowedRoots: config.allowedRoots },
   ask: ask.routes,
+  docker: { allowedRoots: config.allowedRoots, cache: dockerCache },
+  proc: { allowedRoots: config.allowedRoots },
 });
 
 const app = new Hono().route("/", api);
@@ -166,6 +177,14 @@ upgradeRouter.add(
   }),
 );
 upgradeRouter.add("/ws/events", runtime.eventsWss);
+upgradeRouter.add(
+  "/ws/docker-logs",
+  createDockerLogsWss({
+    allowedRoots: config.allowedRoots,
+    cache: dockerCache,
+    spawn: spawnDockerLogs,
+  }),
+);
 
 server.on("error", (err) => {
   if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {

@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { FetchBusyError, gitApi } from "./api";
+import {
+  CommandFailedError,
+  CommandTimeoutError,
+  CommandUnavailableError,
+  dockerApi,
+  FetchBusyError,
+  gitApi,
+  procApi,
+} from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -93,5 +101,58 @@ describe("gitApi.fetch", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(gitApi.fetch("/repo")).rejects.toThrow("403");
+  });
+});
+
+describe.each([
+  ["dockerApi.containers", () => dockerApi.containers("/repo"), { groups: [] }],
+  ["procApi.list", () => procApi.list("/repo"), { processes: [] }],
+])("%s", (_label, call, body) => {
+  test("parses a 200 response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }),
+    );
+
+    await expect(call()).resolves.toEqual(body);
+  });
+
+  test("501 throws CommandUnavailableError (binary missing)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 501,
+        json: async () => ({ error: "command-missing" }),
+      }),
+    );
+
+    await expect(call()).rejects.toBeInstanceOf(CommandUnavailableError);
+  });
+
+  test("503 throws CommandFailedError carrying the server's stderr", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: "command-failed", message: "boom" }),
+      }),
+    );
+
+    const err = await call().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CommandFailedError);
+    expect((err as CommandFailedError).detail).toBe("boom");
+  });
+
+  test("504 throws CommandTimeoutError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue({ ok: false, status: 504, json: async () => ({ error: "timeout" }) }),
+    );
+
+    await expect(call()).rejects.toBeInstanceOf(CommandTimeoutError);
   });
 });

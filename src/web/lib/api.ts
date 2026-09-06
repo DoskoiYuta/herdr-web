@@ -18,6 +18,8 @@ import {
   TrashResponseSchema,
   UploadResponseSchema,
 } from "../../contract/fs";
+import { DockerContainersResponseSchema } from "../../contract/docker";
+import { ProcListResponseSchema } from "../../contract/proc";
 import {
   type CreateReviewRequest,
   ForDiffMatchSchema,
@@ -273,6 +275,89 @@ export const fsApi = {
     if (res.status === 501) throw new TrashUnavailableError();
     if (!res.ok) throw new Error(`POST /api/fs/trash failed: ${res.status}`);
     return v.parse(TrashResponseSchema, await res.json());
+  },
+};
+
+/** Thrown by `dockerApi.containers` / `procApi.list` on HTTP 501 — the
+ * `docker`/`ps`/`lsof` binary itself is missing on this machine. */
+export class CommandUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CommandUnavailableError";
+  }
+}
+
+/** Thrown on HTTP 503 (non-zero exit — e.g. Docker daemon unreachable, or a
+ * `ps`/`lsof` failure). `detail` is the server's stderr, appended to the
+ * message for display. */
+export class CommandFailedError extends Error {
+  detail: string;
+  constructor(message: string, detail: string) {
+    super(detail ? `${message}: ${detail}` : message);
+    this.name = "CommandFailedError";
+    this.detail = detail;
+  }
+}
+
+/** Thrown on HTTP 504 — the server's 5s exec timeout elapsed. */
+export class CommandTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CommandTimeoutError";
+  }
+}
+
+async function throwOnCommandError(
+  res: { status: number; json: () => Promise<unknown> },
+  missingMessage: string | ((command?: string) => string),
+  failedMessage: string,
+  timeoutMessage: string,
+): Promise<void> {
+  if (res.status === 501) {
+    const body = (await res.json()) as { command?: string };
+    const message =
+      typeof missingMessage === "function" ? missingMessage(body.command) : missingMessage;
+    throw new CommandUnavailableError(message);
+  }
+  if (res.status === 503) {
+    const body = (await res.json()) as { message?: string };
+    throw new CommandFailedError(failedMessage, body.message ?? "");
+  }
+  if (res.status === 504) throw new CommandTimeoutError(timeoutMessage);
+}
+
+export const dockerApi = {
+  /** Containers tied to `root`, grouped by compose project / devcontainer.
+   * Throws `CommandUnavailableError` (`docker` missing), `CommandFailedError`
+   * (non-zero exit, e.g. daemon unreachable), or `CommandTimeoutError`. */
+  async containers(root: string) {
+    const res = await client.api.docker.containers.$get({ query: { root } });
+    await throwOnCommandError(
+      res,
+      "docker が見つかりません",
+      "Docker daemon に接続できません",
+      "docker ps がタイムアウトしました",
+    );
+    if (!res.ok) throw new Error(`GET /api/docker/containers failed: ${res.status}`);
+    return v.parse(DockerContainersResponseSchema, await res.json());
+  },
+};
+
+export const procApi = {
+  /** Processes whose cwd is under `root` (flat; the client builds the ppid
+   * tree). Throws `CommandUnavailableError` (`lsof`/`ps` missing —
+   * distinguished by the server's `command` field), `CommandFailedError`
+   * (non-zero exit), or `CommandTimeoutError`. */
+  async list(root: string) {
+    const res = await client.api.proc.list.$get({ query: { root } });
+    await throwOnCommandError(
+      res,
+      (command) => (command === "ps" ? "ps が見つかりません" : "lsof が見つかりません"),
+      "プロセス一覧の取得に失敗しました",
+      "プロセス一覧の取得がタイムアウトしました",
+    );
+    if (!res.ok) throw new Error(`GET /api/proc/list failed: ${res.status}`);
+    return v.parse(ProcListResponseSchema, await res.json());
   },
 };
 

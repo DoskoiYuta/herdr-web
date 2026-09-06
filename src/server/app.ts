@@ -3,10 +3,12 @@ import type { ClientConfig } from "../contract/config";
 import type { Health } from "../contract/health";
 import type { FetchRunner } from "./git/fetch";
 import { askRoutes, type AskRoutesDeps } from "./routes/ask";
+import { dockerRoutes, type DockerRoutesDeps } from "./routes/docker";
 import { fsRoutes } from "./routes/fs";
 import { gitRoutes } from "./routes/git";
 import { herdrRoutes, type HerdrRoutesDeps } from "./routes/herdr";
 import { hwRoutes, type HwRoutesDeps } from "./routes/hw";
+import { procRoutes, type ProcRoutesDeps } from "./routes/proc";
 import {
   repoRoutes,
   reviewRoutes,
@@ -24,6 +26,8 @@ export type AppDeps = {
   hw: HwRoutesDeps;
   herdr: HerdrRoutesDeps;
   ask: AskRoutesDeps;
+  docker?: DockerRoutesDeps;
+  proc?: ProcRoutesDeps;
 };
 
 export function createApp(deps: AppDeps) {
@@ -39,7 +43,9 @@ export function createApp(deps: AppDeps) {
     .route("/api/repo", repoRoutes(deps.repo))
     .route("/api/hw", hwRoutes(deps.hw))
     .route("/api/herdr", herdrRoutes(deps.herdr))
-    .route("/api/ask", askRoutes(deps.ask));
+    .route("/api/ask", askRoutes(deps.ask))
+    .route("/api/docker", dockerRoutes(deps.docker))
+    .route("/api/proc", procRoutes(deps.proc));
   return app;
 }
 
