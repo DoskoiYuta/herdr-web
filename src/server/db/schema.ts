@@ -86,3 +86,25 @@ export const askEntries = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.askId, t.seq] })],
 );
+
+export const decisions = sqliteTable(
+  "decisions",
+  {
+    id: text("id").primaryKey(),
+    status: text("status").notNull(), // DecisionStatus
+    spec: text("spec", { mode: "json" }).notNull(), // DecisionSpec
+    answer: text("answer", { mode: "json" }), // DecisionAnswer | null
+    paneId: text("pane_id"),
+    claudeSessionId: text("claude_session_id"),
+    worktreeRoot: text("worktree_root"),
+    repoKey: text("repo_key"),
+    agent: text("agent"),
+    createdAt: text("created_at").notNull(),
+    answeredAt: text("answered_at"),
+    delivery: text("delivery", { mode: "json" }), // DecisionDelivery | null
+  },
+  (t) => [
+    index("decisions_status_idx").on(t.status),
+    index("decisions_worktree_root_idx").on(t.worktreeRoot),
+  ],
+);

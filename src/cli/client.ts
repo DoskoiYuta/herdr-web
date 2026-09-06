@@ -2,6 +2,8 @@ import { hc } from "hono/client";
 import * as v from "valibot";
 import type { Ask, AskWithSession } from "../contract/ask";
 import { AskSchema, AskWithSessionSchema } from "../contract/ask";
+import type { CreateDecisionRequest, Decision } from "../contract/decision";
+import { CreateDecisionResponseSchema, DecisionSchema } from "../contract/decision";
 import type { Health } from "../contract/health";
 import { HealthSchema } from "../contract/health";
 import type { WhoamiResponse } from "../contract/hw";
@@ -134,6 +136,37 @@ export function createHwClient(baseUrl: string) {
       );
     },
 
+    createDecision(
+      req: CreateDecisionRequest,
+    ): Promise<ClientResult<{ id: string; url: string; paneResolved: boolean }>> {
+      return call(() => client.api.decision.$post({ json: req }), CreateDecisionResponseSchema);
+    },
+
+    getDecision(id: string): Promise<ClientResult<Decision>> {
+      return call(() => client.api.decision[":id"].$get({ param: { id } }), DecisionSchema);
+    },
+
+    listDecisions(params: ListDecisionsParams): Promise<ClientResult<Decision[]>> {
+      return call(
+        () =>
+          client.api.decision.$get({
+            query: {
+              ...(params.status !== undefined ? { status: params.status } : {}),
+              ...(params.worktreeRoot !== undefined ? { worktreeRoot: params.worktreeRoot } : {}),
+            },
+          }),
+        v.array(DecisionSchema),
+      );
+    },
+
+    cancelDecision(id: string): Promise<ClientResult<Decision>> {
+      return call(() => client.api.decision[":id"].cancel.$post({ param: { id } }), DecisionSchema);
+    },
+
+    decisionSchema(): Promise<ClientResult<unknown>> {
+      return call(() => client.api.decision.schema.$get(), v.unknown());
+    },
+
     moveRepo(from: string, to: string): Promise<ClientResult<RepoMoveResult>> {
       return call(() => client.api.repo.move.$post({ json: { from, to } }), RepoMoveResultSchema);
     },
@@ -169,6 +202,12 @@ export function createHwClient(baseUrl: string) {
     },
   };
 }
+
+export type ListDecisionsParams = {
+  /** comma-separated DecisionStatus */
+  status?: string;
+  worktreeRoot?: string;
+};
 
 export type ListAsksParams = {
   repo?: string;

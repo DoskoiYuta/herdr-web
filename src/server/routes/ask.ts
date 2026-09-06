@@ -11,30 +11,23 @@ import {
 } from "../../contract/ask";
 import type { AskRepository, LaunchError } from "../ask/ports";
 import type { AskService } from "../ask/service";
+import { resolveShortId } from "./short-id";
 
 export type AskRoutesDeps = {
   repository: AskRepository;
   service: AskService;
 };
 
-const FULL_ID_LENGTH = 36; // Bun.randomUUIDv7() の長さ（ハイフン込み）
-const MIN_SHORT_ID_LENGTH = 4;
-
 type FindByIdResult = { kind: "found"; ask: Ask } | { kind: "not_found" } | { kind: "ambiguous" };
 
-/** review の findReviewByIdOrSuffix と同じ規則: 完全な id か、末尾一致（4 文字以上）。 */
 async function findAskByIdOrSuffix(repository: AskRepository, id: string): Promise<FindByIdResult> {
-  if (id.length >= FULL_ID_LENGTH) {
-    const ask = await repository.get(id);
-    return ask ? { kind: "found", ask } : { kind: "not_found" };
-  }
-  if (id.length < MIN_SHORT_ID_LENGTH) return { kind: "not_found" };
-
-  const all = await repository.list({});
-  const matches = all.filter((a) => a.id.endsWith(id));
-  if (matches.length === 0) return { kind: "not_found" };
-  if (matches.length > 1) return { kind: "ambiguous" };
-  return { kind: "found", ask: matches[0]! };
+  const result = await resolveShortId(id, {
+    getFull: (fullId) => repository.get(fullId),
+    listCandidates: () => repository.list({}),
+    idOf: (a) => a.id,
+  });
+  if (result.kind === "found") return { kind: "found", ask: result.value };
+  return result;
 }
 
 function mapLaunchError(error: LaunchError) {

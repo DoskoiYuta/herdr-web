@@ -5,6 +5,7 @@
  */
 import * as v from "valibot";
 import { AskEventSchema } from "./ask";
+import { DecisionEventSchema } from "./decision";
 import { AgentSessionInfoSchema, AgentStatusSchema } from "./herdr";
 import { ReviewSchema } from "./review";
 
@@ -161,6 +162,7 @@ export const ServerEventMessageSchema = v.variant("type", [
   ReviewNotifyMessageSchema,
   HerdrStatusMessageSchema,
   AskEventSchema,
+  DecisionEventSchema,
 ]);
 export type ServerEventMessage = v.InferOutput<typeof ServerEventMessageSchema>;
 

@@ -1,9 +1,12 @@
 import * as v from "valibot";
 import type { AskEvent } from "../../contract/ask";
 import { ConfigSchema } from "../../contract/config";
+import type { DecisionEvent } from "../../contract/decision";
 import { createAskRuntime } from "../ask/runtime";
 import type { AskSessionLauncher } from "../ask/ports";
 import { createFakeAskLauncher } from "../ask/testing/fake-launcher";
+import { createDecisionRuntime } from "../decision/runtime";
+import type { DecisionNotifier } from "../decision/ports";
 import { openDb } from "../db/client";
 import { applyMigrations } from "../db/migrate";
 import type { FetchRunner } from "../git/fetch";
@@ -23,6 +26,8 @@ export type TestAppOptions = {
   fetchRunner?: FetchRunner;
   askLauncher?: AskSessionLauncher;
   askEvents?: AskEvent[];
+  decisionNotifier?: DecisionNotifier;
+  decisionEvents?: DecisionEvent[];
 };
 
 const emptySnapshot = {
@@ -65,6 +70,14 @@ export function createTestApp(opts: TestAppOptions = {}) {
     onEvent: (e) => askEvents.push(e),
     logger: { info() {}, warn() {}, error() {} },
   });
+  const decisionEvents: DecisionEvent[] = opts.decisionEvents ?? [];
+  const decision = createDecisionRuntime({
+    db,
+    herdr: { state, gateway: fake, resolver },
+    notifier: opts.decisionNotifier,
+    onEvent: (e) => decisionEvents.push(e),
+    logger: { info() {}, warn() {}, error() {} },
+  });
   const deps: AppDeps = {
     version: "test",
     herdrStatus: () => fake.status(),
@@ -78,6 +91,18 @@ export function createTestApp(opts: TestAppOptions = {}) {
     hw: { state, resolver },
     herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
     ask: ask.routes,
+    decision: { ...decision.routes, buildUrl: (id) => `http://test/#decision/${id}` },
   };
-  return { app: createApp(deps), fake, state, review, events, ask, askEvents, db };
+  return {
+    app: createApp(deps),
+    fake,
+    state,
+    review,
+    events,
+    ask,
+    askEvents,
+    decision,
+    decisionEvents,
+    db,
+  };
 }

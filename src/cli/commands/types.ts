@@ -1,7 +1,7 @@
 import type { ClientError } from "../client";
 import type { HwClient } from "../client";
 
-export type CommandResult = { exitCode: number; stdout: string };
+export type CommandResult = { exitCode: number; stdout: string; stderr?: string };
 
 export type CommandDeps = {
   client: HwClient;
@@ -9,6 +9,8 @@ export type CommandDeps = {
   cwd: string;
   /** Read stdin fully, used by `hw review reply <id> -`. */
   readStdin: () => Promise<string>;
+  /** stdin が TTY か（`hw decision request` が `--file` 省略時に無言で待たないため）。省略時は false 扱い。 */
+  stdinIsTTY?: () => boolean;
 };
 
 export const EXIT_OK = 0;

@@ -43,8 +43,15 @@ import {
   type ForFileRequest,
   type ListAskQuery,
 } from "../../contract/ask";
+import {
+  type AnswerDecisionRequest,
+  DecisionCountsSchema,
+  DecisionSchema,
+  type ListDecisionQuery,
+} from "../../contract/decision";
 export type { ForDiffMatch } from "../../contract/review";
 export type { Ask, AskWithSession, ForFileMatch } from "../../contract/ask";
+export type { Decision } from "../../contract/decision";
 
 /**
  * Hono RPC クライアント。`AppType` は type-only import のみ許可されている
@@ -578,6 +585,76 @@ export const askApi = {
     const res = await client.api.ask.counts.$get({ query: params });
     if (!res.ok) throw new Error(`GET /api/ask/counts failed: ${res.status}`);
     return v.parse(AskCountsResponseSchema, await res.json());
+  },
+};
+
+/** サーバーの `{ error, type? }` ボディを読んでメッセージにする — 409（二重回答/再送不可）
+ * 等の理由がステータスコードだけでは UI に伝わらないため。 */
+async function decisionApiError(
+  res: { status: number; json(): Promise<unknown> },
+  fallback: string,
+): Promise<Error> {
+  try {
+    const body: unknown = await res.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      typeof (body as { error?: unknown }).error === "string"
+    ) {
+      return new Error((body as { error: string }).error);
+    }
+  } catch {
+    // fall through to the generic message below
+  }
+  return new Error(`${fallback}: ${res.status}`);
+}
+
+export const decisionApi = {
+  async list(query: ListDecisionQuery) {
+    const res = await client.api.decision.$get({
+      query: {
+        ...(query.status !== undefined ? { status: query.status } : {}),
+        ...(query.worktreeRoot !== undefined ? { worktreeRoot: query.worktreeRoot } : {}),
+      },
+    });
+    if (!res.ok) throw new Error(`GET /api/decision failed: ${res.status}`);
+    return v.parse(v.array(DecisionSchema), await res.json());
+  },
+
+  async counts() {
+    const res = await client.api.decision.counts.$get();
+    if (!res.ok) throw new Error(`GET /api/decision/counts failed: ${res.status}`);
+    return v.parse(DecisionCountsSchema, await res.json());
+  },
+
+  async get(id: string) {
+    const res = await client.api.decision[":id"].$get({ param: { id } });
+    if (!res.ok) throw new Error(`GET /api/decision/:id failed: ${res.status}`);
+    return v.parse(DecisionSchema, await res.json());
+  },
+
+  async answer(id: string, body: AnswerDecisionRequest) {
+    const res = await client.api.decision[":id"].answer.$post({ param: { id }, json: body });
+    if (!res.ok) throw await decisionApiError(res, "POST /api/decision/:id/answer failed");
+    return v.parse(DecisionSchema, await res.json());
+  },
+
+  async dismiss(id: string) {
+    const res = await client.api.decision[":id"].dismiss.$post({ param: { id } });
+    if (!res.ok) throw await decisionApiError(res, "POST /api/decision/:id/dismiss failed");
+    return v.parse(DecisionSchema, await res.json());
+  },
+
+  async cancel(id: string) {
+    const res = await client.api.decision[":id"].cancel.$post({ param: { id } });
+    if (!res.ok) throw await decisionApiError(res, "POST /api/decision/:id/cancel failed");
+    return v.parse(DecisionSchema, await res.json());
+  },
+
+  async resend(id: string) {
+    const res = await client.api.decision[":id"].resend.$post({ param: { id } });
+    if (!res.ok) throw await decisionApiError(res, "POST /api/decision/:id/resend failed");
+    return v.parse(DecisionSchema, await res.json());
   },
 };
 

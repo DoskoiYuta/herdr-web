@@ -1,4 +1,5 @@
 import type { Ask, AskWithSession } from "../contract/ask";
+import type { Decision } from "../contract/decision";
 import type { Health } from "../contract/health";
 import type { Anchor, Review } from "../contract/review";
 
@@ -104,6 +105,62 @@ export function formatAskShow(ask: AskWithSession): string {
   lines.push("");
   lines.push("thread:");
   lines.push(...formatThread(ask.thread));
+  return lines.join("\n");
+}
+
+/** `<id-short(8)> <status> <title> [worktreeRoot]` */
+export function formatDecisionLine(decision: Decision): string {
+  const title = decision.spec.title ?? "(no title)";
+  const where = decision.worktreeRoot ? ` [${decision.worktreeRoot}]` : "";
+  return `${shortId(decision.id)} ${decision.status} ${firstChars(title, 60)}${where}`;
+}
+
+export function formatDecisionList(decisions: Decision[]): string {
+  const lines = decisions.map(formatDecisionLine);
+  lines.push(`${decisions.length} 件`);
+  return lines.join("\n");
+}
+
+export function formatDecisionShow(decision: Decision): string {
+  const lines: string[] = [];
+  lines.push(`id: ${decision.id}`);
+  lines.push(`status: ${decision.status}`);
+  lines.push(`title: ${decision.spec.title ?? ""}`);
+  lines.push(`worktreeRoot: ${decision.worktreeRoot ?? ""}`);
+  lines.push(`agent: ${decision.agent ?? ""}`);
+  lines.push(`pane: ${decision.paneId ?? ""}`);
+  lines.push(`createdAt: ${decision.createdAt}`);
+  if (decision.delivery) {
+    lines.push(
+      `delivery: ${decision.delivery.state} (pane ${decision.delivery.pane ?? "?"}, attempts ${decision.delivery.attempts})`,
+    );
+  }
+  lines.push("");
+  lines.push("items:");
+  for (const item of decision.spec.items) {
+    lines.push(`  [${item.id}] ${item.header} (${item.kind})`);
+    lines.push(`    ${item.question}`);
+    for (const opt of item.options) {
+      lines.push(`    - ${opt.label}${opt.recommended ? " (recommended)" : ""}`);
+    }
+  }
+  if (decision.answer) {
+    lines.push("");
+    lines.push("answer:");
+    for (const [itemId, a] of Object.entries(decision.answer.answers)) {
+      const selected = a.selected.length > 0 ? a.selected.join(",") : null;
+      const choice =
+        selected && a.other ? `${selected}（その他: ${a.other}）` : (selected ?? a.other ?? "");
+      lines.push(`  ${itemId}=${choice}${a.note ? ` (note: ${a.note})` : ""}`);
+    }
+    if (decision.answer.attachments.length > 0) {
+      lines.push("  attachments:");
+      for (const at of decision.answer.attachments) {
+        const range = at.lines ? `:${at.lines[0]}-${at.lines[1]}` : "";
+        lines.push(`    - ${at.path}${range}`);
+      }
+    }
+  }
   return lines.join("\n");
 }
 

@@ -42,4 +42,14 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "07d726cdac9ed82fa08d7345511113d31b81b2e89fe9ba8d01f8371a4fe71d4d",
     bps: true,
   },
+  {
+    sql: [
+      "CREATE TABLE `decisions` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`status` text NOT NULL,\n\t`spec` text NOT NULL,\n\t`answer` text,\n\t`pane_id` text,\n\t`claude_session_id` text,\n\t`worktree_root` text,\n\t`repo_key` text,\n\t`agent` text,\n\t`created_at` text NOT NULL,\n\t`answered_at` text,\n\t`delivery` text\n);\n",
+      "\nCREATE INDEX `decisions_status_idx` ON `decisions` (`status`);",
+      "\nCREATE INDEX `decisions_worktree_root_idx` ON `decisions` (`worktree_root`);",
+    ],
+    folderMillis: 1788697916814,
+    hash: "0d388e768915ecc9751828d772c1c0377f01f0f1c66d9d24465deea200cc78ce",
+    bps: true,
+  },
 ];

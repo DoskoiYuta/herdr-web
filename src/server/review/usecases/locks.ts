@@ -22,7 +22,8 @@ export type CreateLocksOptions = {
   warnAfterMs?: number;
 };
 
-const realTimer: Timer = {
+/** Real `setTimeout`/`clearTimeout` backing a `Timer` — shared by every runtime that needs one outside tests. */
+export const realTimer: Timer = {
   setTimeout(cb, ms) {
     const t = setTimeout(cb, ms);
     return { id: Number(t) };

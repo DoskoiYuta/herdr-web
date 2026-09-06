@@ -4,6 +4,7 @@
  * `App.tsx`; consumed by the sidebar and `App`'s focus-follow logic.
  */
 import type { AskEvent } from "@contract/ask";
+import type { DecisionEvent } from "@contract/decision";
 import type {
   ClientEventMessage,
   FocusMessage,
@@ -21,6 +22,7 @@ export type ReviewEvent = ReviewMessage | ReviewNotifyMessage;
 
 const REVIEW_RING_SIZE = 50;
 const ASK_RING_SIZE = 50;
+const DECISION_RING_SIZE = 50;
 
 export type RepoChangedEntry = { head: string | null; tick: number };
 
@@ -44,6 +46,9 @@ export type HerdrStore = {
   /** 「質問」(ask) events, forwarded the same way review events are (mirrors `subscribeReviewEvents`). */
   subscribeAskEvents: (cb: (event: AskEvent) => void) => () => void;
   getAskEvents: () => AskEvent[];
+  /** 判断依頼 (decision) events, forwarded the same way ask events are (F13). */
+  subscribeDecisionEvents: (cb: (event: DecisionEvent) => void) => () => void;
+  getDecisionEvents: () => DecisionEvent[];
   send: (message: ClientEventMessage) => void;
   open: () => void;
   close: () => void;
@@ -73,6 +78,8 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
   const reviewEvents: ReviewEvent[] = [];
   const askListeners = new Set<(event: AskEvent) => void>();
   const askEvents: AskEvent[] = [];
+  const decisionListeners = new Set<(event: DecisionEvent) => void>();
+  const decisionEvents: DecisionEvent[] = [];
 
   function setState(next: HerdrStoreState) {
     state = next;
@@ -119,6 +126,12 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
         for (const cb of askListeners) cb(message);
         return;
       }
+      case "decision": {
+        decisionEvents.push(message);
+        while (decisionEvents.length > DECISION_RING_SIZE) decisionEvents.shift();
+        for (const cb of decisionListeners) cb(message);
+        return;
+      }
       default: {
         const exhaustiveCheck: never = message;
         return exhaustiveCheck;
@@ -159,6 +172,11 @@ export function createHerdrStore(opts: CreateHerdrStoreOptions = {}): HerdrStore
       return () => askListeners.delete(cb);
     },
     getAskEvents: () => [...askEvents],
+    subscribeDecisionEvents(cb) {
+      decisionListeners.add(cb);
+      return () => decisionListeners.delete(cb);
+    },
+    getDecisionEvents: () => [...decisionEvents],
     send: (m) => handle?.send(m),
     open,
     close,

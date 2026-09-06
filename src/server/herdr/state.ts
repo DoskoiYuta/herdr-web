@@ -279,6 +279,15 @@ export interface HerdrStateStore {
    * stay in sync too.
    */
   patchPane(pane: PaneInfo): void;
+  /**
+   * True once a `session.snapshot` has been loaded and the replay window
+   * (see `HerdrStateOptions.replaySettleMs`) has finished — i.e. `panes` can
+   * be trusted. False right after (re)connect: a pane missing from `panes`
+   * during replay may simply not have arrived yet, not actually be gone
+   * (F13-9 decision delivery relies on this to avoid misreading a pane as
+   * gone).
+   */
+  isSettled(): boolean;
 }
 
 export type Logger = Pick<typeof console, "error" | "warn">;
@@ -316,6 +325,7 @@ export function createHerdrState(
   const replaySettleMs = options.replaySettleMs ?? 300;
   const replayMaxMs = options.replayMaxMs ?? 3000;
   let state = emptyState();
+  let hasSnapshot = false;
   const listeners = new Set<(change: StateChange) => void>();
 
   function notify(change: StateChange): void {
@@ -332,6 +342,7 @@ export function createHerdrState(
     try {
       const snapshot = await gateway.snapshot();
       state = stateFromSnapshot(snapshot);
+      hasSnapshot = true;
       notify({ kind: "reset" });
     } catch (err) {
       logger.error("herdr: failed to load session.snapshot", err);
@@ -410,6 +421,7 @@ export function createHerdrState(
       replaying = false;
       clearReplayTimers();
       state = emptyState();
+      hasSnapshot = false;
       notify({ kind: "reset" });
     }
     wasConnected = status.connected;
@@ -426,5 +438,6 @@ export function createHerdrState(
       state = withPane(state, pane);
       notify({ kind: "pane", paneId: pane.pane_id });
     },
+    isSettled: () => hasSnapshot && !replaying,
   };
 }

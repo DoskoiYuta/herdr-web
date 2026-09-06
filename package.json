@@ -28,6 +28,7 @@
     "@pierre/trees": "^1.0.0-beta.6",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-virtual": "^3.14.10",
+    "@valibot/to-json-schema": "^1.7.1",
     "@wysimark/react": "^3.0.20",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",

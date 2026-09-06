@@ -28,6 +28,7 @@ import type { replyToReviewUsecase } from "../review/usecases/reply-to-review";
 import type { resolveReviewUsecase } from "../review/usecases/resolve-review";
 import type { sendDraftsUsecase } from "../review/usecases/send-drafts";
 import type { ReviewRepository } from "../review/ports";
+import { resolveShortId } from "./short-id";
 
 export type ReviewRoutesDeps = {
   repository: ReviewRepository;
@@ -67,18 +68,16 @@ function visibleReviews(reviews: Review[], includeDrafts: boolean): Review[] {
   });
 }
 
-const FULL_ID_LENGTH = 36; // Bun.randomUUIDv7() の長さ（ハイフン込み）
-const MIN_SHORT_ID_LENGTH = 4;
-
 type FindByIdResult =
   | { kind: "found"; review: Review }
   | { kind: "not_found" }
   | { kind: "ambiguous" };
 
 /**
- * `GET /:id` の id はハイフン込みの完全な uuid か、その末尾一致（4 文字以上）を受け付ける。
- * UUIDv7 の先頭はタイムスタンプなので近い時刻に作られた id は先頭 8 文字が揃ってしまう。
- * 末尾はランダムビットなので、`hw review list` が出す短縮 id は末尾側を使う。
+ * review/ask/decision で共通の id 解決規則（`resolveShortId`）に、agent には見えない
+ * 下書きだけの review を除く可視性フィルタを重ねる — 一意性の判定も呼び出し側に見える
+ * review の中で行う（agent には見えない下書きだけの review が末尾を共有していても、
+ * agent が長い id を知る手段は無いため）。
  */
 async function findReviewByIdOrSuffix(
   repository: ReviewRepository,
@@ -86,24 +85,22 @@ async function findReviewByIdOrSuffix(
   includeDrafts: boolean,
 ): Promise<FindByIdResult> {
   const visible = (review: Review) => (includeDrafts ? review : stripDraftsForAgent(review));
-  if (id.length >= FULL_ID_LENGTH) {
-    const review = await repository.get(id);
-    const seen = review && visible(review);
-    return seen ? { kind: "found", review: seen } : { kind: "not_found" };
-  }
-  if (id.length < MIN_SHORT_ID_LENGTH) return { kind: "not_found" };
-
-  // 一意性は呼び出し側に見える review の中で判定する。agent には見えない下書きだけの
-  // review が末尾を共有していても、agent が長い id を知る手段は無い。
-  const all = await repository.list({});
-  const matches = all.flatMap((r) => {
-    if (!r.id.endsWith(id)) return [];
-    const seen = visible(r);
-    return seen ? [seen] : [];
+  const result = await resolveShortId(id, {
+    getFull: async (fullId) => {
+      const review = await repository.get(fullId);
+      return review ? visible(review) : null;
+    },
+    listCandidates: async () => {
+      const all = await repository.list({});
+      return all.flatMap((r) => {
+        const seen = visible(r);
+        return seen ? [seen] : [];
+      });
+    },
+    idOf: (r) => r.id,
   });
-  if (matches.length === 0) return { kind: "not_found" };
-  if (matches.length > 1) return { kind: "ambiguous" };
-  return { kind: "found", review: matches[0]! };
+  if (result.kind === "found") return { kind: "found", review: result.value };
+  return result;
 }
 
 /**

@@ -138,6 +138,7 @@ describe("createHerdrNotifier", () => {
       }),
       onChange: () => () => {},
       patchPane: () => {},
+      isSettled: () => true,
     };
     const notifier = createHerdrNotifier({
       state,
@@ -269,6 +270,7 @@ describe("createHerdrNotifier", () => {
       }),
       onChange: () => () => {},
       patchPane: () => {},
+      isSettled: () => true,
     };
     const gateway = {
       agentPrompt: async () => {

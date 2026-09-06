@@ -18,6 +18,7 @@ import type {
   Timer,
   WorktreeFileReader,
 } from "./ports";
+import { realTimer } from "./usecases/locks";
 import { countsUsecase } from "./usecases/counts";
 import { createReviewUsecase } from "./usecases/create-review";
 import { deleteDraftUsecase } from "./usecases/delete-draft";
@@ -54,16 +55,6 @@ export type ReviewRuntimeDeps = {
    * is provided, else always-connected (matches the fallback no-op notifier).
    */
   isConnected?: () => boolean;
-};
-
-export const realTimer: Timer = {
-  setTimeout(cb, ms) {
-    const t = setTimeout(cb, ms);
-    return { id: Number(t) };
-  },
-  clearTimeout(handle) {
-    clearTimeout(handle.id);
-  },
 };
 
 export function openReviewDb(path: string): Db {

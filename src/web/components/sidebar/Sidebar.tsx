@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import { CircleCheck, OctagonAlert, PanelLeft } from "lucide-react";
+import { CircleCheck, MessageSquareWarning, OctagonAlert, PanelLeft } from "lucide-react";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useDecisionCounts } from "@/components/decision/hooks/useDecisionCounts";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/layout";
 import { repoDisplayNames } from "@/lib/repoDisplay";
 import { buildWorkspaceView } from "@/lib/workspaceView";
 import type { AskEvent } from "@/lib/askEvent";
+import type { DecisionEvent } from "@/lib/decisionEvent";
 import { RepoGroup } from "./RepoGroup";
 import type { AskFileLocation } from "./AskSessionGroup";
 import { WorkspaceGroup } from "./WorkspaceGroup";
@@ -28,6 +30,9 @@ export type SidebarProps = {
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
   subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
+  /** worktree の「判断依頼 N」行クリック (F13-8)。 */
+  onSelectDecisions?: (worktreeRoot: string) => void;
+  subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
 };
 
 const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
@@ -51,11 +56,15 @@ export function Sidebar({
   onLayoutChange,
   onOpenAskFile,
   subscribeAskEvents,
+  onSelectDecisions,
+  subscribeDecisionEvents,
 }: SidebarProps) {
   const [mode, setMode] = useState<SidebarMode>("repository");
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string>>(new Set());
   const [liveWidth, setLiveWidth] = useState(layout.width);
+  const decisionCountsQuery = useDecisionCounts(subscribeDecisionEvents);
+  const decisionCounts = decisionCountsQuery.data;
 
   const displayNames = useMemo(() => repoDisplayNames(repos), [repos]);
   const workspaceView = useMemo(() => buildWorkspaceView(repos), [repos]);
@@ -100,6 +109,12 @@ export function Sidebar({
             {totals.done}
           </Badge>
         )}
+        {decisionCounts && decisionCounts.total > 0 && (
+          <Badge variant="outline" className="gap-0.5 px-1 text-amber-700 dark:text-amber-400">
+            <MessageSquareWarning className="size-3" aria-hidden="true" />
+            {decisionCounts.total}
+          </Badge>
+        )}
       </aside>
     );
   }
@@ -125,6 +140,12 @@ export function Sidebar({
               ワークスペース
             </ToggleGroupItem>
           </ToggleGroup>
+          {decisionCounts && decisionCounts.total > 0 && (
+            <Badge variant="outline" className="gap-0.5 text-amber-700 dark:text-amber-400">
+              <MessageSquareWarning className="size-3" aria-hidden="true" />
+              {decisionCounts.total}
+            </Badge>
+          )}
           <button
             type="button"
             onClick={() => onLayoutChange({ ...layout, collapsed: true })}
@@ -161,6 +182,8 @@ export function Sidebar({
                 onSelectPane={onSelectPane}
                 onOpenAskFile={onOpenAskFile}
                 subscribeAskEvents={subscribeAskEvents}
+                decisionCounts={decisionCounts?.byWorktreeRoot}
+                onSelectDecisions={onSelectDecisions}
               />
             ))}
 

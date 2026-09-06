@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { createApp } from "./app";
 // TODO(ask-session): swap for createHerdrAskLauncher (src/server/herdr/ask-session.ts)
 import { createAskRuntime } from "./ask/runtime";
+import { createDecisionRuntime } from "./decision/runtime";
 import { createHerdrAskLauncher } from "./herdr/ask-session";
 import { createFetchRunner } from "./git/fetch";
 import { serveEmbedded } from "./static";
@@ -107,6 +108,14 @@ const ask = createAskRuntime({
   onEvent: (e) => runtime.hub.broadcast(e),
 });
 
+const decision = createDecisionRuntime({
+  db: reviewDb,
+  herdr: { state: runtime.state, gateway: runtime.gateway, resolver: runtime.resolver },
+  onEvent: (e) => runtime.hub.broadcast(e),
+});
+// F13-9: pick back up any decision whose delivery was mid-backoff when the process last exited.
+await decision.delivery.drainPending();
+
 const fetchRunner = createFetchRunner();
 
 // Shared with `/ws/docker-logs` (main.ts's upgradeRouter.add below) so both
@@ -127,6 +136,10 @@ const api = createApp({
   hw: { state: runtime.state, resolver: runtime.resolver },
   herdr: { gateway: runtime.gateway, state: runtime.state, allowedRoots: config.allowedRoots },
   ask: ask.routes,
+  decision: {
+    ...decision.routes,
+    buildUrl: (id) => `http://${config.host}:${config.port}/#decision/${id}`,
+  },
   docker: { allowedRoots: config.allowedRoots, cache: dockerCache },
   proc: { allowedRoots: config.allowedRoots },
 });

@@ -1,4 +1,5 @@
 import type { PaneInfo } from "../../../contract/herdr";
+import { sendAgentPrompt } from "../../herdr/agent-prompt";
 import type { HerdrGateway } from "../../herdr/gateway";
 import type { HerdrStateStore } from "../../herdr/state";
 import type { WorktreeResolver } from "../../herdr/tree";
@@ -60,26 +61,8 @@ export function createHerdrNotifier(deps: HerdrNotifierDeps): AgentNotifier {
       }
 
       const text = deps.template.replaceAll("{count}", String(reviewIds.length));
-      try {
-        const outcome = await deps.gateway.agentPrompt(target.pane_id, text);
-        if (outcome.status === "sent") return { result: "sent", pane: target.pane_id };
-        if (outcome.status === "agent_prompt_stalled") {
-          // 送信自体は行われたので「未通知」扱いにはしない（再送すると二重になる）
-          logger.warn(`notify: prompt to ${target.pane_id} stalled`);
-          return { result: "sent", pane: target.pane_id };
-        }
-        return { result: "agent_blocked", pane: target.pane_id };
-      } catch (err) {
-        // F7: a transport-level timeout means we genuinely don't know whether
-        // the prompt was ever sent — "agent_blocked" would be a false claim
-        // that herdr rejected it, and would mislead a human into not retrying.
-        if (err instanceof Error && /timed out/i.test(err.message)) {
-          logger.error("notify: agent.prompt timed out", err);
-          return { result: "unknown", pane: target.pane_id };
-        }
-        logger.error("notify: agent.prompt failed", err);
-        return { result: "agent_blocked", pane: target.pane_id };
-      }
+      const result = await sendAgentPrompt({ gateway: deps.gateway, logger }, target.pane_id, text);
+      return { result, pane: target.pane_id };
     },
   };
 }

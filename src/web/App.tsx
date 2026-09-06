@@ -7,6 +7,8 @@ import { configApi } from "@/lib/api";
 import { ToolPane } from "@/components/tool/ToolPane";
 import { createHerdrStore, useHerdrStore } from "@/lib/herdrStore";
 import type { AskFileLocation } from "@/components/sidebar/AskSessionGroup";
+import { DecisionListView } from "@/components/decision/DecisionListView";
+import { DecisionView } from "@/components/decision/DecisionView";
 import type { FilesInitialLocation } from "@/components/files/FilesPanel";
 import {
   DEFAULT_LAYOUT,
@@ -24,6 +26,15 @@ function loadInitialLayout() {
   } catch {
     return DEFAULT_LAYOUT;
   }
+}
+
+/** ツール領域の判断依頼モード (F13-8)。focus の worktree が変わっても閉じない
+ * よう、`worktreeRoot`/`repoKey` とは独立に持つ。`#decision/<id>` で直接開ける。 */
+type DecisionUiState = { kind: "list"; worktreeRoot: string } | { kind: "view"; id: string } | null;
+
+function decisionIdFromHash(hash: string): string | null {
+  const match = /^#decision\/(.+)$/.exec(hash);
+  return match ? decodeURIComponent(match[1]!) : null;
 }
 
 export function App() {
@@ -130,6 +141,35 @@ export function App() {
     setFilesInitialLocation(null);
   }, []);
 
+  // F13-8: `#decision/<id>` を初期表示に反映し、以後の hash 変化（ブラウザの
+  // 戻る/進むや他タブからの republish 相当の操作）にも追従する。
+  const [decisionUi, setDecisionUi] = useState<DecisionUiState>(() => {
+    const id = decisionIdFromHash(window.location.hash);
+    return id ? { kind: "view", id } : null;
+  });
+  useEffect(() => {
+    function handleHashChange() {
+      const id = decisionIdFromHash(window.location.hash);
+      setDecisionUi(id ? { kind: "view", id } : null);
+    }
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  const handleSelectDecisions = useCallback((root: string) => {
+    setDecisionUi({ kind: "list", worktreeRoot: root });
+  }, []);
+  const handleSelectDecision = useCallback((id: string) => {
+    setDecisionUi({ kind: "view", id });
+    window.location.hash = `decision/${id}`;
+  }, []);
+  const handleCloseDecisionUi = useCallback(() => {
+    setDecisionUi(null);
+    if (decisionIdFromHash(window.location.hash)) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
   const handleSidebarLayoutChange = useCallback(
     (next: { width: number; collapsed: boolean }) => {
@@ -151,6 +191,8 @@ export function App() {
         onLayoutChange={handleSidebarLayoutChange}
         onOpenAskFile={handleOpenAskFile}
         subscribeAskEvents={store.subscribeAskEvents}
+        onSelectDecisions={handleSelectDecisions}
+        subscribeDecisionEvents={store.subscribeDecisionEvents}
       />
 
       <main className="min-w-0 flex-1">
@@ -186,7 +228,23 @@ export function App() {
         >
           {layout.toolCollapsed ? "«" : "»"}
         </button>
-        {!layout.toolCollapsed && (
+        {!layout.toolCollapsed && decisionUi?.kind === "view" && (
+          <DecisionView
+            id={decisionUi.id}
+            onClose={handleCloseDecisionUi}
+            onFocusPane={handleSelectPane}
+            subscribeDecisionEvents={store.subscribeDecisionEvents}
+          />
+        )}
+        {!layout.toolCollapsed && decisionUi?.kind === "list" && (
+          <DecisionListView
+            worktreeRoot={decisionUi.worktreeRoot}
+            onSelect={handleSelectDecision}
+            onClose={handleCloseDecisionUi}
+            subscribeDecisionEvents={store.subscribeDecisionEvents}
+          />
+        )}
+        {!layout.toolCollapsed && decisionUi === null && (
           <ToolPane
             worktreeRoot={worktreeRoot}
             repoKey={worktreeRoot ? repoKey : null}

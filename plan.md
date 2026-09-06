@@ -355,6 +355,19 @@ src/cli                      → contract のみ
 - F12-6. 更新はタブ表示中のみの 3 秒間隔ポーリング。F11-6 と同じ理由で `repo-changed` とバッジは使わない。サーバーは走査結果を 2 秒キャッシュし同時要求を 1 本にまとめる（走査は約 0.3 秒 / 1000 プロセス）。
 - F12-7. 失敗は次を区別する。`lsof` が無い（501）→「lsof が見つかりません」。`ps` / `lsof` の非ゼロ終了（503）→ stderr を添えて表示。タイムアウト 5 秒（504）→ 前回値を残してヘッダーにエラー。対象 0 件（200）→「この worktree を cwd とするプロセスはありません」。他ユーザーのプロセスは cwd を読めないため一覧に出ない（仕様として表示文言に含めない、README に書く）。
 
+### F13. 判断依頼（エージェントから人間への質問）
+
+- F13-1. 「判断依頼」(decision) は、エージェントが `hw decision request` で人間に判断を求めるもの。Claude Code の AskUserQuestion の置き換えで、方向が逆の「質問」(ask, F10) とは別テーブル・別 API・別語。1 依頼は 1 件以上の設問（item）を持つ。
+- F13-2. 非ブロッキングのみ。`hw decision request` は依頼を登録して即座に `{ id, url }` を返し、同期的に回答を待つコマンドは提供しない。回答・却下・取り下げの結果は、サーバーが呼び出し元 pane へ `agent.prompt` で届ける。推奨する使い方（スキルに書く）は「依頼を出したらターンを終えて待つ。結果は次のユーザー発言として届く」。エージェントは herdr 上で idle になるので、人間からも待っていることが分かる。
+- F13-3. 呼び出し元は `hw` が環境変数から自動収集する: `HERDR_PANE_ID`（herdr が pane の子プロセスに渡す）、`CLAUDE_CODE_SESSION_ID`（Claude Code が Bash ツールの子プロセスに渡す。表示用）。worktree と agent 名は `/api/hw/whoami` で解決する。`--pane <id>` で上書きできる。`--pane`/`HERDR_PANE_ID` のどちらも無い、または pane が herdr 上で見つからない場合は作成レスポンスに `paneResolved: false` を含め、CLI は stderr に「回答は自動で届かない」旨を警告する（stdout の JSON はそのまま出す）。
+- F13-4. status は「結果」だけを表す `open` →（人間が回答）→ `answered` / `dismissed`（却下）、エージェントが `hw decision cancel` で `cancelled`。却下は open からのみ可能。配達の状況は status と独立に `delivery: null | { state: "pending" | "sent" | "agent_blocked" | "gone" | "unknown", attempts, at, pane }` として持つ — 却下・キャンセルされた依頼も配達の成否とは無関係に `dismissed`/`cancelled` のまま残る（`hw decision list --status dismissed` で引ける）。期限と既定回答は持たない。回答が無い限り依頼は open のまま残り、エージェントが勝手に進むことはない。
+- F13-5. 依頼の書式（`hw decision request --file d.json` / stdin、`hw decision schema` が JSON Schema を出す）: `title?`、`context?: Block[]`、`items: { id, header, question(markdown), kind: single | multi | text | confirm, options?: { label, description?, recommended?, preview?: Block[] }[], allowOther?(既定 true), required?(既定 true) }[]`、`layout?: "compare"`（選択肢の preview を横並びで比較）。設問数・選択肢数の上限は設けない。JSON は 1 MiB まで。valibot スキーマを CLI（事前検証。エラーは JSON パスと理由を stderr）・サーバー・UI で共用する。
+- F13-6. Block の種別と描画: `markdown`（既存の Markdown ビューア）、`code { language, text }`（`@pierre/diffs` の `File`）、`diff`（unified patch を `@pierre/diffs`）、`mermaid`（`mermaid` を動的 import、`securityLevel: "strict"`）、`svg`（`<img src="data:image/svg+xml">` でスクリプトを無効化）、`html`（`sandbox` 付き iframe の `srcdoc`。`allow-same-origin` は付けない。`allowScripts: true` のときだけ `allow-scripts`）、`image { path }`（`/api/fs/raw`、allowed roots 配下のみ）、`location { path, lines? }`（Files タブでその場所を開く。ask のアンカーと同じ）、`table { header[], rows[][] }`。
+- F13-7. 回答は設問ごとに `{ selected: string[], other: string | null, note: string | null }`（`text` は `other` に入る、`confirm` は `selected` が `["yes"]` / `["no"]`）。回答全体に `attachments: { kind: "location", path, lines? }[]` を付けられる（Files タブから「ここ」を指す）。`agent.prompt` の本文は「判断依頼 <短縮 id>（<title>）に回答: <item>=<選択>（note: ...）。全文は `hw decision show <id>`」の形で 2 KiB 以内に収め、超える分は show に逃がす。
+- F13-8. UI: サイドバーのツリーで各 worktree の直下に「判断依頼 N」行を出す（依頼は呼び出し元 pane の worktree に属するので、ask セッションと同じく worktree 単位に置く）。サイドバー上部には全 worktree の open 件数バッジ。行クリックでツール領域を占有する依頼ビュー（`context` → 設問 → 回答フォーム → 送信 / 却下）に切り替わる。focus が別 worktree に動いても表示中の依頼は閉じない。キーボードは 1〜9 で選択、Enter（busy 中は無効）で送信、Esc で閉じる。answered / dismissed / cancelled はフィルタで履歴として見られ、非 open な依頼を開くと確定した回答（選択・その他・メモ・confirm の yes/no）を読み取り専用で表示する。配達状況（`delivery.state` と試行回数）を表示し、status が answered/dismissed かつ `delivery.state` が `sent` 以外（未着手の null を含む）のとき「再送」を出す。依頼にはエージェント名・pane・worktree・Claude セッション id・経過時間を表示し、「pane を開く」で F8-3 と同じく focus を移せる。
+- F13-9. 配達は review 通知（F5）の notifier / scheduler と同じ発想（`agent.prompt` 送信、`sendAgentPrompt` を共用）で組む。herdr 切断中、または再接続直後の replay 窓（`HerdrStateStore.isSettled()` が false の間）は pane の有無を判定できないため `gone` と誤判定せず、`delivery.state = "pending"` のまま指数バックオフ（上限 60 秒）で無期限に再試行する。`agent_blocked`（herdr には届いたが pane がブロック中）は自動再試行せず、人間の「再送」でのみ再送できる。起動時は `drainPending` で `delivery.state !== "sent"` な依頼を拾い直す。
+- F13-10. Claude Code 側の導線は README に雛形を置く: `.claude/skills/hw-decision/SKILL.md`（AskUserQuestion の代わりに `hw decision request` を使う、出したらターンを終える、書式は `hw decision schema`）と、AskUserQuestion を PreToolUse hook で deny し理由文で `hw decision request` へ誘導する settings.json の例。`hw` がユーザーの設定ファイルを書き換えることはしない。
+
 ## 8. 非機能要件
 
 - N1. `127.0.0.1` に固定。`tailscale serve --bg 8080` で公開する手順を README に書く。`--host` は緊急用で非 loopback なら警告。
@@ -462,6 +475,22 @@ src/cli                      → contract のみ
 | メソッド | パス                   | 説明                                                                                                                                                                                                                                |
 | -------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET      | `/api/proc/list?root=` | root を cwd とするプロセス（F12-2）: `{ processes: { pid, ppid, command, argv0, cpu, rss, elapsedSec, cwd, listen: { port, addr }[] }[] }`（フラット。ツリー化はクライアント）。501 = lsof 無し、503 = 実行失敗、504 = タイムアウト |
+
+### 9.w Hono RPC — decision（Web UI と `hw` が共用、F13）
+
+| メソッド | パス                                  | 説明                                                                                                         |
+| -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| POST     | `/api/decision`                       | 作成（hw）: `{ spec, paneId?, claudeSessionId? }` → `{ id, url, paneResolved }`                              |
+| GET      | `/api/decision?status=&worktreeRoot=` | 一覧（UI / `hw decision list`。CLI 既定は `open` のみ、`--status all` で全件）                               |
+| GET      | `/api/decision/counts`                | worktree ごとと全体の open 件数（サイドバー）                                                                |
+| GET      | `/api/decision/:id`                   | 詳細（`hw decision show`）                                                                                   |
+| POST     | `/api/decision/:id/answer`            | 回答（UI）: `{ answers, attachments }`。spec と突き合わせて検証し（400 で拒否）、answered にして配達を試みる |
+| POST     | `/api/decision/:id/dismiss`           | 却下（UI）。dismissed にして配達を試みる                                                                     |
+| POST     | `/api/decision/:id/cancel`            | 取り下げ（hw）。配達は試みない                                                                               |
+| POST     | `/api/decision/:id/resend`            | 再配達（UI）。status が answered/dismissed かつ `delivery.state` が `sent` 以外のときだけ受け付ける（409）   |
+| GET      | `/api/decision/schema`                | spec の JSON Schema（`hw decision schema`）                                                                  |
+
+WS `/ws/events`: `{ type: "decision", action: "created" | "answered" | "dismissed" | "cancelled" | "delivered" | "delivery-updated", id, worktreeRoot, paneId }`。`delivered` は配達成功（`delivery.state = "sent"`）、`delivery-updated` はそれ以外の配達状態の変化（pending/agent_blocked/gone/unknown）。
 
 ### 9.6 herdr socket API の利用一覧
 
@@ -571,6 +600,9 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - **M5: レビュー + `hw`** — sqlite、domain、usecases、通知、git graph の件数バッジ、CLI、再アンカー。
 - **M6: ビルド・配布** — 単一バイナリ、設定、README。
 - **M7: Docker / Process タブ** — F11、F12、`/api/docker/containers`、`/api/proc/list`、サーバー側キャッシュ、失敗 3 種の表示。
+- **M8a: 判断依頼（互換成立）** — 契約 + DB + `hw decision request/show/list/cancel/schema` + サイドバーの行とバッジ + 依頼ビュー（markdown と選択肢）+ 回答 / 却下の配達と再送。
+- **M8b: 判断依頼（表現力）** — Block 描画（code / diff / mermaid / svg / html / image / location / table）と compare レイアウト。
+- **M8c: 判断依頼（仕上げ）** — 回答への location 添付、履歴、README のスキル / hook 雛形。
 
 ## 15. 将来拡張
 
@@ -582,3 +614,4 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - ファイル編集（Files タブからの保存）
 - Docker タブの操作（stop / restart）と、compose / devcontainer ラベルを持たないコンテナの表示（bind mount の source で紐づける。Docker Desktop for Mac は source を `/host_mnt/...` で報告する）
 - Process タブからの kill / シグナル送信、herdr pane との対応付け（`pane.process_info`）
+- 判断依頼の回答へのファイル添付（F9-7 のインポートを流用）、herdr の `notification.show` によるトースト

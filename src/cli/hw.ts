@@ -11,7 +11,9 @@ const result = await runCli(process.argv.slice(2), {
   env: process.env,
   cwd: process.cwd(),
   readStdin: () => Bun.stdin.text(),
+  stdinIsTTY: () => process.stdin.isTTY === true,
 });
 
 process.stdout.write(result.stdout);
+if (result.stderr) process.stderr.write(result.stderr);
 process.exit(result.exitCode);

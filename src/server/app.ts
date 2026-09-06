@@ -3,6 +3,7 @@ import type { ClientConfig } from "../contract/config";
 import type { Health } from "../contract/health";
 import type { FetchRunner } from "./git/fetch";
 import { askRoutes, type AskRoutesDeps } from "./routes/ask";
+import { decisionRoutes, type DecisionRoutesDeps } from "./routes/decision";
 import { dockerRoutes, type DockerRoutesDeps } from "./routes/docker";
 import { fsRoutes } from "./routes/fs";
 import { gitRoutes } from "./routes/git";
@@ -26,6 +27,7 @@ export type AppDeps = {
   hw: HwRoutesDeps;
   herdr: HerdrRoutesDeps;
   ask: AskRoutesDeps;
+  decision: DecisionRoutesDeps;
   docker?: DockerRoutesDeps;
   proc?: ProcRoutesDeps;
 };
@@ -44,6 +46,7 @@ export function createApp(deps: AppDeps) {
     .route("/api/hw", hwRoutes(deps.hw))
     .route("/api/herdr", herdrRoutes(deps.herdr))
     .route("/api/ask", askRoutes(deps.ask))
+    .route("/api/decision", decisionRoutes(deps.decision))
     .route("/api/docker", dockerRoutes(deps.docker))
     .route("/api/proc", procRoutes(deps.proc));
   return app;
