@@ -9,7 +9,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { decisionApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { BlockView } from "./BlockView";
+import { BlockView, type OpenLocation } from "./BlockView";
+import { CompareOptions } from "./CompareOptions";
 
 export type DecisionViewProps = {
   id: string;
@@ -17,6 +18,9 @@ export type DecisionViewProps = {
   /** F8-3 と同じ「pane を開く」。 */
   onFocusPane?: (paneId: string) => void;
   subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
+  /** `location` Block クリック: ask の「対象ファイルを開く」と同じ経路
+   * で Files タブを開く。決定ビュー自体は呼び出し元 (App.tsx) が閉じてよい。 */
+  onOpenLocation?: OpenLocation;
 };
 
 type AnswerState = Record<string, DecisionItemAnswer>;
@@ -89,11 +93,19 @@ function DecisionItemForm({
   index,
   answer,
   onChange,
+  compare,
+  worktreeRoot,
+  onOpenLocation,
 }: {
   item: DecisionItem;
   index: number;
   answer: DecisionItemAnswer;
   onChange: (next: DecisionItemAnswer) => void;
+  /** `layout: "compare"` applies only when some option actually has a
+   * preview — otherwise the compare grid would show empty cards. */
+  compare: boolean;
+  worktreeRoot: string | null;
+  onOpenLocation?: OpenLocation;
 }) {
   const setSelected = (selected: string[]) => onChange({ ...answer, selected });
   const setOther = (other: string) =>
@@ -114,40 +126,83 @@ function DecisionItemForm({
       </legend>
       <p className="text-sm">{item.question}</p>
 
-      {(item.kind === "single" || item.kind === "multi") && (
+      {(item.kind === "single" || item.kind === "multi") && compare && (
+        <>
+          <CompareOptions
+            item={item}
+            answer={answer}
+            onChange={onChange}
+            worktreeRoot={worktreeRoot}
+            onOpenLocation={onOpenLocation}
+          />
+          {(item.allowOther ?? true) && (
+            <label className="flex items-center gap-1.5 text-sm">
+              <span className="text-xs text-muted-foreground">その他:</span>
+              <input
+                type="text"
+                className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-sm"
+                value={answer.other ?? ""}
+                onChange={(e) => setOther(e.target.value)}
+                aria-label={`${item.header} その他`}
+              />
+            </label>
+          )}
+        </>
+      )}
+
+      {(item.kind === "single" || item.kind === "multi") && !compare && (
         <div className="flex flex-col gap-1">
           {item.options.map((opt) => {
             const checked = answer.selected.includes(opt.label);
             return (
-              <label key={opt.label} className="flex items-start gap-1.5 text-sm">
-                <input
-                  type={item.kind === "single" ? "radio" : "checkbox"}
-                  name={`decision-item-${item.id}`}
-                  checked={checked}
-                  onChange={(e) => {
-                    if (item.kind === "single") {
-                      setSelected(e.target.checked ? [opt.label] : []);
-                    } else {
-                      setSelected(
-                        e.target.checked
-                          ? [...answer.selected, opt.label]
-                          : answer.selected.filter((s) => s !== opt.label),
-                      );
-                    }
-                  }}
-                />
-                <span>
-                  {opt.label}
-                  {opt.recommended && (
-                    <span className="ml-1 rounded bg-primary/10 px-1 text-[10px] text-primary">
-                      推奨
-                    </span>
-                  )}
-                  {opt.description && (
-                    <span className="ml-1 text-xs text-muted-foreground">{opt.description}</span>
-                  )}
-                </span>
-              </label>
+              <div key={opt.label} className="flex flex-col gap-1">
+                <label className="flex items-start gap-1.5 text-sm">
+                  <input
+                    type={item.kind === "single" ? "radio" : "checkbox"}
+                    name={`decision-item-${item.id}`}
+                    checked={checked}
+                    onChange={(e) => {
+                      if (item.kind === "single") {
+                        setSelected(e.target.checked ? [opt.label] : []);
+                      } else {
+                        setSelected(
+                          e.target.checked
+                            ? [...answer.selected, opt.label]
+                            : answer.selected.filter((s) => s !== opt.label),
+                        );
+                      }
+                    }}
+                  />
+                  <span>
+                    {opt.label}
+                    {opt.recommended && (
+                      <span className="ml-1 rounded bg-primary/10 px-1 text-[10px] text-primary">
+                        推奨
+                      </span>
+                    )}
+                    {opt.description && (
+                      <span className="ml-1 text-xs text-muted-foreground">{opt.description}</span>
+                    )}
+                  </span>
+                </label>
+                {opt.preview.length > 0 && (
+                  <details className="ml-5">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      プレビュー
+                    </summary>
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      {opt.preview.map((block, i) => (
+                        <BlockView
+                          key={i}
+                          block={block}
+                          worktreeRoot={worktreeRoot}
+                          onOpenLocation={onOpenLocation}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
             );
           })}
           {(item.allowOther ?? true) && (
@@ -214,6 +269,7 @@ export function DecisionView({
   onClose,
   onFocusPane,
   subscribeDecisionEvents,
+  onOpenLocation,
 }: DecisionViewProps) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["decision", id], queryFn: () => decisionApi.get(id) });
@@ -386,7 +442,12 @@ export function DecisionView({
       {decision.spec.context.length > 0 && (
         <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
           {decision.spec.context.map((block, i) => (
-            <BlockView key={i} block={block} />
+            <BlockView
+              key={i}
+              block={block}
+              worktreeRoot={decision.worktreeRoot}
+              onOpenLocation={onOpenLocation}
+            />
           ))}
         </div>
       )}
@@ -400,6 +461,13 @@ export function DecisionView({
               index={index}
               answer={answers[item.id] ?? emptyAnswer()}
               onChange={(next) => updateItem(item.id, next)}
+              compare={
+                decision.spec.layout === "compare" &&
+                (item.kind === "single" || item.kind === "multi") &&
+                item.options.some((o) => o.preview.length > 0)
+              }
+              worktreeRoot={decision.worktreeRoot}
+              onOpenLocation={onOpenLocation}
             />
           ) : (
             <DecisionAnswerView

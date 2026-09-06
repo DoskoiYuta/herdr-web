@@ -170,6 +170,23 @@ export function App() {
     }
   }, []);
 
+  // F13-6 の `location` Block: 決定ビューから Files タブへ遷移する。決定ビュー
+  // は閉じてよいが、`#decision/<id>` は残す（handleCloseDecisionUi と違い hash
+  // をクリアしない）ので、直接 setDecisionUi(null) する。
+  const handleOpenDecisionLocation = useCallback(
+    (location: { worktreeRoot: string; path: string; lines: [number, number] | null }) => {
+      if (location.worktreeRoot !== worktreeRoot) {
+        handleOpenPath(location.worktreeRoot);
+      }
+      setFilesInitialLocation({
+        path: location.path,
+        line: location.lines ? location.lines[0] : 1,
+      });
+      setDecisionUi(null);
+    },
+    [worktreeRoot, handleOpenPath],
+  );
+
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
   const handleSidebarLayoutChange = useCallback(
     (next: { width: number; collapsed: boolean }) => {
@@ -234,6 +251,7 @@ export function App() {
             onClose={handleCloseDecisionUi}
             onFocusPane={handleSelectPane}
             subscribeDecisionEvents={store.subscribeDecisionEvents}
+            onOpenLocation={handleOpenDecisionLocation}
           />
         )}
         {!layout.toolCollapsed && decisionUi?.kind === "list" && (

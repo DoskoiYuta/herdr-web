@@ -178,4 +178,96 @@ describe("DecisionView", () => {
     expect(screen.getByText(/念のため/)).toBeInTheDocument();
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
   });
+
+  // 無いと壊れる: layout: "compare" でもラジオボタンのままになり、選択肢の
+  // preview を横並びで比較できない。
+  test("layout: compare renders cards, and clicking one selects it", async () => {
+    const decision = baseDecision({
+      spec: {
+        title: "t",
+        context: [],
+        items: [
+          {
+            id: "q1",
+            header: "どちらにしますか",
+            question: "選んでください",
+            kind: "single",
+            options: [
+              {
+                label: "A",
+                description: null,
+                recommended: false,
+                preview: [{ kind: "svg", markup: "<svg><text>A</text></svg>" }],
+              },
+              {
+                label: "B",
+                description: null,
+                recommended: false,
+                preview: [{ kind: "svg", markup: "<svg><text>B</text></svg>" }],
+              },
+            ],
+            allowOther: true,
+            required: true,
+          },
+        ],
+        layout: "compare",
+      },
+    });
+    get.mockResolvedValue(decision);
+    answer.mockResolvedValue({ ...decision, status: "answered" });
+
+    render(<DecisionView id="decision-1" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument());
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "A" }));
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
+    expect(answer.mock.calls[0]![1].answers.q1.selected).toEqual(["A"]);
+  });
+
+  // 無いと壊れる: compare レイアウトでは「その他」欄が描画されず、
+  // カードに無い選択肢を自由記述で答える手段が無い。
+  test("layout: compare still shows the allowOther free-text field", async () => {
+    const decision = baseDecision({
+      spec: {
+        title: "t",
+        context: [],
+        items: [
+          {
+            id: "q1",
+            header: "どちらにしますか",
+            question: "選んでください",
+            kind: "single",
+            options: [
+              {
+                label: "A",
+                description: null,
+                recommended: false,
+                preview: [{ kind: "svg", markup: "<svg><text>A</text></svg>" }],
+              },
+            ],
+            allowOther: true,
+            required: true,
+          },
+        ],
+        layout: "compare",
+      },
+    });
+    get.mockResolvedValue(decision);
+    answer.mockResolvedValue({ ...decision, status: "answered" });
+
+    render(<DecisionView id="decision-1" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("どちらにしますか その他"), {
+      target: { value: "C案" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
+    expect(answer.mock.calls[0]![1].answers.q1.other).toBe("C案");
+  });
 });
