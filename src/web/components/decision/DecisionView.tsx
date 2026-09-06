@@ -1,7 +1,6 @@
 import type {
   Decision,
   DecisionAnswer,
-  DecisionAttachment,
   DecisionEvent,
   DecisionItem,
   DecisionItemAnswer,
@@ -29,19 +28,10 @@ export type DecisionViewProps = {
   /** `location` Block クリック: ask の「対象ファイルを開く」と同じ経路
    * で Files タブを開く。決定ビュー自体は呼び出し元 (App.tsx) が閉じてよい。 */
   onOpenLocation?: OpenLocation;
-  /** 「場所を添付」ボタン (F13-7): Files タブへ切り替えて場所を選ばせる。
-   * 呼び出し元 (App.tsx) が選択後にこの依頼の attachments へ積み戻す。 */
-  onAttachLocation?: (worktreeRoot: string | null) => void;
 };
 
 function emptyAnswer(): DecisionItemAnswer {
   return { selected: [], other: null, note: null };
-}
-
-function formatAttachment(attachment: DecisionAttachment): string {
-  return attachment.lines
-    ? `${attachment.path}:${attachment.lines[0]}-${attachment.lines[1]}`
-    : attachment.path;
 }
 
 /** `Date.now()` はレンダー本体で直接呼べない (impure) ので、初期値は lazy
@@ -285,7 +275,6 @@ export function DecisionView({
   onFocusPane,
   subscribeDecisionEvents,
   onOpenLocation,
-  onAttachLocation,
 }: DecisionViewProps) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["decision", id], queryFn: () => decisionApi.get(id) });
@@ -294,9 +283,9 @@ export function DecisionView({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // 依頼ビューを離れても入力途中の回答/添付を失わないよう、state はモジュール
-  // スコープのストア (decisionDrafts.ts) に持つ — このコンポーネント自身は
-  // App.tsx のツール領域排他表示に伴って頻繁に unmount/remount される。
+  // 依頼ビューを離れても入力途中の回答を失わないよう、state は
+  // localStorage 裏付けのストア (decisionDrafts.ts) に持つ — このコンポーネント
+  // 自身は App.tsx のツール領域排他表示に伴って頻繁に unmount/remount される。
   const [prevId, setPrevId] = useState(id);
   const [draft, setDraft] = useState<DecisionDraft>(
     () => getDecisionDraft(id) ?? emptyDecisionDraft(),
@@ -307,7 +296,6 @@ export function DecisionView({
     setError(null);
   }
   const answers = draft.answers;
-  const attachments = draft.attachments;
 
   const updateDraft = useCallback(
     (next: DecisionDraft) => {
@@ -327,9 +315,13 @@ export function DecisionView({
     }
   }
 
-  function removeAttachment(index: number) {
-    updateDraft({ ...draft, attachments: attachments.filter((_, i) => i !== index) });
-  }
+  // 依頼が非 open になった（送信/却下/取り下げ）ら、もう使わない入力途中の
+  // 下書きを localStorage から消す。dismiss/submit の成功パスに加え、他所
+  // （別タブ、エージェントの `hw decision cancel`）で非 open になった場合も
+  // イベント経由の再取得でここを通る。
+  useEffect(() => {
+    if (decision && decision.status !== "open") clearDecisionDraft(id);
+  }, [decision, id]);
 
   useEffect(() => {
     if (!subscribeDecisionEvents) return;
@@ -401,9 +393,8 @@ export function DecisionView({
     setBusy(true);
     setError(null);
     try {
-      const body: DecisionAnswer = { answers, attachments };
+      const body: DecisionAnswer = { answers };
       await decisionApi.answer(id, body);
-      clearDecisionDraft(id);
       await queryClient.invalidateQueries({ queryKey: ["decision", id] });
       await queryClient.invalidateQueries({ queryKey: ["decision-counts"] });
     } catch (err) {
@@ -521,24 +512,6 @@ export function DecisionView({
         )}
       </div>
 
-      {isOpen && attachments.length > 0 && (
-        <ul className="flex shrink-0 flex-col gap-1 border-t border-border px-3 py-2 text-xs">
-          {attachments.map((attachment, i) => (
-            <li key={i} className="flex items-center justify-between gap-2">
-              <span className="truncate font-mono">{formatAttachment(attachment)}</span>
-              <button
-                type="button"
-                className="shrink-0 text-muted-foreground hover:text-foreground"
-                onClick={() => removeAttachment(i)}
-                aria-label={`${formatAttachment(attachment)} を削除`}
-              >
-                削除
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
       {error && <p className="shrink-0 px-3 py-1 text-xs text-destructive">{error}</p>}
 
       {isOpen ? (
@@ -549,17 +522,6 @@ export function DecisionView({
           <Button type="button" variant="ghost" onClick={() => void dismiss()} disabled={busy}>
             却下
           </Button>
-          {onAttachLocation && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onAttachLocation(decision.worktreeRoot)}
-              disabled={busy}
-            >
-              場所を添付
-            </Button>
-          )}
         </footer>
       ) : (
         <footer className="flex shrink-0 flex-col gap-1 border-t border-border px-3 py-2 text-xs text-muted-foreground">

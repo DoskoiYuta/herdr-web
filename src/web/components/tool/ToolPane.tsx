@@ -144,10 +144,6 @@ export interface ToolPaneProps {
    * 戻す想定（DiffPanel の `initialLocation` と同じ流儀）。 */
   filesInitialLocation?: FilesInitialLocation | null;
   onFilesInitialLocationConsumed?: () => void;
-  /** F13-7: 判断依頼への「場所を添付」導線。有効な間は Files タブへ切り替え、
-   * 選ばれた場所を呼び出し元 (App.tsx) へ渡す。 */
-  decisionAttachActive?: boolean;
-  onAttachDecisionLocation?: (location: { path: string; lines: [number, number] }) => void;
 }
 
 function ResumeCopyButton({ sessionId }: { sessionId: string }) {
@@ -255,13 +251,9 @@ export function ToolPane({
   subscribeAskEvents,
   filesInitialLocation = null,
   onFilesInitialLocationConsumed,
-  decisionAttachActive = false,
-  onAttachDecisionLocation,
 }: ToolPaneProps) {
   const [comparison, setComparison] = useState<CommitRange>(null);
-  const [activeTab, setActiveTab] = useState(() =>
-    filesInitialLocation || decisionAttachActive ? "files" : "diff",
-  );
+  const [activeTab, setActiveTab] = useState(() => (filesInitialLocation ? "files" : "diff"));
   const [initialLocation, setInitialLocation] = useState<DiffInitialLocation | null>(null);
 
   // F10: 質問セッション行「対象ファイルを開く」が来たら Files タブへ切り替える
@@ -271,13 +263,6 @@ export function ToolPane({
   if (filesInitialLocation !== prevFilesInitialLocation) {
     setPrevFilesInitialLocation(filesInitialLocation);
     if (filesInitialLocation && activeTab !== "files") setActiveTab("files");
-  }
-
-  // F13-7: 判断依頼の「場所を添付」が始まったら同様に Files タブへ切り替える。
-  const [prevDecisionAttachActive, setPrevDecisionAttachActive] = useState(decisionAttachActive);
-  if (decisionAttachActive !== prevDecisionAttachActive) {
-    setPrevDecisionAttachActive(decisionAttachActive);
-    if (decisionAttachActive && activeTab !== "files") setActiveTab("files");
   }
 
   // A commit comparison picked in one worktree's Graph tab is meaningless
@@ -569,8 +554,6 @@ export function ToolPane({
             subscribeAskEvents={subscribeAskEvents}
             initialLocation={filesInitialLocation}
             onInitialLocationConsumed={onFilesInitialLocationConsumed}
-            locationAttachActive={decisionAttachActive}
-            onAttachLocation={onAttachDecisionLocation}
           />
         </TabsContent>
 

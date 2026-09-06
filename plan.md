@@ -363,10 +363,11 @@ src/cli                      → contract のみ
 - F13-4. status は「結果」だけを表す `open` →（人間が回答）→ `answered` / `dismissed`（却下）、エージェントが `hw decision cancel` で `cancelled`。却下は open からのみ可能。配達の状況は status と独立に `delivery: null | { state: "pending" | "sent" | "agent_blocked" | "gone" | "unknown", attempts, at, pane }` として持つ — 却下・キャンセルされた依頼も配達の成否とは無関係に `dismissed`/`cancelled` のまま残る（`hw decision list --status dismissed` で引ける）。期限と既定回答は持たない。回答が無い限り依頼は open のまま残り、エージェントが勝手に進むことはない。
 - F13-5. 依頼の書式（`hw decision request --file d.json` / stdin、`hw decision schema` が JSON Schema を出す）: `title?`、`context?: Block[]`、`items: { id, header, question(markdown), kind: single | multi | text | confirm, options?: { label, description?, recommended?, preview?: Block[] }[], allowOther?(既定 true), required?(既定 true) }[]`、`layout?: "compare"`（選択肢の preview を横並びで比較）。設問数・選択肢数の上限は設けない。JSON は 1 MiB まで。valibot スキーマを CLI（事前検証。エラーは JSON パスと理由を stderr）・サーバー・UI で共用する。
 - F13-6. Block の種別と描画: `markdown`（既存の Markdown ビューア）、`code { language, text }`（`@pierre/diffs` の `File`）、`diff`（unified patch を `@pierre/diffs`）、`mermaid`（`mermaid` を動的 import、`securityLevel: "strict"`）、`svg`（`<img src="data:image/svg+xml">` でスクリプトを無効化）、`html`（`sandbox` 付き iframe の `srcdoc`。`allow-same-origin` は付けない。`allowScripts: true` のときだけ `allow-scripts`）、`image { path }`（`/api/fs/raw`、allowed roots 配下のみ）、`location { path, lines? }`（Files タブでその場所を開く。ask のアンカーと同じ）、`table { header[], rows[][] }`。
-- F13-7. 回答は設問ごとに `{ selected: string[], other: string | null, note: string | null }`（`text` は `other` に入る、`confirm` は `selected` が `["yes"]` / `["no"]`）。回答全体に `attachments: { kind: "location", path, lines? }[]` を付けられる（Files タブから「ここ」を指す）。`agent.prompt` の本文は「判断依頼 <短縮 id>（<title>）に回答: <item>=<選択>（note: ...）。全文は `hw decision show <id>`」の形で 2 KiB 以内に収め、超える分は show に逃がす。
-- F13-8. UI: サイドバーのツリーで各 worktree の直下に「判断依頼 N」行を出す（依頼は呼び出し元 pane の worktree に属するので、ask セッションと同じく worktree 単位に置く）。サイドバー上部には全 worktree の open 件数バッジ。行クリックでツール領域を占有する依頼ビュー（`context` → 設問 → 回答フォーム → 送信 / 却下）に切り替わる。focus が別 worktree に動いても表示中の依頼は閉じない。キーボードは 1〜9 で選択、Enter（busy 中は無効）で送信、Esc で閉じる。answered / dismissed / cancelled はフィルタで履歴として見られ、非 open な依頼を開くと確定した回答（選択・その他・メモ・confirm の yes/no）を読み取り専用で表示する。配達状況（`delivery.state` と試行回数）を表示し、status が answered/dismissed かつ `delivery.state` が `sent` 以外（未着手の null を含む）のとき「再送」を出す。依頼にはエージェント名・pane・worktree・Claude セッション id・経過時間を表示し、「pane を開く」で F8-3 と同じく focus を移せる。
+- F13-7. 回答は設問ごとに `{ selected: string[], other: string | null, note: string | null }`（`text` は `other` に入る、`confirm` は `selected` が `["yes"]` / `["no"]`）。回答への場所添付は持たない。`agent.prompt` の本文は「判断依頼 <短縮 id>（<title>）に回答: <item>=<選択>（note: ...）。全文は `hw decision show <id>`」の形で 2 KiB 以内に収め、超える分は show に逃がす。
+- F13-8. UI: サイドバー上部に全 worktree の open 件数バッジを出し、クリックでツール領域に全 worktree 横断の一覧（open が上、フィルタは open/answered/dismissed/cancelled/all、各行にエージェント名・worktree・経過時間・状態）を出す。行クリックでツール領域を占有する依頼ビュー（`context` → 設問 → 回答フォーム → 送信 / 却下）に切り替わる。focus が別 worktree に動いても表示中の依頼は閉じない。キーボードは 1〜9 で選択、Enter（busy 中は無効）で送信、Esc で閉じる。非 open な依頼を開くと確定した回答（選択・その他・メモ・confirm の yes/no）を読み取り専用で表示する。配達状況（`delivery.state` と試行回数）を表示し、status が answered/dismissed かつ `delivery.state` が `sent` 以外（未着手の null を含む）のとき「再送」を出す。依頼にはエージェント名・pane・worktree・Claude セッション id・経過時間を表示し、「pane を開く」で F8-3 と同じく focus を移せる。入力途中の回答は `localStorage`（`herdr-web:decision-draft:<id>`）に持ち、ブラウザのリロードをまたいで残る — 送信・却下・取り下げ・依頼の非 open 化で消す。
 - F13-9. 配達は review 通知（F5）の notifier / scheduler と同じ発想（`agent.prompt` 送信、`sendAgentPrompt` を共用）で組む。herdr 切断中、または再接続直後の replay 窓（`HerdrStateStore.isSettled()` が false の間）は pane の有無を判定できないため `gone` と誤判定せず、`delivery.state = "pending"` のまま指数バックオフ（上限 60 秒）で無期限に再試行する。`agent_blocked`（herdr には届いたが pane がブロック中）は自動再試行せず、人間の「再送」でのみ再送できる。起動時は `drainPending` で `delivery.state !== "sent"` な依頼を拾い直す。
 - F13-10. Claude Code 側の導線は README に雛形を置く: `.claude/skills/hw-decision/SKILL.md`（AskUserQuestion の代わりに `hw decision request` を使う、出したらターンを終える、書式は `hw decision schema`）と、AskUserQuestion を PreToolUse hook で deny し理由文で `hw decision request` へ誘導する settings.json の例。`hw` がユーザーの設定ファイルを書き換えることはしない。
+- F13-11. 依頼作成時、herdr が接続していればサーバーが `notification.show`（`{ title, body?, sound? }`）でデスクトップ通知を出す。`title` は「判断依頼: <依頼の title または最初の設問の header>」、`body` は「<agent> / <worktree の basename>。Web UI で回答してください」。失敗しても依頼の作成自体は成功させ、ログにのみ残す。
 
 ## 8. 非機能要件
 
@@ -478,17 +479,17 @@ src/cli                      → contract のみ
 
 ### 9.w Hono RPC — decision（Web UI と `hw` が共用、F13）
 
-| メソッド | パス                                  | 説明                                                                                                         |
-| -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| POST     | `/api/decision`                       | 作成（hw）: `{ spec, paneId?, claudeSessionId? }` → `{ id, url, paneResolved }`                              |
-| GET      | `/api/decision?status=&worktreeRoot=` | 一覧（UI / `hw decision list`。CLI 既定は `open` のみ、`--status all` で全件）                               |
-| GET      | `/api/decision/counts`                | worktree ごとと全体の open 件数（サイドバー）                                                                |
-| GET      | `/api/decision/:id`                   | 詳細（`hw decision show`）                                                                                   |
-| POST     | `/api/decision/:id/answer`            | 回答（UI）: `{ answers, attachments }`。spec と突き合わせて検証し（400 で拒否）、answered にして配達を試みる |
-| POST     | `/api/decision/:id/dismiss`           | 却下（UI）。dismissed にして配達を試みる                                                                     |
-| POST     | `/api/decision/:id/cancel`            | 取り下げ（hw）。配達は試みない                                                                               |
-| POST     | `/api/decision/:id/resend`            | 再配達（UI）。status が answered/dismissed かつ `delivery.state` が `sent` 以外のときだけ受け付ける（409）   |
-| GET      | `/api/decision/schema`                | spec の JSON Schema（`hw decision schema`）                                                                  |
+| メソッド | パス                                  | 説明                                                                                                       |
+| -------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| POST     | `/api/decision`                       | 作成（hw）: `{ spec, paneId?, claudeSessionId? }` → `{ id, url, paneResolved }`                            |
+| GET      | `/api/decision?status=&worktreeRoot=` | 一覧（UI / `hw decision list`。CLI 既定は `open` のみ、`--status all` で全件）                             |
+| GET      | `/api/decision/counts`                | 全体の open 件数（サイドバー）                                                                             |
+| GET      | `/api/decision/:id`                   | 詳細（`hw decision show`）                                                                                 |
+| POST     | `/api/decision/:id/answer`            | 回答（UI）: `{ answers }`。spec と突き合わせて検証し（400 で拒否）、answered にして配達を試みる            |
+| POST     | `/api/decision/:id/dismiss`           | 却下（UI）。dismissed にして配達を試みる                                                                   |
+| POST     | `/api/decision/:id/cancel`            | 取り下げ（hw）。配達は試みない                                                                             |
+| POST     | `/api/decision/:id/resend`            | 再配達（UI）。status が answered/dismissed かつ `delivery.state` が `sent` 以外のときだけ受け付ける（409） |
+| GET      | `/api/decision/schema`                | spec の JSON Schema（`hw decision schema`）                                                                |
 
 WS `/ws/events`: `{ type: "decision", action: "created" | "answered" | "dismissed" | "cancelled" | "delivered" | "delivery-updated", id, worktreeRoot, paneId }`。`delivered` は配達成功（`delivery.state = "sent"`）、`delivery-updated` はそれ以外の配達状態の変化（pending/agent_blocked/gone/unknown）。
 
@@ -502,6 +503,7 @@ WS `/ws/events`: `{ type: "decision", action: "created" | "answered" | "dismisse
 | pane 情報          | `pane.get`                                                                                         |
 | フォーカス         | `pane.focus`（必要なら `workspace.focus`）                                                         |
 | 通知               | `agent.prompt`                                                                                     |
+| トースト通知       | `notification.show`（判断依頼作成時、F13-11）                                                      |
 | ワークスペース管理 | `workspace.create` / `workspace.rename` / `workspace.close`（サイドバー、`/api/herdr/workspace*`） |
 
 ## 10. 実装上の注意
@@ -614,4 +616,3 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - ファイル編集（Files タブからの保存）
 - Docker タブの操作（stop / restart）と、compose / devcontainer ラベルを持たないコンテナの表示（bind mount の source で紐づける。Docker Desktop for Mac は source を `/host_mnt/...` で報告する）
 - Process タブからの kill / シグナル送信、herdr pane との対応付け（`pane.process_info`）
-- 判断依頼の回答へのファイル添付（F9-7 のインポートを流用）、herdr の `notification.show` によるトースト

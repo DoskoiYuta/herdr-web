@@ -23,7 +23,6 @@ const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
 };
 
 export type DecisionListViewProps = {
-  worktreeRoot: string;
   onSelect: (id: string) => void;
   onClose?: () => void;
   subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
@@ -39,33 +38,40 @@ function resultLabel(decision: Decision): string | null {
   return parts.filter(Boolean).join(", ") || null;
 }
 
-/** worktree の判断依頼一覧 (plan F13-8)。既定は open のみ。非 open の行には
- * 結果（answered の選択内容）と配達状態を出す。 */
+function worktreeBasename(root: string | null): string | null {
+  if (!root) return null;
+  const trimmed = root.replace(/\/+$/, "");
+  const idx = trimmed.lastIndexOf("/");
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
+
+/** 全 worktree 横断の判断依頼一覧 (plan F13-8)。既定は open のみ、open が上。
+ * 非 open の行には結果（answered の選択内容）と配達状態を出す。 */
 export function DecisionListView({
-  worktreeRoot,
   onSelect,
   onClose,
   subscribeDecisionEvents,
 }: DecisionListViewProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
   const queryClient = useQueryClient();
-  const queryKey = ["decision-list", worktreeRoot, statusFilter];
+  const queryKey = ["decision-list", statusFilter];
   const query = useQuery({
     queryKey,
-    queryFn: () =>
-      decisionApi.list({
-        worktreeRoot,
-        status: statusFilter === "all" ? undefined : statusFilter,
-      }),
+    queryFn: () => decisionApi.list({ status: statusFilter === "all" ? undefined : statusFilter }),
   });
-  const decisions = query.data ?? [];
+  // open を上に固定する（フィルタが "all" のとき、他ステータスと混ざる）。
+  const decisions = [...(query.data ?? [])].sort((a, b) => {
+    if (a.status === "open" && b.status !== "open") return -1;
+    if (a.status !== "open" && b.status === "open") return 1;
+    return 0;
+  });
 
   useEffect(() => {
     if (!subscribeDecisionEvents) return;
     return subscribeDecisionEvents(() => {
-      void queryClient.invalidateQueries({ queryKey: ["decision-list", worktreeRoot] });
+      void queryClient.invalidateQueries({ queryKey: ["decision-list"] });
     });
-  }, [subscribeDecisionEvents, queryClient, worktreeRoot]);
+  }, [subscribeDecisionEvents, queryClient]);
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -98,6 +104,7 @@ export function DecisionListView({
         <ul className="flex flex-col gap-1">
           {decisions.map((decision, i) => {
             const result = resultLabel(decision);
+            const worktree = worktreeBasename(decision.worktreeRoot);
             return (
               <li key={decision.id}>
                 <button
@@ -112,6 +119,7 @@ export function DecisionListView({
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {decision.status} · {decision.agent ?? "?"}
+                    {worktree && ` · ${worktree}`}
                     {result && ` · 結果: ${result}`}
                     {decision.status !== "open" &&
                       ` · 配達: ${decision.delivery?.state ?? "pending"}`}

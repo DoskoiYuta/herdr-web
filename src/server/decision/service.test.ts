@@ -48,6 +48,7 @@ function setup() {
     delivery,
     clock,
     events: { emit: (e) => events.push(e) },
+    alerter: { show: async () => {} },
     generateId: (() => {
       let n = 0;
       return () => `id-${++n}`;
@@ -105,7 +106,6 @@ describe("createDecisionService.createDecision", () => {
 describe("createDecisionService.answerDecision", () => {
   const answer: DecisionAnswer = {
     answers: { q1: { selected: ["A"], other: null, note: null } },
-    attachments: [],
   };
 
   // 無いと壊れる: 回答しても配達が一度も試みられず、エージェントに結果が
@@ -174,7 +174,6 @@ describe("createDecisionService.counts", () => {
 
     const counts = await service.counts();
     expect(counts.total).toBe(1);
-    expect(counts.byWorktreeRoot).toEqual({ "/repo": 1 });
     // sanity: the cancelled one is really gone from the store's open set
     expect((await repository.get(closed.id))?.status).toBe("cancelled");
   });

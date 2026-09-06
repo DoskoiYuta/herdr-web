@@ -84,17 +84,9 @@ export const DecisionItemAnswerSchema = v.object({
 });
 export type DecisionItemAnswer = v.InferOutput<typeof DecisionItemAnswerSchema>;
 
-export const DecisionAttachmentSchema = v.object({
-  kind: v.literal("location"),
-  path: v.string(),
-  lines: v.optional(v.nullable(v.tuple([v.number(), v.number()])), null),
-});
-export type DecisionAttachment = v.InferOutput<typeof DecisionAttachmentSchema>;
-
 export const DecisionAnswerSchema = v.object({
   /** item id -> 回答 */
   answers: v.record(v.string(), DecisionItemAnswerSchema),
-  attachments: v.optional(v.array(DecisionAttachmentSchema), []),
 });
 export type DecisionAnswer = v.InferOutput<typeof DecisionAnswerSchema>;
 
@@ -168,7 +160,6 @@ export type ListDecisionQuery = v.InferOutput<typeof ListDecisionQuerySchema>;
 
 export const DecisionCountsSchema = v.object({
   total: v.number(),
-  byWorktreeRoot: v.record(v.string(), v.number()),
 });
 export type DecisionCounts = v.InferOutput<typeof DecisionCountsSchema>;
 

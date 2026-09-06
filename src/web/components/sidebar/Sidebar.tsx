@@ -30,8 +30,8 @@ export type SidebarProps = {
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
   subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
-  /** worktree の「判断依頼 N」行クリック (F13-8)。 */
-  onSelectDecisions?: (worktreeRoot: string) => void;
+  /** サイドバー上部の判断依頼バッジクリック (F13-8)。全 worktree 横断の一覧を開く。 */
+  onSelectDecisions?: () => void;
   subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
 };
 
@@ -110,10 +110,17 @@ export function Sidebar({
           </Badge>
         )}
         {decisionCounts && decisionCounts.total > 0 && (
-          <Badge variant="outline" className="gap-0.5 px-1 text-amber-700 dark:text-amber-400">
-            <MessageSquareWarning className="size-3" aria-hidden="true" />
-            {decisionCounts.total}
-          </Badge>
+          <button
+            type="button"
+            onClick={onSelectDecisions}
+            aria-label={`判断依頼 ${decisionCounts.total} 件`}
+            className="rounded-md"
+          >
+            <Badge variant="outline" className="gap-0.5 px-1 text-amber-700 dark:text-amber-400">
+              <MessageSquareWarning className="size-3" aria-hidden="true" />
+              {decisionCounts.total}
+            </Badge>
+          </button>
         )}
       </aside>
     );
@@ -141,10 +148,17 @@ export function Sidebar({
             </ToggleGroupItem>
           </ToggleGroup>
           {decisionCounts && decisionCounts.total > 0 && (
-            <Badge variant="outline" className="gap-0.5 text-amber-700 dark:text-amber-400">
-              <MessageSquareWarning className="size-3" aria-hidden="true" />
-              {decisionCounts.total}
-            </Badge>
+            <button
+              type="button"
+              onClick={onSelectDecisions}
+              data-testid="decision-count-badge"
+              className="rounded-md"
+            >
+              <Badge variant="outline" className="gap-0.5 text-amber-700 dark:text-amber-400">
+                <MessageSquareWarning className="size-3" aria-hidden="true" />
+                {decisionCounts.total}
+              </Badge>
+            </button>
           )}
           <button
             type="button"
@@ -182,8 +196,6 @@ export function Sidebar({
                 onSelectPane={onSelectPane}
                 onOpenAskFile={onOpenAskFile}
                 subscribeAskEvents={subscribeAskEvents}
-                decisionCounts={decisionCounts?.byWorktreeRoot}
-                onSelectDecisions={onSelectDecisions}
               />
             ))}
 

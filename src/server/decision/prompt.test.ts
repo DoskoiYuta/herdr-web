@@ -24,7 +24,6 @@ function baseDecision(overrides: Partial<Decision> = {}): Decision {
     },
     answer: {
       answers: { q1: { selected: ["A"], other: null, note: "理由" } },
-      attachments: [],
     },
     paneId: "pane-1",
     claudeSessionId: null,
@@ -52,7 +51,6 @@ describe("renderAnsweredPrompt", () => {
     const decision = baseDecision({
       answer: {
         answers: { q1: { selected: ["その他"], other: "JWT", note: null } },
-        attachments: [],
       },
     });
     const text = renderAnsweredPrompt(decision);
@@ -65,7 +63,6 @@ describe("renderAnsweredPrompt", () => {
     const decision = baseDecision({
       answer: {
         answers: { q1: { selected: ["A"], other: null, note: "x".repeat(10_000) } },
-        attachments: [],
       },
     });
     const text = renderAnsweredPrompt(decision);
@@ -73,19 +70,6 @@ describe("renderAnsweredPrompt", () => {
       DECISION_PROMPT_MAX_BYTES,
     );
     expect(text).toContain("hw decision show");
-  });
-
-  // 無いと壊れる: 回答に添付された場所がエージェントに伝わらず、`hw decision
-  // show` を打つまで「この場所」が何を指すか分からない (plan F13-7)。
-  test("includes attached locations", () => {
-    const decision = baseDecision({
-      answer: {
-        answers: { q1: { selected: ["A"], other: null, note: null } },
-        attachments: [{ kind: "location", path: "src/foo.ts", lines: [3, 5] }],
-      },
-    });
-    const text = renderAnsweredPrompt(decision);
-    expect(text).toContain("src/foo.ts:3-5");
   });
 });
 

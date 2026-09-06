@@ -1,8 +1,4 @@
-import {
-  DECISION_PROMPT_MAX_BYTES,
-  type Decision,
-  type DecisionAttachment,
-} from "../../contract/decision";
+import { DECISION_PROMPT_MAX_BYTES, type Decision } from "../../contract/decision";
 
 const encoder = new TextEncoder();
 function byteLength(text: string): number {
@@ -46,19 +42,6 @@ function formatAnswerPart(
   return `${item.header || item.id}=${choice}${note}`;
 }
 
-/** F13-7: `path:start-end`（`lines` が無ければ `path` のみ）を 1 行ずつ。 */
-function formatAttachmentLine(attachment: DecisionAttachment): string {
-  return attachment.lines
-    ? `${attachment.path}:${attachment.lines[0]}-${attachment.lines[1]}`
-    : attachment.path;
-}
-
-function attachmentsBlock(decision: Decision): string {
-  const attachments = decision.answer?.attachments ?? [];
-  if (attachments.length === 0) return "";
-  return `\n添付:\n${attachments.map(formatAttachmentLine).join("\n")}`;
-}
-
 /**
  * `hw decision show <id>` に確実に案内できるよう、title を落としてもなお
  * 収まらない分はバイト単位で切り詰める。
@@ -81,14 +64,11 @@ export function renderAnsweredPrompt(decision: Decision): string {
   const parts = decision.spec.items.map((item) => formatAnswerPart(item, decision.answer));
   const header = (title: string | null) =>
     `判断依頼 ${shortId(decision.id)}${titleSuffix(title)}に回答:`;
-  const attachments = attachmentsBlock(decision);
 
   for (let n = parts.length; n >= 1; n--) {
     const body = n === parts.length ? parts.join("; ") : `${parts.slice(0, n).join("; ")}…(省略)`;
-    const withAttachments = `${header(decision.spec.title)} ${body}。${attachments}${footer}`;
-    if (byteLength(withAttachments) <= DECISION_PROMPT_MAX_BYTES) return withAttachments;
-    const withoutAttachments = `${header(decision.spec.title)} ${body}。${footer}`;
-    if (byteLength(withoutAttachments) <= DECISION_PROMPT_MAX_BYTES) return withoutAttachments;
+    const withBody = `${header(decision.spec.title)} ${body}。${footer}`;
+    if (byteLength(withBody) <= DECISION_PROMPT_MAX_BYTES) return withBody;
   }
   return fitToBudget(
     () => `${header(decision.spec.title)}${footer}`,

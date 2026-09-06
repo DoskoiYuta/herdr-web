@@ -3,7 +3,7 @@ import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-librar
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Decision, DecisionEvent } from "@contract/decision";
-import { addDecisionAttachment, clearDecisionDraft } from "@/lib/decisionDrafts";
+import { clearDecisionDraft, getDecisionDraft } from "@/lib/decisionDrafts";
 import { DecisionView } from "./DecisionView";
 
 const get = vi.fn();
@@ -168,7 +168,6 @@ describe("DecisionView", () => {
       status: "answered",
       answer: {
         answers: { q1: { selected: ["A"], other: null, note: "念のため" } },
-        attachments: [],
       },
       answeredAt: new Date().toISOString(),
     });
@@ -273,24 +272,19 @@ describe("DecisionView", () => {
     expect(answer.mock.calls[0]![1].answers.q1.other).toBe("C案");
   });
 
-  // 無いと壊れる: Files タブで添付した場所が回答に乗らず、エージェントが
-  // 「この場所」を受け取れない (plan F13-7)。
-  test("submitting with a staged location attachment includes it in the answer API call", async () => {
+  // 無いと壊れる: 却下後も下書きが localStorage に残り続け、同じ id の依頼が
+  // 二度と存在しないのに永久にストレージを専有する。
+  test("dismissing clears the persisted draft", async () => {
     const decision = baseDecision();
-    get.mockResolvedValue(decision);
-    answer.mockResolvedValue({ ...decision, status: "answered" });
-    addDecisionAttachment("decision-1", { kind: "location", path: "src/foo.ts", lines: [3, 5] });
+    get.mockResolvedValueOnce(decision).mockResolvedValue({ ...decision, status: "dismissed" });
+    dismiss.mockResolvedValue({ ...decision, status: "dismissed" });
 
     render(<DecisionView id="decision-1" />);
-
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
     fireEvent.click(screen.getAllByRole("radio")[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    fireEvent.click(screen.getByRole("button", { name: "却下" }));
 
-    await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
-    expect(answer.mock.calls[0]![1].attachments).toEqual([
-      { kind: "location", path: "src/foo.ts", lines: [3, 5] },
-    ]);
+    await waitFor(() => expect(getDecisionDraft("decision-1")).toBeUndefined());
   });
 
   // 無いと壊れる: ビューを閉じて開き直すと入力途中の回答が消え、Files タブへ

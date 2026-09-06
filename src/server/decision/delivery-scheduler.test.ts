@@ -25,7 +25,7 @@ function makeDecision(overrides: Partial<Decision> = {}): Decision {
       ],
       layout: null,
     },
-    answer: { answers: { q1: { selected: ["A"], other: null, note: null } }, attachments: [] },
+    answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
     paneId: "pane-1",
     claudeSessionId: null,
     worktreeRoot: "/repo",

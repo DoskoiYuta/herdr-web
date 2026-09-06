@@ -52,6 +52,12 @@ export interface HerdrGateway {
    */
   workspaceClose(workspaceId: string): Promise<void>;
   agentPrompt(paneId: string, text: string): Promise<AgentPromptOutcome>;
+  /** `notification.show`: a desktop toast, independent of any pane (plan.md F13-11). */
+  notificationShow(params: {
+    title: string;
+    body?: string | null;
+    sound?: "none" | "done" | "request";
+  }): Promise<void>;
   /**
    * `agent.start`: launches an agent in `paneId`, which must be at a shell
    * prompt. Resolves once herdr detects the agent and it is ready (or rejects

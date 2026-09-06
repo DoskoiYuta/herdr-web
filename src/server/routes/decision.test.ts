@@ -62,6 +62,25 @@ describe("POST /api/decision", () => {
     const res = await postDecision(app, { spec, paneId: "no-such-pane" });
     expect((await json(res)).paneResolved).toBe(false);
   });
+
+  // 無いと壊れる: 依頼が作成されても人間の画面外（herdr のトースト）に一切
+  // 気づきの手がかりが出ず、Web UI を開いて確認しない限り依頼の存在を知れない
+  // (plan F13-11)。
+  test("shows an herdr toast with the decision's title on creation", async () => {
+    const { app, fake } = createTestApp();
+    await postDecision(app);
+    expect(fake.notificationsShown).toHaveLength(1);
+    expect(fake.notificationsShown[0]?.title).toBe(`判断依頼: ${spec.title}`);
+  });
+
+  // 無いと壊れる: herdr 側のトースト送信が失敗すると依頼の作成自体が失敗し、
+  // トーストという付加的な通知のせいで本質的な依頼登録が壊れる。
+  test("still returns 201 when the herdr toast fails", async () => {
+    const { app, fake } = createTestApp();
+    fake.failNotificationShow();
+    const res = await postDecision(app);
+    expect(res.status).toBe(201);
+  });
 });
 
 describe("GET /api/decision/:id", () => {
@@ -235,7 +254,7 @@ describe("POST /api/decision/:id/resend", () => {
     await decision.repository.save({
       ...existing!,
       status: "answered",
-      answer: { answers: { q1: { selected: ["A"], other: null, note: null } }, attachments: [] },
+      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
       answeredAt: "2026-01-01T00:00:00.000Z",
       delivery: null,
     });

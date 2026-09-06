@@ -5,6 +5,9 @@
 // sandbox. Height is left to the human (resize-y) rather than measured via
 // postMessage, since the request author controls neither this page's origin
 // nor the iframe's, so a self-reported height can't be trusted either.
+// The background stays white regardless of app theme: the agent-authored
+// markup has no way to know the viewer's theme, so making the iframe
+// transparent in dark mode would put unstyled dark text on a dark page.
 export function HtmlBlock({ html, allowScripts }: { html: string; allowScripts: boolean }) {
   return (
     <iframe

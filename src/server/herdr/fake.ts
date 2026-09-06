@@ -44,6 +44,10 @@ export interface FakeHerdr extends HerdrGateway {
   setPaneReadText(paneId: string, text: string): void;
   /** Make the next `paneRead(paneId, lines)` calls reject, simulating a herdr RPC failure. */
   failPaneRead(paneId: string, fail?: boolean): void;
+  /** Every `notificationShow` call so far, in order. */
+  notificationsShown: { title: string; body?: string | null; sound?: string }[];
+  /** Make the next `notificationShow` call reject, simulating a herdr RPC failure. */
+  failNotificationShow(fail?: boolean): void;
 }
 
 export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
@@ -61,6 +65,8 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
   const failingReadPanes = new Set<string>();
   const failingAgentStartPanes = new Set<string>();
   let nextWorkspaceNumber = workspaces.size + 1;
+  const notificationsShown: { title: string; body?: string | null; sound?: string }[] = [];
+  let failNextNotificationShow = false;
 
   const subscribers = new Set<(event: HerdrEventEnvelope) => void>();
   const statusListeners = new Set<(status: HerdrStatus) => void>();
@@ -246,6 +252,17 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
       if (blockedPanes.has(paneId)) return { status: "agent_blocked" };
       return { status: "sent", agent: pane };
     },
+    async notificationShow(params: {
+      title: string;
+      body?: string | null;
+      sound?: "none" | "done" | "request";
+    }): Promise<void> {
+      if (failNextNotificationShow) {
+        failNextNotificationShow = false;
+        throw new Error("fake herdr: notification.show failed");
+      }
+      notificationsShown.push(params);
+    },
     subscribe(handler: (event: HerdrEventEnvelope) => void): () => void {
       subscribers.add(handler);
       return () => subscribers.delete(handler);
@@ -360,6 +377,11 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
     failPaneRead(paneId: string, fail = true): void {
       if (fail) failingReadPanes.add(paneId);
       else failingReadPanes.delete(paneId);
+    },
+
+    notificationsShown,
+    failNotificationShow(fail = true): void {
+      failNextNotificationShow = fail;
     },
   };
 }

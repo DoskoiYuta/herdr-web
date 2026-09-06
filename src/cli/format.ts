@@ -153,13 +153,6 @@ export function formatDecisionShow(decision: Decision): string {
         selected && a.other ? `${selected}（その他: ${a.other}）` : (selected ?? a.other ?? "");
       lines.push(`  ${itemId}=${choice}${a.note ? ` (note: ${a.note})` : ""}`);
     }
-    if (decision.answer.attachments.length > 0) {
-      lines.push("  attachments:");
-      for (const at of decision.answer.attachments) {
-        const range = at.lines ? `:${at.lines[0]}-${at.lines[1]}` : "";
-        lines.push(`    - ${at.path}${range}`);
-      }
-    }
   }
   return lines.join("\n");
 }

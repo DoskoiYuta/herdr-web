@@ -41,7 +41,46 @@ vi.mock("@/lib/api", () => ({
   reviewApi: {
     list: vi.fn(async () => []),
   },
+  decisionApi: {
+    counts: vi.fn(async () => ({ total: 2 })),
+    list: vi.fn(async () => [
+      decisionFixture("d1", "/Users/dev/project", "依頼A"),
+      decisionFixture("d2", "/Users/dev/other", "依頼B"),
+    ]),
+  },
 }));
+
+function decisionFixture(id: string, worktreeRoot: string, title: string) {
+  return {
+    id,
+    status: "open",
+    spec: {
+      title,
+      context: [],
+      items: [
+        {
+          id: "q1",
+          header: "h",
+          question: "q?",
+          kind: "text",
+          options: [],
+          allowOther: true,
+          required: true,
+        },
+      ],
+      layout: null,
+    },
+    answer: null,
+    paneId: null,
+    claudeSessionId: null,
+    worktreeRoot,
+    repoKey: null,
+    agent: "claude",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    answeredAt: null,
+    delivery: null,
+  };
+}
 
 type EventsHandlers = {
   onMessage: (message: ServerEventMessage) => void;
@@ -222,5 +261,14 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByTestId("workspace-row-w1"));
     expect(sendMock).toHaveBeenCalledWith({ type: "focus-pane", pane: "p1" });
+  });
+
+  // 無いと壊れる: 判断依頼は worktree ごとの行でしか見られず、他の worktree の
+  // 依頼を見るには focus を移すしかなくなる (plan F13-8)。
+  test("clicking the decision badge opens a list of open decisions across worktrees", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    expect(await screen.findByText("依頼A")).toBeInTheDocument();
+    expect(await screen.findByText("依頼B")).toBeInTheDocument();
   });
 });

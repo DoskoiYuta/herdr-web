@@ -88,10 +88,6 @@ export interface FilesPanelProps {
    * これを受けて `initialLocation` を null に戻すこと — さもないとポーラー更新
    * のたびに再度同じ場所へジャンプしてしまう（DiffPanel.tsx と同じ理由）。 */
   onInitialLocationConsumed?: () => void;
-  /** F13-7: 判断依頼への「場所を添付」導線が有効か。有効な間、行範囲を選択
-   * すると「この場所を判断依頼に添付」ボタンを出す。 */
-  locationAttachActive?: boolean;
-  onAttachLocation?: (location: { path: string; lines: [number, number] }) => void;
 }
 
 /** Transient status/error line shown in the header. `show` with no `ms`
@@ -126,8 +122,6 @@ export function FilesPanel({
   subscribeAskEvents,
   initialLocation = null,
   onInitialLocationConsumed,
-  locationAttachActive = false,
-  onAttachLocation,
 }: FilesPanelProps) {
   const codeFileViewRef = useRef<CodeFileViewHandle>(null);
   const [settings, updateSettings] = useViewerSettings();
@@ -625,33 +619,6 @@ export function FilesPanel({
                   <span>{fileQuery.data.size} bytes</span>
                 )}
               </div>
-            </div>
-          )}
-          {locationAttachActive && (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/50 px-2 py-1 text-xs">
-              <span className="text-muted-foreground">
-                {selection
-                  ? `行 ${Math.min(selection.range.start, selection.range.end)}-${Math.max(selection.range.start, selection.range.end)} を判断依頼に添付できます`
-                  : "行を選択すると判断依頼に添付できます"}
-              </span>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                disabled={!selection || selecting || selectedPath === null}
-                onClick={() => {
-                  if (!selection || selectedPath === null) return;
-                  onAttachLocation?.({
-                    path: selectedPath,
-                    lines: [
-                      Math.min(selection.range.start, selection.range.end),
-                      Math.max(selection.range.start, selection.range.end),
-                    ],
-                  });
-                }}
-              >
-                この場所を判断依頼に添付
-              </Button>
             </div>
           )}
           <AskMismatchStrip

@@ -9,7 +9,6 @@ import { createHerdrStore, useHerdrStore } from "@/lib/herdrStore";
 import type { AskFileLocation } from "@/components/sidebar/AskSessionGroup";
 import { DecisionListView } from "@/components/decision/DecisionListView";
 import { DecisionView } from "@/components/decision/DecisionView";
-import { addDecisionAttachment } from "@/lib/decisionDrafts";
 import type { FilesInitialLocation } from "@/components/files/FilesPanel";
 import {
   DEFAULT_LAYOUT,
@@ -30,8 +29,9 @@ function loadInitialLayout() {
 }
 
 /** ツール領域の判断依頼モード (F13-8)。focus の worktree が変わっても閉じない
- * よう、`worktreeRoot`/`repoKey` とは独立に持つ。`#decision/<id>` で直接開ける。 */
-type DecisionUiState = { kind: "list"; worktreeRoot: string } | { kind: "view"; id: string } | null;
+ * よう、`worktreeRoot`/`repoKey` とは独立に持つ。一覧は全 worktree 横断
+ * （worktree 単位には絞らない）。`#decision/<id>` で直接開ける。 */
+type DecisionUiState = { kind: "list" } | { kind: "view"; id: string } | null;
 
 function decisionIdFromHash(hash: string): string | null {
   const match = /^#decision\/(.+)$/.exec(hash);
@@ -157,8 +157,8 @@ export function App() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  const handleSelectDecisions = useCallback((root: string) => {
-    setDecisionUi({ kind: "list", worktreeRoot: root });
+  const handleSelectDecisions = useCallback(() => {
+    setDecisionUi({ kind: "list" });
   }, []);
   const handleSelectDecision = useCallback((id: string) => {
     setDecisionUi({ kind: "view", id });
@@ -186,37 +186,6 @@ export function App() {
       setDecisionUi(null);
     },
     [worktreeRoot, handleOpenPath],
-  );
-
-  // F13-7: 「場所を添付」— Files タブへ切り替え、選ばれた場所をこの依頼の
-  // draft attachments (decisionDrafts.ts) に積んでから依頼ビューへ戻す。
-  const [decisionAttachId, setDecisionAttachId] = useState<string | null>(null);
-  const handleStartAttachLocation = useCallback(
-    (decisionWorktreeRoot: string | null) => {
-      if (!decisionUi || decisionUi.kind !== "view") return;
-      if (decisionWorktreeRoot && decisionWorktreeRoot !== worktreeRoot) {
-        handleOpenPath(decisionWorktreeRoot);
-      }
-      setDecisionAttachId(decisionUi.id);
-      setDecisionUi(null);
-    },
-    [decisionUi, worktreeRoot, handleOpenPath],
-  );
-  const handleCancelAttachLocation = useCallback(() => {
-    if (!decisionAttachId) return;
-    const id = decisionAttachId;
-    setDecisionAttachId(null);
-    setDecisionUi({ kind: "view", id });
-  }, [decisionAttachId]);
-  const handleAttachDecisionLocation = useCallback(
-    (location: { path: string; lines: [number, number] }) => {
-      if (!decisionAttachId) return;
-      const id = decisionAttachId;
-      addDecisionAttachment(id, { kind: "location", path: location.path, lines: location.lines });
-      setDecisionAttachId(null);
-      setDecisionUi({ kind: "view", id });
-    },
-    [decisionAttachId],
   );
 
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
@@ -284,12 +253,10 @@ export function App() {
             onFocusPane={handleSelectPane}
             subscribeDecisionEvents={store.subscribeDecisionEvents}
             onOpenLocation={handleOpenDecisionLocation}
-            onAttachLocation={handleStartAttachLocation}
           />
         )}
         {!layout.toolCollapsed && decisionUi?.kind === "list" && (
           <DecisionListView
-            worktreeRoot={decisionUi.worktreeRoot}
             onSelect={handleSelectDecision}
             onClose={handleCloseDecisionUi}
             subscribeDecisionEvents={store.subscribeDecisionEvents}
@@ -309,18 +276,7 @@ export function App() {
             subscribeAskEvents={store.subscribeAskEvents}
             filesInitialLocation={filesInitialLocation}
             onFilesInitialLocationConsumed={handleFilesInitialLocationConsumed}
-            decisionAttachActive={decisionAttachId !== null}
-            onAttachDecisionLocation={handleAttachDecisionLocation}
           />
-        )}
-        {!layout.toolCollapsed && decisionUi === null && decisionAttachId !== null && (
-          <button
-            type="button"
-            onClick={handleCancelAttachLocation}
-            className="absolute right-2 top-2 rounded-md border border-border bg-background px-2 py-1 text-xs"
-          >
-            判断依頼に戻る
-          </button>
         )}
       </aside>
     </div>

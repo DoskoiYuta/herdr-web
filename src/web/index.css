@@ -139,10 +139,48 @@
   display: none;
 }
 
-/* wysimark は文字・コード・表の色を zinc 系の固定値で持ち、ダークテーマに
- * 追従しない（暗い背景に rgb(39,39,42) の本文が乗る）。個別に上書きすると
- * 要素種別ごとに漏れが出るので、プレビュー面そのものを常に白い「紙」にする。 */
+/* wysimark はコード・表・引用などのほとんどの色を `--shade-*` 等の CSS 変数
+ * (:root に自前で定義) 経由で持つが、本文の基準色だけは `rgb(39 39 42)` を
+ * 直書きしていて変数を通らない。`:root` と `.dark` は詳細度が同じ（両方
+ * 単純なクラス相当）なので、後着の wysimark 側の `:root` に負けないよう
+ * `html.dark` で上書きする（型 + クラスで詳細度を確実に上げる）。 */
 .md-readonly {
   background: #fff;
   color-scheme: light;
+}
+
+html.dark {
+  --shade-50: rgb(39 39 42);
+  --shade-100: rgb(63 63 70);
+  --shade-200: rgb(82 82 91);
+  --shade-300: rgb(113 113 122);
+  --shade-400: rgb(161 161 170);
+  --shade-500: rgb(212 212 216);
+  --shade-600: rgb(228 228 231);
+  --shade-700: rgb(244 244 245);
+  --shade-800: rgb(250 250 250);
+  --shade-900: rgb(255 255 255);
+  --code-block-bgcolor: rgb(39 39 42);
+  --code-block-border-color: rgb(82 82 91);
+  --inline-code-bgcolor: rgb(63 63 70);
+  --inline-code-border-color: rgb(82 82 91);
+  --table-border-color: rgb(82 82 91);
+  --table-row-border-color: rgb(82 82 91);
+  --table-column-border-color: rgb(63 63 70);
+  --table-head-bgcolor: rgb(39 39 42);
+  --table-menu-bgcolor: rgb(63 63 70);
+  --table-menu-hover-bgcolor: rgb(82 82 91);
+  --hr-color: rgb(82 82 91);
+}
+
+html.dark .md-readonly {
+  background: var(--background);
+  color-scheme: dark;
+}
+
+/* 本文の基準色 (rgb(39 39 42) 直書き) は wysimark の外枠要素自身が持つため、
+ * 継承では上書きできない。`.md-readonly` の直下の子（その外枠）を名指しし、
+ * 変数を通らない要素にだけ !important を当てる。 */
+html.dark .md-readonly > div {
+  color: var(--foreground) !important;
 }

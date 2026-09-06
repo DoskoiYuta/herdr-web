@@ -315,6 +315,12 @@ export const AgentPromptedResultSchema = v.looseObject({
 });
 export type AgentPromptedResult = v.InferOutput<typeof AgentPromptedResultSchema>;
 
+/** `notification.show`'s successful result: `{ type: "notification_shown" }` (F13-11). */
+export const NotificationShownResultSchema = v.looseObject({
+  type: v.literal("notification_shown"),
+});
+export type NotificationShownResult = v.InferOutput<typeof NotificationShownResultSchema>;
+
 /**
  * `workspace.create`'s successful result, verified live against herdr 0.8.2:
  * `{ type: "workspace_created", workspace, tab, root_pane }`.

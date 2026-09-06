@@ -1,4 +1,4 @@
-import { ChevronRight, CircleCheck, MessageSquareWarning, OctagonAlert, Plus } from "lucide-react";
+import { ChevronRight, CircleCheck, OctagonAlert, Plus } from "lucide-react";
 import { useState } from "react";
 import type { Repo } from "@contract/events";
 import { Badge } from "@/components/ui/badge";
@@ -23,9 +23,6 @@ export type RepoGroupProps = {
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
   subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
-  /** worktreeRoot -> open な判断依頼件数 (F13-8)。0/未掲載の worktree は行を出さない。 */
-  decisionCounts?: Record<string, number>;
-  onSelectDecisions?: (worktreeRoot: string) => void;
 };
 
 /** plan.md F8-1 / F8-4: repository ヘッダーに名前と blocked/done バッジ（blocked を
@@ -47,8 +44,6 @@ export function RepoGroup({
   onSelectPane,
   onOpenAskFile,
   subscribeAskEvents,
-  decisionCounts,
-  onSelectDecisions,
 }: RepoGroupProps) {
   const workspaces = groupByWorkspace(repo);
   const askWorkspaces = askWorkspacesFor(repo);
@@ -168,20 +163,6 @@ export function RepoGroup({
               onSelectPane={onSelectPane}
             />
           ))}
-          {repo.worktrees
-            .filter((wt) => (decisionCounts?.[wt.root] ?? 0) > 0)
-            .map((wt) => (
-              <button
-                key={`decision-${wt.root}`}
-                type="button"
-                onClick={() => onSelectDecisions?.(wt.root)}
-                data-testid={`decision-row-${wt.root}`}
-                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-amber-700 hover:bg-muted dark:text-amber-400"
-              >
-                <MessageSquareWarning className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">判断依頼 {decisionCounts![wt.root]}</span>
-              </button>
-            ))}
           <AskSessionGroup
             workspaces={askWorkspaces}
             repoKey={repo.key}

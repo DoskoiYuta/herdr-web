@@ -6,8 +6,12 @@ import type { HerdrStateStore } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
 import { createLocks, realTimer } from "../review/usecases/locks";
 import { createDeliveryScheduler, type DeliveryScheduler } from "./delivery-scheduler";
-import { createHerdrDecisionNotifier, createHerdrWhoamiResolver } from "./herdr-adapter";
-import type { Clock, DecisionNotifier, Timer, WhoamiResolver } from "./ports";
+import {
+  createHerdrDecisionAlerter,
+  createHerdrDecisionNotifier,
+  createHerdrWhoamiResolver,
+} from "./herdr-adapter";
+import type { Clock, DecisionAlerter, DecisionNotifier, Timer, WhoamiResolver } from "./ports";
 import { createSqliteDecisionRepository } from "./sqlite-repository";
 import { createDecisionService } from "./service";
 
@@ -16,6 +20,7 @@ export type DecisionRuntimeDeps = {
   herdr?: { state: HerdrStateStore; gateway: HerdrGateway; resolver: WorktreeResolver };
   notifier?: DecisionNotifier;
   whoami?: WhoamiResolver;
+  alerter?: DecisionAlerter;
   onEvent: (e: DecisionEvent) => void;
   clock?: Clock;
   timer?: Timer;
@@ -46,6 +51,11 @@ export function createDecisionRuntime(deps: DecisionRuntimeDeps) {
   const whoami: WhoamiResolver =
     deps.whoami ??
     (deps.herdr ? createHerdrWhoamiResolver(deps.herdr) : { resolve: async () => null });
+  const alerter: DecisionAlerter =
+    deps.alerter ??
+    (deps.herdr
+      ? createHerdrDecisionAlerter({ gateway: deps.herdr.gateway, logger })
+      : { show: async () => {} });
   const isConnected: () => boolean =
     deps.isConnected ?? (deps.herdr ? () => deps.herdr!.gateway.status().connected : () => true);
   const isSettled: () => boolean = deps.herdr ? () => deps.herdr!.state.isSettled() : () => true;
@@ -62,7 +72,15 @@ export function createDecisionRuntime(deps: DecisionRuntimeDeps) {
     isSettled,
   });
 
-  const service = createDecisionService({ repository, whoami, delivery, clock, events, locks });
+  const service = createDecisionService({
+    repository,
+    whoami,
+    delivery,
+    clock,
+    events,
+    locks,
+    alerter,
+  });
 
   return { repository, service, delivery, routes: { repository, service } };
 }

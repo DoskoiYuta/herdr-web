@@ -52,7 +52,7 @@ describe("createSqliteDecisionRepository", () => {
     const answered = makeDecision({
       id: "decision-2",
       status: "answered",
-      answer: { answers: { q1: { selected: ["A"], other: null, note: "ok" } }, attachments: [] },
+      answer: { answers: { q1: { selected: ["A"], other: null, note: "ok" } } },
       answeredAt: "2026-09-05T00:01:00.000Z",
       delivery: { state: "sent", attempts: 1, pane: "pane-1", at: "2026-09-05T00:01:05.000Z" },
     });

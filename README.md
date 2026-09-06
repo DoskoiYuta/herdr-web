@@ -30,6 +30,10 @@ bun install
 bun run dev        # http://127.0.0.1:8080 （Vite HMR 込み）
 ```
 
+常駐させる場合は `bun run dev` ではなく `bun run serve`（`--watch` 無し）を使う。`bun run dev` の
+`--watch` はソース変更のたびにサーバーを再起動するため、マイグレーションが途中まで
+適用された状態でプロセスが再起動されることがある。
+
 本番相当:
 
 ```bash

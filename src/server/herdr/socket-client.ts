@@ -6,6 +6,7 @@ import {
   HERDR_AGENT_PROMPT_ERROR_CODES,
   HERDR_SUBSCRIPTIONS,
   HerdrEventEnvelopeSchema,
+  NotificationShownResultSchema,
   PaneInfoSchema,
   PaneLayoutSnapshotSchema,
   PaneListResultSchema,
@@ -329,6 +330,18 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
         }
         throw err;
       }
+    },
+    async notificationShow(params: {
+      title: string;
+      body?: string | null;
+      sound?: "none" | "done" | "request";
+    }): Promise<void> {
+      const raw = await request<unknown>("notification.show", {
+        title: params.title,
+        body: params.body ?? undefined,
+        sound: params.sound ?? undefined,
+      });
+      v.parse(NotificationShownResultSchema, raw);
     },
     async agentStart(params: {
       name: string;

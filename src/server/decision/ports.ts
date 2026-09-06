@@ -42,3 +42,9 @@ export interface Timer {
 export interface DecisionEvents {
   emit(e: DecisionEvent): void;
 }
+
+/** `notification.show` によるデスクトップ通知 (plan F13-11)。herdr 未接続や
+ * リクエスト失敗はここで飲み込む — 呼び出し元 (createDecision) を失敗させない。 */
+export interface DecisionAlerter {
+  show(params: { title: string; body?: string | null }): Promise<void>;
+}

@@ -3,7 +3,7 @@ import type { HerdrGateway } from "../herdr/gateway";
 import type { HerdrStateStore } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
 import { resolveWhoami } from "../herdr/whoami";
-import type { DecisionNotifier, WhoamiResolver } from "./ports";
+import type { DecisionAlerter, DecisionNotifier, WhoamiResolver } from "./ports";
 
 export type HerdrDecisionAdapterDeps = {
   state: HerdrStateStore;
@@ -24,6 +24,24 @@ export function createHerdrDecisionNotifier(deps: HerdrDecisionAdapterDeps): Dec
         text,
       );
       return { state, pane: paneId };
+    },
+  };
+}
+
+/** F13-11: herdr 未接続なら呼ばない。リクエスト自体の失敗もここで飲み込み、
+ * 依頼の作成を失敗させない（トーストはあくまで付加的な通知）。 */
+export function createHerdrDecisionAlerter(deps: {
+  gateway: HerdrGateway;
+  logger?: Pick<typeof console, "warn">;
+}): DecisionAlerter {
+  return {
+    async show(params) {
+      if (!deps.gateway.status().connected) return;
+      try {
+        await deps.gateway.notificationShow(params);
+      } catch (err) {
+        deps.logger?.warn(`herdr: notification.show failed: ${String(err)}`);
+      }
     },
   };
 }

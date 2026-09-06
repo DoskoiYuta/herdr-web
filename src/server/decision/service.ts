@@ -9,6 +9,7 @@ import { createLocks, type Locks } from "../review/usecases/locks";
 import type { DeliveryScheduler } from "./delivery-scheduler";
 import type {
   Clock,
+  DecisionAlerter,
   DecisionEvents,
   DecisionListFilter,
   DecisionRepository,
@@ -37,9 +38,22 @@ export type DecisionServiceDeps = {
   delivery: DeliveryScheduler;
   clock: Clock;
   events: DecisionEvents;
+  alerter: DecisionAlerter;
   generateId?: () => string;
   locks?: Locks;
 };
+
+/** F13-11: 依頼の title、無ければ最初の設問の header。 */
+function alertTitle(spec: CreateDecisionRequest["spec"]): string {
+  return `判断依頼: ${spec.title ?? spec.items[0]?.header ?? ""}`;
+}
+
+function worktreeBasename(root: string | null): string | null {
+  if (!root) return null;
+  const trimmed = root.replace(/\/+$/, "");
+  const idx = trimmed.lastIndexOf("/");
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
 
 export function createDecisionService(deps: DecisionServiceDeps) {
   const locks = deps.locks ?? createLocks();
@@ -81,6 +95,10 @@ export function createDecisionService(deps: DecisionServiceDeps) {
     };
     await deps.repository.save(decision);
     deps.events.emit({ type: "decision", action: "created", id, worktreeRoot, paneId: req.paneId });
+    await deps.alerter.show({
+      title: alertTitle(req.spec),
+      body: `${agent ?? "?"} / ${worktreeBasename(worktreeRoot) ?? "?"}。Web UI で回答してください`,
+    });
     return { ...decision, paneResolved };
   }
 
@@ -185,12 +203,7 @@ export function createDecisionService(deps: DecisionServiceDeps) {
 
   async function counts(): Promise<DecisionCounts> {
     const open = await deps.repository.list({ status: ["open"] });
-    const byWorktreeRoot: Record<string, number> = {};
-    for (const decision of open) {
-      if (!decision.worktreeRoot) continue;
-      byWorktreeRoot[decision.worktreeRoot] = (byWorktreeRoot[decision.worktreeRoot] ?? 0) + 1;
-    }
-    return { total: open.length, byWorktreeRoot };
+    return { total: open.length };
   }
 
   return {

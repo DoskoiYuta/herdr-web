@@ -4,7 +4,13 @@ import { cn } from "@/lib/utils"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-auto">
+    // overflow-x only: `overflow-auto` on both axes makes a flex/grid item's
+    // automatic min-height resolve to 0 (CSS sizing spec), so this container
+    // collapses to a sliver with its own vertical scrollbar whenever an
+    // ancestor is height-constrained (e.g. the decision view's flex column,
+    // or a compare-card grid row). Callers that need a fixed-height scrolling
+    // table (Docker/Process tabs) wrap this in their own overflow container.
+    <div data-slot="table-container" className="relative w-full shrink-0 overflow-x-auto">
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}
