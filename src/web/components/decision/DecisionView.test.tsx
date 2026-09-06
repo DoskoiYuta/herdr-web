@@ -3,6 +3,7 @@ import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-librar
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Decision, DecisionEvent } from "@contract/decision";
+import { addDecisionAttachment, clearDecisionDraft } from "@/lib/decisionDrafts";
 import { DecisionView } from "./DecisionView";
 
 const get = vi.fn();
@@ -63,6 +64,7 @@ beforeEach(() => {
   get.mockReset();
   answer.mockReset();
   dismiss.mockReset();
+  clearDecisionDraft("decision-1");
 });
 
 describe("DecisionView", () => {
@@ -269,5 +271,57 @@ describe("DecisionView", () => {
 
     await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
     expect(answer.mock.calls[0]![1].answers.q1.other).toBe("C案");
+  });
+
+  // 無いと壊れる: Files タブで添付した場所が回答に乗らず、エージェントが
+  // 「この場所」を受け取れない (plan F13-7)。
+  test("submitting with a staged location attachment includes it in the answer API call", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+    answer.mockResolvedValue({ ...decision, status: "answered" });
+    addDecisionAttachment("decision-1", { kind: "location", path: "src/foo.ts", lines: [3, 5] });
+
+    render(<DecisionView id="decision-1" />);
+
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("radio")[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
+    expect(answer.mock.calls[0]![1].attachments).toEqual([
+      { kind: "location", path: "src/foo.ts", lines: [3, 5] },
+    ]);
+  });
+
+  // 無いと壊れる: ビューを閉じて開き直すと入力途中の回答が消え、Files タブへ
+  // 寄り道しただけで書きかけの回答をやり直すことになる。
+  test("closing and reopening the view keeps the in-progress answer", async () => {
+    const decision = baseDecision({
+      spec: {
+        title: "t",
+        context: [],
+        items: [
+          {
+            id: "q1",
+            header: "メモ",
+            question: "自由記述",
+            kind: "text",
+            options: [],
+            allowOther: true,
+            required: false,
+          },
+        ],
+        layout: null,
+      },
+    });
+    get.mockResolvedValue(decision);
+
+    const { unmount } = render(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByLabelText("メモ")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("メモ"), { target: { value: "書きかけの回答" } });
+    unmount();
+
+    render(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByLabelText("メモ")).toHaveValue("書きかけの回答"));
   });
 });

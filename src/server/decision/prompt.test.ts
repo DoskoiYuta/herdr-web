@@ -74,6 +74,19 @@ describe("renderAnsweredPrompt", () => {
     );
     expect(text).toContain("hw decision show");
   });
+
+  // 無いと壊れる: 回答に添付された場所がエージェントに伝わらず、`hw decision
+  // show` を打つまで「この場所」が何を指すか分からない (plan F13-7)。
+  test("includes attached locations", () => {
+    const decision = baseDecision({
+      answer: {
+        answers: { q1: { selected: ["A"], other: null, note: null } },
+        attachments: [{ kind: "location", path: "src/foo.ts", lines: [3, 5] }],
+      },
+    });
+    const text = renderAnsweredPrompt(decision);
+    expect(text).toContain("src/foo.ts:3-5");
+  });
 });
 
 describe("renderDismissedPrompt", () => {

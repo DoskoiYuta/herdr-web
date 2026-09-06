@@ -1,13 +1,21 @@
 import type {
   Decision,
   DecisionAnswer,
+  DecisionAttachment,
   DecisionEvent,
   DecisionItem,
   DecisionItemAnswer,
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { decisionApi } from "@/lib/api";
+import {
+  clearDecisionDraft,
+  type DecisionDraft,
+  emptyDecisionDraft,
+  getDecisionDraft,
+  setDecisionDraft,
+} from "@/lib/decisionDrafts";
 import { Button } from "@/components/ui/button";
 import { BlockView, type OpenLocation } from "./BlockView";
 import { CompareOptions } from "./CompareOptions";
@@ -21,12 +29,19 @@ export type DecisionViewProps = {
   /** `location` Block クリック: ask の「対象ファイルを開く」と同じ経路
    * で Files タブを開く。決定ビュー自体は呼び出し元 (App.tsx) が閉じてよい。 */
   onOpenLocation?: OpenLocation;
+  /** 「場所を添付」ボタン (F13-7): Files タブへ切り替えて場所を選ばせる。
+   * 呼び出し元 (App.tsx) が選択後にこの依頼の attachments へ積み戻す。 */
+  onAttachLocation?: (worktreeRoot: string | null) => void;
 };
-
-type AnswerState = Record<string, DecisionItemAnswer>;
 
 function emptyAnswer(): DecisionItemAnswer {
   return { selected: [], other: null, note: null };
+}
+
+function formatAttachment(attachment: DecisionAttachment): string {
+  return attachment.lines
+    ? `${attachment.path}:${attachment.lines[0]}-${attachment.lines[1]}`
+    : attachment.path;
 }
 
 /** `Date.now()` はレンダー本体で直接呼べない (impure) ので、初期値は lazy
@@ -270,21 +285,50 @@ export function DecisionView({
   onFocusPane,
   subscribeDecisionEvents,
   onOpenLocation,
+  onAttachLocation,
 }: DecisionViewProps) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["decision", id], queryFn: () => decisionApi.get(id) });
   const decision: Decision | undefined = query.data;
 
-  const [answers, setAnswers] = useState<AnswerState>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // 依頼が切り替わったら回答フォームをリセットする。
-  const [loadedId, setLoadedId] = useState<string | null>(null);
-  if (decision && loadedId !== decision.id) {
-    setLoadedId(decision.id);
-    setAnswers(Object.fromEntries(decision.spec.items.map((item) => [item.id, emptyAnswer()])));
+  // 依頼ビューを離れても入力途中の回答/添付を失わないよう、state はモジュール
+  // スコープのストア (decisionDrafts.ts) に持つ — このコンポーネント自身は
+  // App.tsx のツール領域排他表示に伴って頻繁に unmount/remount される。
+  const [prevId, setPrevId] = useState(id);
+  const [draft, setDraft] = useState<DecisionDraft>(
+    () => getDecisionDraft(id) ?? emptyDecisionDraft(),
+  );
+  if (id !== prevId) {
+    setPrevId(id);
+    setDraft(getDecisionDraft(id) ?? emptyDecisionDraft());
     setError(null);
+  }
+  const answers = draft.answers;
+  const attachments = draft.attachments;
+
+  const updateDraft = useCallback(
+    (next: DecisionDraft) => {
+      setDraft(next);
+      setDecisionDraft(id, next);
+    },
+    [id],
+  );
+
+  // 新しい設問に既定の空回答を補う（既に入力済みの回答は上書きしない）。
+  if (decision) {
+    const missing = decision.spec.items.filter((item) => !(item.id in answers));
+    if (missing.length > 0) {
+      const nextAnswers = { ...answers };
+      for (const item of missing) nextAnswers[item.id] = emptyAnswer();
+      updateDraft({ ...draft, answers: nextAnswers });
+    }
+  }
+
+  function removeAttachment(index: number) {
+    updateDraft({ ...draft, attachments: attachments.filter((_, i) => i !== index) });
   }
 
   useEffect(() => {
@@ -313,26 +357,22 @@ export function DecisionView({
       if (!item) return;
       const opt = item.options[digit - 1];
       if (!opt) return;
-      setAnswers((prev) => {
-        const current = prev[item.id] ?? emptyAnswer();
-        if (item.kind === "single") {
-          return { ...prev, [item.id]: { ...current, selected: [opt.label] } };
-        }
+      const current = draft.answers[item.id] ?? emptyAnswer();
+      const nextAnswer = (() => {
+        if (item.kind === "single") return { ...current, selected: [opt.label] };
         const already = current.selected.includes(opt.label);
         return {
-          ...prev,
-          [item.id]: {
-            ...current,
-            selected: already
-              ? current.selected.filter((s) => s !== opt.label)
-              : [...current.selected, opt.label],
-          },
+          ...current,
+          selected: already
+            ? current.selected.filter((s) => s !== opt.label)
+            : [...current.selected, opt.label],
         };
-      });
+      })();
+      updateDraft({ ...draft, answers: { ...draft.answers, [item.id]: nextAnswer } });
     }
     window.addEventListener("keydown", handleDigit);
     return () => window.removeEventListener("keydown", handleDigit);
-  }, [decision]);
+  }, [decision, draft, updateDraft]);
 
   // フックはここまでで全て呼び終える（早期 return の後には置けない）。
   const elapsedMin = useElapsedMinutes(decision?.createdAt ?? null);
@@ -341,7 +381,7 @@ export function DecisionView({
   if (!decision) return <div className="p-4 text-sm text-destructive">依頼が見つかりません</div>;
 
   function updateItem(itemId: string, next: DecisionItemAnswer) {
-    setAnswers((prev) => ({ ...prev, [itemId]: next }));
+    updateDraft({ ...draft, answers: { ...answers, [itemId]: next } });
   }
 
   function validate(): string | null {
@@ -361,8 +401,9 @@ export function DecisionView({
     setBusy(true);
     setError(null);
     try {
-      const body: DecisionAnswer = { answers, attachments: [] };
+      const body: DecisionAnswer = { answers, attachments };
       await decisionApi.answer(id, body);
+      clearDecisionDraft(id);
       await queryClient.invalidateQueries({ queryKey: ["decision", id] });
       await queryClient.invalidateQueries({ queryKey: ["decision-counts"] });
     } catch (err) {
@@ -480,6 +521,24 @@ export function DecisionView({
         )}
       </div>
 
+      {isOpen && attachments.length > 0 && (
+        <ul className="flex shrink-0 flex-col gap-1 border-t border-border px-3 py-2 text-xs">
+          {attachments.map((attachment, i) => (
+            <li key={i} className="flex items-center justify-between gap-2">
+              <span className="truncate font-mono">{formatAttachment(attachment)}</span>
+              <button
+                type="button"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => removeAttachment(i)}
+                aria-label={`${formatAttachment(attachment)} を削除`}
+              >
+                削除
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {error && <p className="shrink-0 px-3 py-1 text-xs text-destructive">{error}</p>}
 
       {isOpen ? (
@@ -490,6 +549,17 @@ export function DecisionView({
           <Button type="button" variant="ghost" onClick={() => void dismiss()} disabled={busy}>
             却下
           </Button>
+          {onAttachLocation && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onAttachLocation(decision.worktreeRoot)}
+              disabled={busy}
+            >
+              場所を添付
+            </Button>
+          )}
         </footer>
       ) : (
         <footer className="flex shrink-0 flex-col gap-1 border-t border-border px-3 py-2 text-xs text-muted-foreground">

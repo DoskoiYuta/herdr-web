@@ -107,6 +107,56 @@ hw repo move <old-path> <new-path>
 
 宛先は `HW_URL`（既定 `http://127.0.0.1:8080`）。pane 内で実行すると `HERDR_PANE_ID` から自分の worktree を解決する。pane 外では `--worktree <path>` かカレントディレクトリを使う。
 
+## 判断依頼（AskUserQuestion の置き換え）
+
+判断依頼 (decision) は、エージェントが人間の判断を仰ぐための非ブロッキングな仕組み。`hw decision request` は依頼を登録して即座に応答を返すだけで、回答を待たない。結果（回答・却下）は herdr の `agent.prompt` で呼び出し元 pane に届く。期限も既定回答も無いので、エージェントは依頼を出したらターンを終えて待つ。
+
+### `.claude/skills/hw-decision/SKILL.md` の雛形
+
+```markdown
+---
+name: hw-decision
+description: AskUserQuestion の代わりに使う、herdr-web への判断依頼。ユーザーに選択・確認・自由記述を求めるときはこのスキルを使う。
+---
+
+AskUserQuestion の代わりに `hw decision request --file <json>` で判断依頼を出す。書式は `hw decision schema` で確認する（設問は `single` / `multi` / `text` / `confirm`、選択肢には `recommended` と `preview`、`context` と `preview` には markdown / code / diff / mermaid / svg / html / image / location / table の Block を積める。`layout: "compare"` で選択肢を横並び比較にできる）。
+
+依頼を出したら「判断依頼 <id> を出しました。回答が届いたら続けます」とだけ言ってターンを終える。回答は次のユーザー発言として届く。不要になった依頼は `hw decision cancel <id>` で取り下げる。
+
+stderr に「pane が特定できない」旨の警告が出たら、回答は自動で届かないので、標準出力の `url` を人間に伝える。
+```
+
+### AskUserQuestion を deny する例
+
+`~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"AskUserQuestion の代わりに `hw decision request` を使ってください（`hw decision schema` で書式）\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+deny すると、プランモードの確認など Claude Code の組み込み UI が AskUserQuestion を使う場面でも一律に使えなくなる。
+
+### 既知の制限
+
+- `--wait` のような同期待ちのコマンドは無い。回答は `agent.prompt` の到着を待つしかない。
+- pane が消えている（herdr セッションが終了した等）と配達できない。その場合は Web UI の依頼ビューから「再送」する。
+
+`hw` はユーザーの設定ファイル（`~/.claude/settings.json` や `CLAUDE.md`/`AGENTS.md`）を書き換えない。上記のスキル/hook は手動で設置する。
+
 ## 開発
 
 ```bash
