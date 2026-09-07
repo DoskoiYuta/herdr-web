@@ -78,6 +78,17 @@ describe("PaneRow", () => {
     expect(screen.getByTestId("pane-row-p1")).toHaveAttribute("aria-current", "true");
   });
 
+  // 無いと壊れる: フォーカスの視覚的な手がかりが aria-current だけになり、
+  // 画面を見ているユーザーがどの pane にフォーカスがあるか分からなくなる。
+  test.each([
+    ["shows the focus dot when focused", true, true],
+    ["hides the focus dot when not focused", false, false],
+  ])("%s", (_label, focused, expectDot) => {
+    render(<PaneRow {...defaultProps()} focused={focused} />);
+    const dot = screen.queryByTestId("focus-dot");
+    expect(dot !== null).toBe(expectDot);
+  });
+
   test.each([
     ["shell agent shows a Terminal icon and no Bot icon", "shell"],
     ["non-shell agent shows a Bot icon", "claude"],

@@ -111,6 +111,17 @@ describe("AskSessionRow", () => {
     expect(screen.getByTestId("ask-session-row-w-ask")).toHaveAttribute("aria-current", "true");
   });
 
+  // 無いと壊れる: フォーカスの視覚的な手がかりが aria-current だけになり、
+  // 画面を見ているユーザーがどの質問セッションにフォーカスがあるか分からなくなる。
+  test.each([
+    ["shows the focus dot when focusedPaneId matches the row's pane", "p1", true],
+    ["hides the focus dot otherwise", null, false],
+  ])("%s", (_label, focusedPaneId, expectDot) => {
+    render(<AskSessionRow {...defaultProps()} focusedPaneId={focusedPaneId} />);
+    const dot = screen.queryByTestId("focus-dot");
+    expect(dot !== null).toBe(expectDot);
+  });
+
   test("right-click opens a menu with 対象ファイルを開く and 解決 when a matching ask is given", () => {
     render(<AskSessionRow {...defaultProps()} />);
     openMenu();

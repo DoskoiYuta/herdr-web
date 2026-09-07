@@ -44,8 +44,8 @@ const SUMMARY_STATUSES = ["blocked", "working", "done"] as const;
 
 /** ui-redesign.md §4.2 D4/D5, §5.2: `Repository > Workspace > Pane` の
  * Workspace 行。展開すると配下の pane 行が出る（既定はフォーカス中 workspace
- * だけ展開、以降はこのコンポーネントの state）。フォーカス中 workspace は左
- * アクセントバー + 背景で強調する（D5）。
+ * だけ展開、以降はこのコンポーネントの state）。フォーカス中 workspace は
+ * 背景 + 行末の focus ドットで強調する（D5）。
  *
  * 右クリックメニュー: フォーカスを移す / 名前を変更 / Diff を開く / 削除。
  * 「Diff を開く」はフォーカス pane（無ければ先頭 pane）へまずフォーカスを
@@ -163,12 +163,7 @@ export function RepoWorkspaceRow({
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div
-            className="flex w-full items-center gap-0.5"
-            style={{
-              borderLeft: `3px solid ${isFocusedWorkspace ? "var(--focus)" : "transparent"}`,
-            }}
-          >
+          <div className="flex w-full items-center gap-0.5">
             <button
               type="button"
               onClick={() => setUserToggled(!expanded)}
@@ -207,6 +202,13 @@ export function RepoWorkspaceRow({
                   <Bot className="size-3" aria-label="agent 数" />
                   {agentCount}
                 </span>
+              )}
+              {isFocusedWorkspace && (
+                <span
+                  data-testid="focus-dot"
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-focus"
+                />
               )}
             </button>
           </div>

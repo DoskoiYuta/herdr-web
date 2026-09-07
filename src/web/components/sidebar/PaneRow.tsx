@@ -50,9 +50,8 @@ export function PaneRow({ pane, focused, sessionId, onSelect }: PaneRowProps) {
           aria-current={focused ? "true" : undefined}
           title="フォーカスを移す（ターミナルも切り替わります）"
           data-testid={`pane-row-${pane.paneId}`}
-          style={{ borderLeftColor: focused ? "var(--focus)" : "transparent" }}
           className={cn(
-            "flex w-full items-start gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-left text-xs hover:bg-muted",
+            "flex w-full items-start gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted",
             focused && "bg-sidebar-accent font-medium",
           )}
         >
@@ -70,6 +69,13 @@ export function PaneRow({ pane, focused, sessionId, onSelect }: PaneRowProps) {
               </span>
             )}
           </span>
+          {focused && (
+            <span
+              data-testid="focus-dot"
+              aria-hidden="true"
+              className="mt-1 size-1.5 shrink-0 rounded-full bg-focus"
+            />
+          )}
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
