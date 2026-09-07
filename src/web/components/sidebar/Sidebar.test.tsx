@@ -46,7 +46,6 @@ function defaultProps(): SidebarProps {
     repos: [repo()],
     herdrConnected: true,
     connection: "open",
-    pinnedWorktreeRoot: null,
     focusedWorkspaceId: null,
     onSelectPane: vi.fn(),
     layout: { width: 240, collapsed: false },
@@ -133,15 +132,6 @@ describe("Sidebar", () => {
     ];
     renderWithStore(<Sidebar {...other} />);
     expect(screen.getByTestId("workspace-row-w1")).not.toHaveAttribute("aria-current");
-  });
-
-  test("the workspace row containing the pinned worktree shows a pin marker", () => {
-    const props = defaultProps();
-    props.pinnedWorktreeRoot = "/repo";
-    renderWithStore(<Sidebar {...props} />);
-    expect(
-      within(screen.getByTestId("workspace-row-w1")).getByLabelText("ピン留め中"),
-    ).toBeInTheDocument();
   });
 
   test("shows a branch badge only for panes in a non-main worktree, with the worktree root as tooltip", () => {

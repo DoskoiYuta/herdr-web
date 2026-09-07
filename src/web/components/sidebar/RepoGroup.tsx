@@ -14,7 +14,6 @@ export type RepoGroupProps = {
   repo: Repo;
   /** basename が他リポジトリと衝突する場合、見出しに親ディレクトリも添える。 */
   displayName: string;
-  pinnedWorktreeRoot: string | null;
   focusedWorkspaceId: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -35,7 +34,6 @@ export type RepoGroupProps = {
 export function RepoGroup({
   repo,
   displayName,
-  pinnedWorktreeRoot,
   focusedWorkspaceId,
   collapsed,
   onToggleCollapse,
@@ -155,7 +153,6 @@ export function RepoGroup({
             <RepoWorkspaceRow
               key={workspace.workspaceId}
               workspace={workspace}
-              pinnedWorktreeRoot={pinnedWorktreeRoot}
               focusedWorkspaceId={focusedWorkspaceId}
               onSelectPane={onSelectPane}
             />

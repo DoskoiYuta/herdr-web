@@ -109,9 +109,8 @@ export function renderWithStore(ui: ReactElement, opts: { store?: FakeHerdrStore
 }
 
 /** Renders `component` (typically `ToolPane`) as the leaf of a minimal
- * `/focus/$tab` + `/w/$root/$tab` route tree with a memory history, so it can
- * read `useParams`/`useSearch`/`useNavigate` exactly as it does in the real
- * app. `path` picks which of the two routes is active for this render. */
+ * `/focus/$tab` route tree with a memory history, so it can read
+ * `useParams`/`useSearch`/`useNavigate` exactly as it does in the real app. */
 export async function renderWithRouter(
   component: () => ReactElement,
   opts: { path?: string; store?: FakeHerdrStore } = {},
@@ -125,16 +124,7 @@ export async function renderWithRouter(
     validateSearch: parseToolSearch,
     component,
   });
-  const wRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/w/$root/$tab",
-    validateSearch: parseToolSearch,
-    // Mirrors router.tsx's wRoute: only a `root` change should remount the
-    // component, not a `tab`/search-only navigation within the same root.
-    remountDeps: ({ params }) => params.root,
-    component,
-  });
-  const routeTree = rootRoute.addChildren([focusRoute, wRoute]);
+  const routeTree = rootRoute.addChildren([focusRoute]);
   const history = createMemoryHistory({ initialEntries: [opts.path ?? "/focus/diff"] });
   const router = createRouter({ routeTree, history });
   // Route matching (even with no loaders) resolves on a microtask — load it

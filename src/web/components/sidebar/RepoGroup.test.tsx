@@ -52,7 +52,6 @@ function defaultProps() {
   return {
     repo: repo(),
     displayName: "repo",
-    pinnedWorktreeRoot: null,
     focusedWorkspaceId: null,
     collapsed: false,
     onToggleCollapse: vi.fn(),

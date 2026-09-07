@@ -15,3 +15,16 @@ export function agentPanesAt(repos: Repo[], worktreeRoot: string): PaneRow[] {
   const rest = panes.filter((p) => !p.focused);
   return [...focused, ...rest];
 }
+
+/**
+ * A pane id to move herdr's focus to when opening a file location in a
+ * worktree that isn't currently focused — the worktree's own focused pane,
+ * or its first pane if none is focused. `null` when herdr has no pane at all
+ * for that worktree.
+ */
+export function firstPaneAt(repos: Repo[], worktreeRoot: string): string | null {
+  const worktree = repos.flatMap((repo) => repo.worktrees).find((w) => w.root === worktreeRoot);
+  if (!worktree) return null;
+  const focused = worktree.panes.find((p) => p.focused);
+  return (focused ?? worktree.panes[0])?.paneId ?? null;
+}

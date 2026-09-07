@@ -50,15 +50,11 @@ describe("createEventsWss", () => {
     hub.broadcast({ type: "herdr", connected: true, protocol: 20 });
     expect(await p).toEqual({ type: "herdr", connected: true, protocol: 20 });
 
-    ws.send(JSON.stringify({ type: "pin", worktreeRoot: "/tmp/x" }));
     ws.send("not json");
     ws.send(JSON.stringify({ type: "bogus" }));
     ws.send(JSON.stringify({ type: "focus-pane", pane: "w1:p1" }));
     await new Promise((r) => setTimeout(r, 50));
-    expect(received).toEqual([
-      { type: "pin", worktreeRoot: "/tmp/x" },
-      { type: "focus-pane", pane: "w1:p1" },
-    ]);
+    expect(received).toEqual([{ type: "focus-pane", pane: "w1:p1" }]);
 
     ws.close();
     await new Promise((r) => setTimeout(r, 50));

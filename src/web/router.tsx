@@ -1,9 +1,9 @@
 /**
- * Code-defined route tree. `/focus/$tab` follows herdr's current focus;
- * `/w/$root/$tab` pins to a fixed worktree root. `/decisions` and
- * `/decisions/$id` are sibling routes to the tool routes so the tool area's
- * own route (and everything URL-derived inside it — tab, comparison,
- * selected file) survives a visit to the decision UI and back.
+ * Code-defined route tree. `/focus/$tab` follows herdr's current focus —
+ * the only tool route (plan.md F2-4: no pinning). `/decisions` and
+ * `/decisions/$id` are sibling routes to it so the tool area's own route
+ * (and everything URL-derived inside it — tab, comparison, selected file)
+ * survives a visit to the decision UI and back.
  */
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -13,7 +13,6 @@ import {
   Link,
   Outlet,
   redirect,
-  useMatch,
   useNavigate,
   useParams,
   useRouter,
@@ -30,6 +29,7 @@ import type { AskFileLocation } from "@/components/sidebar/AskSessionGroup";
 import { DecisionListView } from "@/components/decision/DecisionListView";
 import { DecisionView } from "@/components/decision/DecisionView";
 import type { OpenLocation } from "@/components/decision/BlockView";
+import { firstPaneAt } from "@/lib/sendTargets";
 import {
   DEFAULT_LAYOUT,
   LAYOUT_STORAGE_KEY,
@@ -53,14 +53,56 @@ function loadInitialLayout() {
  * 直前の worktree ルートを覚えておく手間をかけるほどの価値がないので固定にする。 */
 const CLOSE_DECISION_FALLBACK = { to: "/focus/$tab", params: { tab: "diff" } } as const;
 
-/** `/w/<root>/...` のときだけ root を返す。サイドバーのピン留め表示と、ask/decision
- * の「対象ファイルを開く」が既存の worktree を differentiate するのに使う。
- * TanStack はマッチ時点で pathname をすでに `decodeURI` 済みなので、params から
- * 読む（正規表現で pathname を切って自前で `decodeURIComponent` すると、root に
- * `%` を含むパスで二重デコードになり `URIError` になる）。 */
-function usePinnedWorktreeRoot(): string | null {
-  const match = useMatch({ from: wRoute.id, shouldThrow: false });
-  return match?.params.root ?? null;
+/**
+ * 別 worktree のファイル位置を開く（ask の「対象ファイルを開く」、判断依頼の
+ * `location` Block 共通）。対象が現在の focus worktree と同じなら
+ * `/focus/files` へ直接 navigate する。違えば、その worktree に属する pane
+ * (`sendTargets.firstPaneAt`) へ herdr のフォーカスを移してから navigate する
+ * ——フォーカス切り替えは WS 経由で非同期に届くため、navigate 時点ではまだ
+ * 古い worktree が表示中のことがある。ToolPane はここで付ける search の
+ * `root` を見て、その worktree に実際に切り替わるまで `path`/`line` を
+ * 適用しない（plan.md F14-4）。対象 worktree に pane が無ければ、navigate
+ * せずに一時メッセージを返す。
+ */
+function useOpenWorktreeLocation() {
+  const state = useHerdrState();
+  const { send } = useHerdrStoreActions();
+  const navigate = useNavigate();
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => setMessage(null), 4000);
+    return () => clearTimeout(t);
+  }, [message]);
+
+  const openLocation = useCallback(
+    (location: { worktreeRoot: string; path: string; line: number }) => {
+      setMessage(null);
+      if (state.focus?.worktreeRoot === location.worktreeRoot) {
+        void navigate({
+          to: "/focus/$tab",
+          params: { tab: "files" },
+          search: { path: location.path, line: location.line },
+        });
+        return;
+      }
+      const pane = firstPaneAt(state.repos, location.worktreeRoot);
+      if (!pane) {
+        setMessage("この worktree の pane が herdr にありません");
+        return;
+      }
+      send({ type: "focus-pane", pane });
+      void navigate({
+        to: "/focus/$tab",
+        params: { tab: "files" },
+        search: { path: location.path, line: location.line, root: location.worktreeRoot },
+      });
+    },
+    [state.focus, state.repos, send, navigate],
+  );
+
+  return { openLocation, message };
 }
 
 function RootLayout() {
@@ -77,7 +119,7 @@ function RootLayout() {
   const state = useHerdrState();
   const { send } = useHerdrStoreActions();
   const navigate = useNavigate();
-  const pinnedWorktreeRoot = usePinnedWorktreeRoot();
+  const { openLocation, message: openLocationMessage } = useOpenWorktreeLocation();
 
   const persist = useCallback((next: Layout) => {
     setLayout(next);
@@ -99,18 +141,10 @@ function RootLayout() {
     [send],
   );
 
-  // 質問セッション行「対象ファイルを開く」。常に /w/<root>/files へ遷移する —
-  // 現在表示中の worktree と同じでも構わない、routing が冪等に同じ画面へ
-  // 着地する。
+  // 質問セッション行「対象ファイルを開く」。
   const handleOpenAskFile = useCallback(
-    (location: AskFileLocation) => {
-      void navigate({
-        to: "/w/$root/$tab",
-        params: { root: location.worktreeRoot, tab: "files" },
-        search: { path: location.path, line: location.line },
-      });
-    },
-    [navigate],
+    (location: AskFileLocation) => openLocation(location),
+    [openLocation],
   );
 
   const handleSelectDecisions = useCallback(() => {
@@ -126,12 +160,16 @@ function RootLayout() {
   );
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div className="relative flex h-screen w-screen overflow-hidden">
+      {openLocationMessage && (
+        <div className="absolute inset-x-0 top-0 z-10 mx-auto w-fit rounded-b-md bg-destructive px-3 py-1 text-xs text-destructive-foreground">
+          {openLocationMessage}
+        </div>
+      )}
       <Sidebar
         repos={state.repos}
         herdrConnected={state.herdr.connected}
         connection={state.connection}
-        pinnedWorktreeRoot={pinnedWorktreeRoot}
         focusedWorkspaceId={state.focus?.workspace ?? null}
         onSelectPane={handleSelectPane}
         layout={sidebarLayout}
@@ -173,10 +211,6 @@ function RootLayout() {
         >
           {layout.toolCollapsed ? "«" : "»"}
         </button>
-        {/* `hidden` (not conditional rendering) keeps the tool route mounted while
-            collapsed — unmounting it would tear down `/w/$root`'s pin effect and
-            send `pin: null` just because the panel is hidden, not because the
-            worktree was actually left. */}
         <div hidden={layout.toolCollapsed} className="h-full">
           <Outlet />
         </div>
@@ -185,30 +219,9 @@ function RootLayout() {
   );
 }
 
-/** `/w/<root>/...` に入っている間だけ、そのルートを herdr へピン留めする。
- * WS 未接続時の送信は黙って捨てられる（eventsSocket.ts）ので、接続が open に
- * なるたびに送り直す — 切断中にマウントされた場合や再接続後も pin が
- * 確実に herdr 側へ届くようにする。アンマウント（他ルートへ移動）時には
- * `null` を送って解除する。 */
-function useSendPin(worktreeRoot: string) {
-  const { send } = useHerdrStoreActions();
-  const isConnected = useHerdrState().connection === "open";
-  useEffect(() => {
-    if (!isConnected) return;
-    send({ type: "pin", worktreeRoot });
-    return () => send({ type: "pin", worktreeRoot: null });
-  }, [send, worktreeRoot, isConnected]);
-}
-
-function WToolPaneRoute() {
-  const { root } = useParams({ from: wRoute.id });
-  useSendPin(root);
-  return <ToolPane />;
-}
-
 /** 判断依頼の一覧/詳細を閉じる。この画面に遷移する前の履歴に戻れるならそこへ
- * 戻し（ピン留め・タブ・比較範囲がそのまま残る）、無ければ（`/decisions/<id>`
- * を直接開いた場合など）既定のフォールバック先へ遷移する。 */
+ * 戻し（タブ・比較範囲がそのまま残る）、無ければ（`/decisions/<id>` を直接
+ * 開いた場合など）既定のフォールバック先へ遷移する。 */
 function useCloseDecision(): () => void {
   const navigate = useNavigate();
   const router = useRouter();
@@ -234,26 +247,32 @@ function DecisionsListRoute() {
 
 function DecisionRoute() {
   const { id } = useParams({ from: decisionRoute.id });
-  const navigate = useNavigate();
   const onClose = useCloseDecision();
   const { send } = useHerdrStoreActions();
+  const { openLocation, message: openLocationMessage } = useOpenWorktreeLocation();
   const onOpenLocation: OpenLocation = useCallback(
-    (location) => {
-      void navigate({
-        to: "/w/$root/$tab",
-        params: { root: location.worktreeRoot, tab: "files" },
-        search: { path: location.path, line: location.lines ? location.lines[0] : 1 },
-      });
-    },
-    [navigate],
+    (location) =>
+      openLocation({
+        worktreeRoot: location.worktreeRoot,
+        path: location.path,
+        line: location.lines ? location.lines[0] : 1,
+      }),
+    [openLocation],
   );
   return (
-    <DecisionView
-      id={id}
-      onClose={onClose}
-      onFocusPane={(pane) => send({ type: "focus-pane", pane })}
-      onOpenLocation={onOpenLocation}
-    />
+    <>
+      {openLocationMessage && (
+        <p className="border-b border-border px-2 py-1 text-xs text-destructive">
+          {openLocationMessage}
+        </p>
+      )}
+      <DecisionView
+        id={id}
+        onClose={onClose}
+        onFocusPane={(pane) => send({ type: "focus-pane", pane })}
+        onOpenLocation={onOpenLocation}
+      />
+    </>
   );
 }
 
@@ -288,17 +307,6 @@ export const focusRoute = createRoute({
   component: ToolPane,
 });
 
-export const wRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/w/$root/$tab",
-  validateSearch: parseToolSearch,
-  // Switching the `tab` param alone must not remount ToolPane's effects —
-  // navigate() would immediately have its own new `path`/`line` search wiped
-  // by the "worktree changed" effect. Only `root` changing should remount.
-  remountDeps: ({ params }) => params.root,
-  component: WToolPaneRoute,
-});
-
 export const decisionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/decisions",
@@ -311,13 +319,7 @@ export const decisionRoute = createRoute({
   component: DecisionRoute,
 });
 
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  focusRoute,
-  wRoute,
-  decisionsRoute,
-  decisionRoute,
-]);
+const routeTree = rootRoute.addChildren([indexRoute, focusRoute, decisionsRoute, decisionRoute]);
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, history, defaultPreload: false });

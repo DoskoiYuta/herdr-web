@@ -26,6 +26,13 @@ vi.mock("@/components/diff/DiffPanel", () => ({
 vi.mock("@/components/graph/GraphPanel", () => ({
   GraphPanel: () => <div data-testid="graph-panel-stub" />,
 }));
+vi.mock("@/components/files/FilesPanel", () => ({
+  FilesPanel: ({ repo, selectedPath }: { repo: string; selectedPath?: string | null }) => (
+    <div data-testid="files-panel-stub">
+      {repo}:{selectedPath ?? ""}
+    </div>
+  ),
+}));
 
 vi.mock("@/lib/api", () => ({
   configApi: {
@@ -61,17 +68,21 @@ vi.mock("@/lib/api", () => ({
       decisionFixture("d1", "/Users/dev/project", "依頼A"),
       decisionFixture("d2", "/Users/dev/other", "依頼B"),
     ]),
-    get: vi.fn(async (id: string) => decisionFixture(id, "/Users/dev/project", "依頼A")),
+    get: vi.fn(async (id: string) =>
+      decisionFixture(id, "/Users/dev/other", "依頼A", [
+        { kind: "location", path: "src/other.ts", lines: null },
+      ]),
+    ),
   },
 }));
 
-function decisionFixture(id: string, worktreeRoot: string, title: string) {
+function decisionFixture(id: string, worktreeRoot: string, title: string, context: unknown[] = []) {
   return {
     id,
     status: "open",
     spec: {
       title,
-      context: [],
+      context,
       items: [
         {
           id: "q1",
@@ -180,8 +191,7 @@ describe("App", () => {
   test("collapsing the tool area hides its content and its divider", async () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
-    // ツールルートは `hidden` で隠すだけでアンマウントしない（/w/<root> の pin
-    // effect が畳んだだけで解除されてしまわないように）ので、要素自体は残る。
+    // ツールルートは `hidden` で隠すだけでアンマウントしない。
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).not.toBeVisible();
     expect(screen.getByRole("button", { name: "ツール領域を開く" })).toBeInTheDocument();
   });
@@ -201,96 +211,11 @@ describe("App", () => {
     expect(screen.getByText("claude · working")).toBeInTheDocument();
   });
 
-  test("a later focus message follows to the new worktree when not pinned", async () => {
+  test("a later focus message follows to the new worktree", async () => {
     await renderApp();
     emit(focusMessage());
     emit(focusMessage({ worktreeRoot: "/Users/dev/other", repoKey: "/Users/dev/other/.git" }));
     expect(screen.getByText("other")).toBeInTheDocument();
-  });
-
-  test("pinning sends a pin message and keeps display on the pinned root even if focus moves elsewhere", async () => {
-    await renderApp();
-    emit(focusMessage());
-    fireEvent.click(screen.getByLabelText("ピン留め"));
-    await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: "/Users/dev/project" }),
-    );
-
-    // focus が別の worktree に移っても、ピン留め中（/w/<root>）の表示は URL に
-    // 従い続ける。
-    emit(focusMessage({ worktreeRoot: "/Users/dev/other", repoKey: "/Users/dev/other/.git" }));
-    expect(screen.getByText("project")).toBeInTheDocument();
-    expect(screen.queryByText("other")).not.toBeInTheDocument();
-  });
-
-  // 無いと壊れる: WS 未接続時の pin 送信は eventsSocket.ts に黙って捨てられる
-  // ため、切断中に再送しないと再接続後 herdr 側に pin が一切届かないままになる。
-  test("resends the pin once the socket reconnects", async () => {
-    const { router } = await renderApp();
-    emit(focusMessage());
-    fireEvent.click(screen.getByLabelText("ピン留め"));
-    await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: "/Users/dev/project" }),
-    );
-    sendMock.mockClear();
-
-    // 切断（reconnecting）の間は pin を送らない。
-    act(() => {
-      latestHandlers().onStatus?.("reconnecting");
-    });
-    expect(sendMock).not.toHaveBeenCalledWith({
-      type: "pin",
-      worktreeRoot: "/Users/dev/project",
-    });
-
-    // 再接続（open）したら、まだ /w/<root> にいる限り pin を送り直す。
-    act(() => {
-      latestHandlers().onStatus?.("open");
-    });
-    await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: "/Users/dev/project" }),
-    );
-    expect(router.state.location.pathname).toBe(
-      `/w/${encodeURIComponent("/Users/dev/project")}/diff`,
-    );
-  });
-
-  test("unpinning sends pin:null", async () => {
-    await renderApp();
-    emit(focusMessage());
-    fireEvent.click(screen.getByLabelText("ピン留め"));
-    await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: "/Users/dev/project" }),
-    );
-    sendMock.mockClear();
-    fireEvent.click(screen.getByLabelText("ピン留めを解除"));
-    await waitFor(() => expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: null }));
-  });
-
-  test("the manual open-path fallback pins to the opened root", async () => {
-    await renderApp();
-    fireEvent.change(screen.getByLabelText("リポジトリのパスを開く"), {
-      target: { value: "/tmp/manual" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "開く" }));
-    await screen.findByText("manual");
-    await waitFor(() =>
-      expect(sendMock).toHaveBeenCalledWith({ type: "pin", worktreeRoot: "/tmp/manual" }),
-    );
-  });
-
-  test("unpinning the manual open-path fallback clears it (no focus to fall back to, so repoKey and worktreeRoot don't drift apart)", async () => {
-    await renderApp();
-    fireEvent.change(screen.getByLabelText("リポジトリのパスを開く"), {
-      target: { value: "/tmp/manual" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "開く" }));
-    await screen.findByText("manual");
-
-    fireEvent.click(screen.getByLabelText("ピン留めを解除"));
-    await waitFor(() =>
-      expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument(),
-    );
   });
 
   test("clicking a sidebar workspace row sends focus-pane", async () => {
@@ -429,14 +354,15 @@ describe("App", () => {
       );
     });
 
-    // 無いと壊れる: 判断依頼を閉じると常に /focus/diff へ飛び、ピン留め・タブ・
-    // 比較範囲が失われる。
-    test("closing the decision list returns to the previous URL (pin, tab, and comparison intact)", async () => {
+    // 無いと壊れる: 判断依頼を閉じると常に /focus/diff へ飛び、タブ・比較範囲が
+    // 失われる。
+    test("closing the decision list returns to the previous URL (tab and comparison intact)", async () => {
       const root = "/Users/dev/project";
       const { router } = await renderApp();
+      emit(focusMessage({ worktreeRoot: root, repoKey: `${root}/.git` }));
       await router.navigate({
-        to: "/w/$root/$tab",
-        params: { root, tab: "diff" },
+        to: "/focus/$tab",
+        params: { tab: "diff" },
         search: { from: "a", to: "b" },
       });
       await waitFor(() =>
@@ -447,47 +373,49 @@ describe("App", () => {
       expect(await screen.findByText("判断依頼")).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
 
-      await waitFor(() =>
-        expect(router.state.location.pathname).toBe(`/w/${encodeURIComponent(root)}/diff`),
-      );
+      await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
       expect(router.state.location.search).toMatchObject({ from: "a", to: "b" });
     });
   });
 
-  // 無いと壊れる: usePinnedWorktreeRoot が pathname を正規表現で切って
-  // decodeURIComponent すると、`%` を含む worktree パスで TanStack がすでに
-  // decode 済みの文字列を再度 decode してしまい URIError を投げる。
-  test("a worktree root containing a raw % survives /w/<root> without a double-decode crash", async () => {
-    const root = "/Users/dev/日本語 100% done";
-    await renderApp(`/w/${encodeURIComponent(root)}/diff`);
-    expect(screen.getByText(root.split("/").pop()!)).toBeInTheDocument();
-
+  // F14-4: ask/decision の「対象ファイルを開く」導線（ここでは判断依頼の
+  // `location` context Block）— 対象 worktree が現在の focus と違えば、その
+  // worktree の pane へ focus-pane を送ってから /focus/files へ navigate し、
+  // focus が実際にその worktree へ切り替わってから search の `path` が有効になる
+  // （`root` ゲートが落ちる）。無いと壊れる: この経路が無いと、別 worktree の
+  // ファイルを開いても herdr のフォーカスが動かないか、まだ表示中の無関係な
+  // worktree に対して存在しない path を即座に適用してしまう。
+  test("opening a decision's location Block in a different worktree sends focus-pane, then applies the path once focus catches up", async () => {
+    const { router } = await renderApp();
+    // Currently focused on /Users/dev/project (so ToolPane shows tabs at
+    // all) — the location Block below targets the *other* worktree.
+    emit(focusMessage());
     emit({
       type: "tree",
       repos: [
         {
-          key: `${root}/.git`,
-          name: "project",
+          key: "/Users/dev/other/.git",
+          name: "other",
           counts: { blocked: 0, done: 0 },
           worktrees: [
             {
-              root,
+              root: "/Users/dev/other",
               branch: "main",
               isMain: true,
               panes: [
                 {
-                  paneId: "p1",
-                  workspaceId: "w1",
-                  workspaceLabel: "w1",
-                  tabId: "t1",
+                  paneId: "p-other",
+                  workspaceId: "w-other",
+                  workspaceLabel: "w-other",
+                  tabId: "t-other",
                   tabLabel: null,
                   label: "session",
                   agent: "claude",
                   agentStatus: "working",
                   terminalTitleStripped: null,
-                  focused: false,
-                  cwd: root,
-                  foregroundCwd: root,
+                  focused: true,
+                  cwd: "/Users/dev/other",
+                  foregroundCwd: "/Users/dev/other",
                 },
               ],
             },
@@ -495,6 +423,31 @@ describe("App", () => {
         },
       ],
     });
-    expect(await screen.findByLabelText("ピン留め中")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    fireEvent.click(await screen.findByText("依頼A"));
+    fireEvent.click(await screen.findByText("src/other.ts"));
+
+    await waitFor(() =>
+      expect(sendMock).toHaveBeenCalledWith({ type: "focus-pane", pane: "p-other" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active"),
+    );
+    // Navigated immediately, but gated: still showing /Users/dev/project's
+    // tree (unaffected), and `root` is set because focus hasn't caught up yet.
+    expect(screen.getByTestId("files-panel-stub")).toHaveTextContent("/Users/dev/project:");
+    expect(router.state.location.search).toMatchObject({
+      path: "src/other.ts",
+      root: "/Users/dev/other",
+    });
+
+    emit(focusMessage({ worktreeRoot: "/Users/dev/other", repoKey: "/Users/dev/other/.git" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("files-panel-stub")).toHaveTextContent(
+        "/Users/dev/other:src/other.ts",
+      ),
+    );
+    expect(router.state.location.search).not.toHaveProperty("root");
   });
 });

@@ -9,9 +9,6 @@ export type FocusPayload = Omit<FocusMessage, "type">;
 export interface FocusTracker {
   get(): FocusPayload;
   onChange(cb: (payload: FocusPayload) => void): () => void;
-  /** Freeze the tool area on a worktree; pass null to unpin. Emits immediately either way. */
-  pin(worktreeRoot: string | null): void;
-  pinned(): string | null;
   /** worktree の解決結果が変わりうるとき（HEAD / refs 変化）に呼ぶ。再解決して変化があれば通知する。 */
   refresh(): void;
   stop(): void;
@@ -54,7 +51,6 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
   const { state, gateway, resolver, pollMs = 3000, logger = console } = opts;
 
   let payload: FocusPayload = emptyPayload;
-  let pinnedRoot: string | null = null;
   let lastKnownCwd: string | null = null;
   let lastKnownPaneId: string | null = null;
   let notifiedOnce = false;
@@ -96,43 +92,13 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
 
     const info = cwd ? await resolveCached(cwd) : null;
 
-    let worktreeRoot = info?.root ?? null;
-    let repoKey = info?.commonDir ?? null;
+    const worktreeRoot = info?.root ?? null;
+    const repoKey = info?.commonDir ?? null;
 
-    // Default: agent fields describe the focused pane, same as unpinned.
-    let agentPaneId = pane?.pane_id ?? paneId;
-    let agent = pane?.agent ?? null;
-    let agentStatus = pane?.agent_status ?? null;
-    let agentSession = pane?.agent_session ?? null;
-
-    if (pinnedRoot !== null) {
-      worktreeRoot = pinnedRoot;
-      const pinnedInfo = await resolveCached(pinnedRoot);
-      repoKey = pinnedInfo?.commonDir ?? repoKey;
-
-      // The focused pane may belong to an entirely different worktree than the
-      // pin. `agent`/`agentStatus`/`agentSession`/`pane` must never describe a
-      // worktree other than `pinnedRoot`, so re-derive them from whichever
-      // agent-bearing pane (if any) actually resolves to the pinned root.
-      if (worktreeRoot !== info?.root) {
-        agentPaneId = null;
-        agent = null;
-        agentStatus = null;
-        agentSession = null;
-        for (const candidate of s.panes.values()) {
-          if (!candidate.agent) continue;
-          const candidateCwd = effectiveCwd(candidate);
-          const candidateInfo = candidateCwd ? await resolveCached(candidateCwd) : null;
-          if (candidateInfo?.root === pinnedRoot) {
-            agentPaneId = candidate.pane_id;
-            agent = candidate.agent;
-            agentStatus = candidate.agent_status;
-            agentSession = candidate.agent_session ?? null;
-            break;
-          }
-        }
-      }
-    }
+    const agentPaneId = pane?.pane_id ?? paneId;
+    const agent = pane?.agent ?? null;
+    const agentStatus = pane?.agent_status ?? null;
+    const agentSession = pane?.agent_session ?? null;
 
     const next: FocusPayload = {
       pane: agentPaneId,
@@ -208,11 +174,6 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
         maybeStopPolling();
       };
     },
-    pin(worktreeRoot) {
-      pinnedRoot = worktreeRoot;
-      recompute();
-    },
-    pinned: () => pinnedRoot,
     refresh() {
       recompute();
     },

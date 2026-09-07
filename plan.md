@@ -60,7 +60,7 @@ Web UI は herdr の状態を **読む** ことを基本とし、worktree の作
 
 - ブラウザから herdr TUI へ attach（入力・出力・リサイズ・再接続）
 - リポジトリ単位でグルーピングしたサイドバー（workspace / worktree / pane / agent 状態、フォーカス切り替え）。サイドバーからのワークスペース作成（リポジトリ見出しの「+」→ label 入力 → その main worktree root を cwd に `workspace.create`）と、ワークスペース行の右クリックメニューからの改名（`workspace.rename`）・削除（`workspace.close`、pane/agent 終了の確認あり）
-- フォーカス pane の `foreground_cwd` の追跡と git ルートの解決（ピン留め可）
+- フォーカス pane の `foreground_cwd` の追跡と git ルートの解決
 - 内蔵 diff ビューア（作業ツリー / ステージ / 任意コミット間）とファイルツリー（tdiff から移植するため含める）
 - 内蔵 git graph（コミットグラフ、ブランチ、コミット選択 → diff 連携）
 - diff へのレビュー（worktree / コミットへの紐付け、内容アンカー、スレッド、下書き + 送信、状態管理）と、エージェント向け CLI `hw`
@@ -150,7 +150,7 @@ Claude Code ── hw review list / show / reply ──▶ Web UI サーバー
 3. フォーカス pane が変わった時、および同じ pane で `pane.updated` / `pane.agent_status_changed` を受けた時に `foreground_cwd`（なければ `cwd`）を取る。
 4. `git -C <cwd> rev-parse --show-toplevel` で worktree ルートを求め、変わった時だけツール領域を切り替える。
 5. `foreground_cwd` の変化が `pane.updated` を発火させない場合に備え、フォーカス pane に対してのみ低頻度（既定 3 秒）の `pane.get` ポーリングをフォールバックとして持つ（§12-1）。
-6. ユーザーはツール領域で追従をピン留め（一時停止）できる。
+6. ツール領域は常に herdr のフォーカスに追従する。固定表示（ピン留め）は持たない。複数ブラウザ・複数タブでも herdr の状態が唯一の正で、ブラウザ側に独自の選択状態を持たせない。
 
 ### 6.5 レビューのモデル（所有・可視性・通知）
 
@@ -234,8 +234,8 @@ src/cli                      → contract のみ
 
 - F2-1. §6.4 の手順で、フォーカス pane の `foreground_cwd` と worktree ルートをイベント WS でブラウザへ通知する。
 - F2-2. フォーカス pane の `agent_session` を表示し、Claude Code のセッション ID なら `claude --resume <id>` のコピー導線を出す。
-- F2-3. herdr 未接続時はツール領域に「herdr 未接続」を表示し、手動でパスを入力してリポジトリを開けるフォールバックを提供する。
-- F2-4. ピン留めと解除。ピン留め中も裏で追跡し、解除時に即反映する。
+- F2-3. herdr 未接続時はツール領域に「herdr 未接続」を表示する。手動でパスを入力して開くフォールバックは持たない（herdr の付属 UI であり、herdr 無しで使う想定をしない）。
+- F2-4. ピン留め（追従の一時停止）は持たない。理由: 固定先をサーバーが 1 つしか持てず複数タブで衝突する、固定中は git poller の監視対象と `repoKey` が focus 側とずれる、URL に固定 root を持つと「サーバーは追従・ブラウザだけ固定」の中途半端な状態になる。別 worktree を見たいときは herdr 側でその workspace / pane にフォーカスする（F8-3）。
 
 ### F3. diff ビューア（tdiff から移植）
 
@@ -305,7 +305,7 @@ src/cli                      → contract のみ
 - F8-2. pane 行には agent 名、状態、`label` または `terminal_title_stripped`、所属 workspace / tab を表示する。状態は色とアイコン。
 - F8-3. pane 行クリックで `pane.focus`（必要なら `workspace.focus` を先に。§12-9）。
 - F8-4. `blocked` / `done` 件数バッジ。
-- F8-5. グループ折りたたみ、表示モード切替、フォーカス / ピン留めのハイライト。
+- F8-5. グループ折りたたみ、表示モード切替、フォーカスのハイライト。
 - F8-6. herdr イベントでリアルタイム更新。未接続時は「herdr 未接続」。
 - F8-7. サイドバーは折りたたみ可能で幅はドラッグで変更できる。
 - F8-8. リポジトリ見出しに「ワークスペースを作成」ボタンを出す。開くインラインフォームの label 初期値はリポジトリ名、cwd はそのリポジトリの main worktree root。`workspace.create({ cwd, label, focus: true })` を呼ぶ（`POST /api/herdr/workspace`、cwd は git ルートと同じ allowed-roots 検査を通す）。
@@ -375,9 +375,8 @@ src/cli                      → contract のみ
 - F14-2. ルート構成:
   - `/` → `/focus/diff` へリダイレクト。
   - `/focus/<tab>` … herdr の focus に追従して worktree を決める（今の既定動作）。
-  - `/w/<root>/<tab>` … `<root>` は worktree ルートの絶対パスを `encodeURIComponent` したもの。この形のときは focus に追従せず固定する（今の「ピン留め」と「手動で開いたパス」の両方がこれになる。サーバーへの `pin` メッセージはこのルートに入ったとき / 出たときに送る）。
   - `<tab>` は `diff | graph | files | docker | process`。
-  - `/decisions` と `/decisions/<id>` … 判断依頼の一覧とビュー。`/focus` / `/w` と兄弟なので、開いても ToolPane はアンマウントされない（別ルートのマッチとして描画が切り替わるだけで、戻ったときにタブ・比較範囲・選択ファイルは URL から復元される）。
+  - `/decisions` と `/decisions/<id>` … 判断依頼の一覧とビュー。`/focus` と兄弟なので、開いても ToolPane はアンマウントされない（別ルートのマッチとして描画が切り替わるだけで、戻ったときにタブ・比較範囲・選択ファイルは URL から復元される）。
 - F14-3. search params（タブごと）:
   - diff: `from`, `to`（比較範囲。無ければ WORKTREE vs HEAD）、`sub`（サブリポジトリ id）、`path`, `line`（ジャンプ先。`initialLocation` の置き換え）。
   - graph: `sub`。
@@ -385,7 +384,7 @@ src/cli                      → contract のみ
   - docker / process: `sub`。
   - サブリポジトリ切替と worktree 切替で消えるべき params（`from` / `to` / `path` / `line`）はナビゲーション時に落とす。
   - タブ切替では `path` / `line` を落とす（タブごとに意味が異なるため）。`from` / `to` / `sub` は残す。
-- F14-4. 既存 state の移し先: App の `decisionUi` / `pinned` / `manualWorktreeRoot`、ToolPane の `activeTab` / `comparison` / `subRepoId` / `initialLocation`、FilesPanel の `selectedPath` / `mdMode`、App の `filesInitialLocation`（ask の「対象ファイルを開く」と decision の `location` Block は `navigate({ to: "/w/$root/files", search: { path, line } })` になる）。これらの `useState` と「消費したら null に戻す」契約はすべて削除する。ローカルに残すのは一時的な UI 状態（ドラッグ幅、送信中フラグ、ダイアログ開閉、コピー済み表示）だけ。
+- F14-4. 既存 state の移し先: App の `decisionUi`、ToolPane の `activeTab` / `comparison` / `subRepoId` / `initialLocation`、FilesPanel の `selectedPath` / `mdMode`、App の `filesInitialLocation`（ask の「対象ファイルを開く」と decision の `location` Block は、対象 worktree が focus と違えばその worktree の pane へ `focus-pane` を送って herdr 側のフォーカスを移してから `/focus/files?path=&line=` へ navigate する。その worktree に pane が無ければ開けない旨を表示する）。これらの `useState` と「消費したら null に戻す」契約はすべて削除する。ローカルに残すのは一時的な UI 状態（ドラッグ幅、送信中フラグ、ダイアログ開閉、コピー済み表示）だけ。
 - F14-5. herdrStore は React Context（`HerdrStoreProvider` / `useHerdrState()` / `useHerdrStore()`）で配り、WS イベントの購読は `useReviewEvents(cb)` / `useAskEvents(cb)` / `useDecisionEvents(cb)` のフックにする。`subscribeXxxEvents` を props で渡す経路はすべて消す。
 - F14-6. サーバーが返す判断依頼の URL（`hw decision request` の `url`、§9.w）は `http://<host>:<port>/decisions/<id>` にする。`#decision/<id>` は受け付けない（移行期間は設けない。未コミットの依頼 URL は存在しないため）。
 - F14-7. 動作は変えない。既存のテスト（App / ToolPane / 各 Panel）は、props で渡していた state を URL とルーターのテスト用ユーティリティ（メモリ履歴）に置き換えて通す。ブラウザの戻る / 進むでタブと判断依頼ビューが切り替わること、リロードで同じ画面に戻ること、判断依頼ビューから戻っても比較範囲が残ることを振る舞いテストにする。
@@ -422,7 +421,6 @@ src/cli                      → contract のみ
   - `{ type: "review-notify", reviewId, result: "sent"|"agent_blocked"|"no_target", pane }`
   - `{ type: "herdr", connected, protocol }`
 - クライアント → サーバー
-  - `{ type: "pin", worktreeRoot | null }`
   - `{ type: "focus-pane", pane }`
 
 ### 9.3 Hono RPC — git（`repo` = worktree ルート）
@@ -616,7 +614,7 @@ herdr の workspace（メインチェックアウト）で claude を起動
 
 - **M0: スキャッフォルド** — Bun + Vite + React + shadcn + Hono + lint / format / depcruise / テスト基盤。`bun run dev` で空ページ。
 - **M1: ターミナル attach** — PTY、WS、xterm.js、resize、再接続、キー衝突。
-- **M2: herdr 状態とフォーカス追従** — gateway（socket / fake）、state、focus、`/ws/events`、ピン留め。
+- **M2: herdr 状態とフォーカス追従** — gateway（socket / fake）、state、focus、`/ws/events`。
 - **M2.5: サイドバー** — tree 再構成、F8。
 - **M3: diff** — tdiff 移植、`/api/git/patch` `/api/git/files`、poller、`repo-changed`。
 - **M4: graph** — tgg 移植、`/api/git/graph` `/api/git/commit`、選択 → diff。

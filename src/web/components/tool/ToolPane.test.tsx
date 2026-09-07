@@ -222,23 +222,13 @@ describe("ToolPane", () => {
     expect(diffPanelMountCount).toBe(2);
   });
 
-  test("shows the empty state and an open-path form when no worktree is selected", async () => {
+  test("shows only the herdr 未接続 message when no worktree is selected (F2-3)", async () => {
     await renderFocused({ worktreeRoot: null });
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
-    expect(screen.getByLabelText("リポジトリのパスを開く")).toBeInTheDocument();
+    expect(screen.queryByLabelText("リポジトリのパスを開く")).not.toBeInTheDocument();
   });
 
-  test("submitting the open-path form resolves the root and navigates to /w/<root>/diff", async () => {
-    const { router } = await renderFocused({ worktreeRoot: null });
-    fireEvent.change(screen.getByLabelText("リポジトリのパスを開く"), {
-      target: { value: "/tmp/repo" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "開く" }));
-    await waitFor(() => expect(screen.getByText("repo")).toBeInTheDocument());
-    expect(router.state.location.pathname).toBe(`/w/${encodeURIComponent("/tmp/repo")}/diff`);
-  });
-
-  test("shows the worktree header, tabs (no Review tab), and pin toggle when a worktree is selected", async () => {
+  test("shows the worktree header and tabs (no Review tab) when a worktree is selected", async () => {
     await renderFocused();
     expect(screen.getByText("project")).toBeInTheDocument();
     expect(screen.getByText("/Users/dev/project")).toBeInTheDocument();
@@ -273,42 +263,6 @@ describe("ToolPane", () => {
     );
     expect(router.state.location.search).not.toHaveProperty("line");
     expect(router.state.location.search).toMatchObject({ path: "src/a.ts" });
-  });
-
-  // 無いと壊れる: /w/$root/$tab は root が変わっても同一ルートのパラメータ更新
-  // としてしか扱われず（remountDeps が無ければ）ToolPane が再マウントされない。
-  // その場合「worktree が変わったら from/to/path/line を落とす」effect が、
-  // この navigate で渡したばかりの path/line まで消してしまう。
-  test("navigating to a different /w/<root> with path/line keeps them (root change remounts ToolPane)", async () => {
-    const store = makeFakeStore();
-    const { router } = await renderWithRouter(() => <ToolPane />, {
-      path: `/w/${encodeURIComponent("/Users/dev/project-a")}/diff`,
-      store,
-    });
-    await router.navigate({
-      to: "/w/$root/$tab",
-      params: { root: "/Users/dev/project-b", tab: "files" },
-      search: { path: "src/a.ts", line: 3 },
-    });
-    await waitFor(() =>
-      expect(screen.getByTestId("files-panel-stub")).toHaveTextContent("/Users/dev/project-b"),
-    );
-    expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("src/a.ts:3");
-    expect(router.state.location.search).toMatchObject({ path: "src/a.ts", line: 3 });
-  });
-
-  test("pin toggle navigates between /w and /focus, reflecting pressed state", async () => {
-    const worktreeRoot = "/Users/dev/project";
-    const store = makeFakeStore({ focus: focusMessage({ worktreeRoot }) });
-    const { router } = await renderWithRouter(() => <ToolPane />, {
-      path: `/w/${encodeURIComponent(worktreeRoot)}/diff`,
-      store,
-    });
-    const pin = screen.getByLabelText("ピン留めを解除");
-    expect(pin).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(pin);
-    await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
-    expect(screen.getByLabelText("ピン留め")).toHaveAttribute("aria-pressed", "false");
   });
 
   test("selecting a commit in the graph tab sets the diff comparison and shows a reset button", async () => {

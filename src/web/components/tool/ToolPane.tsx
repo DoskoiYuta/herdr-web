@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubRepo } from "@contract/git";
@@ -51,6 +51,8 @@ export type CommitRange = { from: string; to: string } | null;
 
 const EMPTY_SEARCH: ToolSearch = {};
 
+const routeApi = getRouteApi("/focus/$tab");
+
 function ResumeCopyButton({ sessionId }: { sessionId: string }) {
   const [copied, setCopied] = useState(false);
   const command = `claude --resume ${sessionId}`;
@@ -99,52 +101,6 @@ function basename(path: string): string {
   const trimmed = path.replace(/\/+$/, "");
   const idx = trimmed.lastIndexOf("/");
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
-}
-
-function OpenPathForm({ onOpenPath }: { onOpenPath: (root: string) => void }) {
-  const [path, setPath] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!path.trim()) return;
-      setBusy(true);
-      setError(null);
-      try {
-        const info = await gitApi.root(path.trim());
-        onOpenPath(info.root);
-      } catch {
-        setError("パスを解決できませんでした");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [path, onOpenPath],
-  );
-
-  return (
-    <form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-2">
-      <label htmlFor="tool-pane-open-path" className="text-sm text-muted-foreground">
-        リポジトリのパスを開く
-      </label>
-      <div className="flex gap-2">
-        <input
-          id="tool-pane-open-path"
-          type="text"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="/path/to/worktree"
-          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm"
-        />
-        <Button type="submit" size="sm" disabled={busy}>
-          開く
-        </Button>
-      </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </form>
-  );
 }
 
 /** Send-target picker candidate card (ToolPane's dialog, 2+ agent panes at
@@ -205,55 +161,53 @@ function SendTargetCard({
   );
 }
 
-/** `/focus/$tab` (focus 追従) と `/w/$root/$tab` (ピン留め) どちらの下でも
- * 描画される。`root` params の有無が「ピン留め済みか」を決め、URL がタブ・
- * 比較範囲・選択サブリポジトリ・ジャンプ先の唯一の正になる — このコンポーネント
- * 自身はローカル state を持たない（送信ダイアログの開閉やエラー文言のような
- * 一時的な UI 状態を除く）。 */
-/** `useNavigate()`'s generic type infers `never` params/search without a
- * static `from` — but ToolPane is the component for two different routes
- * (`/focus/$tab` and `/w/$root/$tab`), so there's no single `from` to give
- * it. Both routes share the same params/search shape at runtime, so a
- * hand-written signature stands in for the type-safe one. */
-type ToolPaneParams = { tab: string; root?: string };
-type ToolPaneNavigate = (opts: {
-  to?: string;
-  params?: ToolPaneParams | ((prev: ToolPaneParams) => ToolPaneParams);
-  search?: ToolSearch | ((prev: ToolSearch) => ToolSearch);
-  replace?: boolean;
-}) => Promise<void>;
-
+/** `/focus/$tab` の唯一の下で描画される — URL がタブ・比較範囲・選択サブ
+ * リポジトリ・ジャンプ先の唯一の正になる（plan.md F2-4: ピン留めは持たない）。
+ * このコンポーネント自身はローカル state を持たない（送信ダイアログの開閉や
+ * エラー文言のような一時的な UI 状態を除く）。 */
 export function ToolPane() {
-  const params = useParams({ strict: false }) as { tab?: string; root?: string };
-  const search = useSearch({ strict: false }) as ToolSearch;
-  const navigate = useNavigate() as unknown as ToolPaneNavigate;
+  const params = routeApi.useParams();
+  const search = routeApi.useSearch();
+  const navigate = routeApi.useNavigate();
   const state = useHerdrState();
 
-  const pinnedRoot = params.root !== undefined ? params.root : null;
-  const pinned = pinnedRoot !== null;
-  const worktreeRoot = pinnedRoot ?? state.focus?.worktreeRoot ?? null;
+  const worktreeRoot = state.focus?.worktreeRoot ?? null;
   const tab: ToolTab = normalizeTab(params.tab);
   const repos = state.repos;
   const repoKey = state.focus?.repoKey ?? null;
   const focusInfo = state.focus;
   const repoChangedTick = worktreeRoot ? (state.repoChanged[worktreeRoot]?.tick ?? 0) : 0;
 
+  // 別 worktree のファイル位置を開く導線（router.tsx useOpenWorktreeLocation）が
+  // 付ける search の `root`: herdr の focus がまだその worktree に切り替わって
+  // いない間は、`path`/`line` を今表示中の（無関係な）worktree に適用しない
+  // ゲート。focus が追いついたら消す。
+  const intendedRoot = search.root ?? null;
+  const rootPending = intendedRoot !== null && intendedRoot !== worktreeRoot;
+  useEffect(() => {
+    if (intendedRoot !== null && intendedRoot === worktreeRoot) {
+      void navigate({ search: (prev) => ({ ...prev, root: undefined }), replace: true });
+    }
+  }, [intendedRoot, worktreeRoot, navigate]);
+
   // `/focus/$tab` の worktreeRoot は herdr の focus に追従するので、URL を変えずに
-  // 変わることがある（`/w/$root/$tab` は root が URL 自体なので、値が変わるのは
-  // 常にナビゲーション経由）。前の worktree の比較範囲・選択サブリポジトリ・
-  // ジャンプ先が新しい worktree に持ち越されないよう、値が変わった回だけ search
-  // を空にする（ピン留めの付け外しは worktreeRoot の値自体は変えないので対象外）。
-  // `navigate()` は次のレンダーまで URL に反映されないため、worktreeRoot が
-  // 変わったレンダー自身でも旧 search を使わないよう、React の「レンダー中に
-  // state を調整する」パターン（FilesPanel.tsx の selectedPath 切り替えと同様）
-  // で `searchCleared` を同じレンダーパス内に確定させる。effect は URL を実際に
-  // 空にする navigate の発行だけを担い、`searchCleared` 自体は URL が実際に
-  // 空になったことを検知したレンダーで戻す（effect 内で setState しない）。
+  // 変わることがある。前の worktree の比較範囲・選択サブリポジトリ・ジャンプ先が
+  // 新しい worktree に持ち越されないよう、値が変わった回だけ search を空にする
+  // — ただし上の `root` ゲートが今回の変化を待っていた場合（意図した遷移）は
+  // 対象外にする。`navigate()` は次のレンダーまで URL に反映されないため、
+  // worktreeRoot が変わったレンダー自身でも旧 search を使わないよう、React の
+  // 「レンダー中に state を調整する」パターン（FilesPanel.tsx の selectedPath
+  // 切り替えと同様）で `searchCleared` を同じレンダーパス内に確定させる。effect
+  // は URL を実際に空にする navigate の発行だけを担い、`searchCleared` 自体は
+  // URL が実際に空になったことを検知したレンダーで戻す（effect 内で setState
+  // しない）。
   const [trackedWorktreeRoot, setTrackedWorktreeRoot] = useState(worktreeRoot);
   const [searchCleared, setSearchCleared] = useState(false);
   if (trackedWorktreeRoot !== worktreeRoot) {
     setTrackedWorktreeRoot(worktreeRoot);
-    setSearchCleared(true);
+    if (intendedRoot !== worktreeRoot) {
+      setSearchCleared(true);
+    }
   } else if (searchCleared && Object.keys(search).length === 0) {
     setSearchCleared(false);
   }
@@ -268,13 +222,13 @@ export function ToolPane() {
       : null;
   const subRepoId = effectiveSearch.sub ?? "";
   const initialLocation: DiffInitialLocation | null =
-    tab === "diff" && effectiveSearch.path
+    tab === "diff" && !rootPending && effectiveSearch.path
       ? { path: effectiveSearch.path, line: effectiveSearch.line ?? 1, side: "new" }
       : null;
-  const filesSelectedPath = tab === "files" ? (effectiveSearch.path ?? null) : null;
+  const filesSelectedPath = tab === "files" && !rootPending ? (effectiveSearch.path ?? null) : null;
   const filesMdMode = effectiveSearch.md ?? "preview";
   const filesInitialLocation =
-    tab === "files" && effectiveSearch.path && effectiveSearch.line
+    tab === "files" && !rootPending && effectiveSearch.path && effectiveSearch.line
       ? { path: effectiveSearch.path, line: effectiveSearch.line }
       : null;
 
@@ -282,7 +236,7 @@ export function ToolPane() {
     (nextTab: string) => {
       void navigate({
         params: (prev) => ({ ...prev, tab: nextTab }),
-        search: (prev) => ({ ...prev, path: undefined, line: undefined }),
+        search: (prev) => ({ ...prev, path: undefined, line: undefined, root: undefined }),
       });
     },
     [navigate],
@@ -346,42 +300,12 @@ export function ToolPane() {
           to: undefined,
           path: undefined,
           line: undefined,
+          root: undefined,
         }),
       });
     },
     [navigate],
   );
-
-  const handleOpenPath = useCallback(
-    (root: string) => {
-      void navigate({
-        to: "/w/$root/$tab",
-        params: { root, tab: "diff" },
-        search: {},
-      });
-    },
-    [navigate],
-  );
-
-  const handlePinToggle = useCallback(() => {
-    if (!worktreeRoot) return;
-    if (pinned) {
-      // focus の worktree がピン留め中のものと違う場合、比較範囲・ジャンプ先は
-      // その別 worktree に対して無関係な値なので持ち越さない。
-      const keepSearch = state.focus?.worktreeRoot === worktreeRoot;
-      void navigate({
-        to: "/focus/$tab",
-        params: { tab },
-        search: keepSearch ? (prev) => prev : {},
-      });
-    } else {
-      void navigate({
-        to: "/w/$root/$tab",
-        params: { root: worktreeRoot, tab },
-        search: (prev) => prev,
-      });
-    }
-  }, [navigate, pinned, tab, worktreeRoot, state.focus]);
 
   // Sub-repository switcher (plan.md: submodules + `.repos/<child>` nested
   // repos). Listed even for a null worktreeRoot (query stays disabled) so
@@ -482,7 +406,6 @@ export function ToolPane() {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-4 text-center">
         <p className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</p>
-        <OpenPathForm onOpenPath={handleOpenPath} />
       </div>
     );
   }
@@ -531,15 +454,6 @@ export function ToolPane() {
           >
             送信 ({pendingDrafts})
           </Button>
-          <button
-            type="button"
-            onClick={handlePinToggle}
-            aria-pressed={pinned}
-            aria-label={pinned ? "ピン留めを解除" : "ピン留め"}
-            className="shrink-0 rounded-md px-1.5 py-1 text-sm hover:bg-muted"
-          >
-            📌
-          </button>
         </div>
       </header>
       {sendError && (

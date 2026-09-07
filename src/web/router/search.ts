@@ -1,4 +1,4 @@
-/** ツール領域ルート（`/focus/$tab` / `/w/$root/$tab`）の search params。
+/** ツール領域ルート（`/focus/$tab`）の search params。
  * タブによって使うキーは違うが、`$tab` は動的な path param なので
  * 検証は 1 つの緩いスキーマで行う — 使わないタブでは該当フィールドを無視する
  * だけでよい。不正な値はフィールドごとに欠落扱い（既定値）へ丸める。 */
@@ -11,6 +11,10 @@ const ToolSearchSchema = v.object({
   path: v.optional(v.pipe(v.string(), v.minLength(1))),
   line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
   md: v.optional(v.picklist(["source", "preview"])),
+  /** worktree が `focus-pane` 経由でまだ切り替わっていない間、他の worktree の
+   * `path`/`line` を誤って適用しないためのゲート（別 worktree のファイルを開く
+   * 導線専用）。この値が現在の focus worktree と一致した時点で消す。 */
+  root: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 export type ToolSearch = v.InferOutput<typeof ToolSearchSchema>;

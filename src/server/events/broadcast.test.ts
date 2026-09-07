@@ -190,16 +190,6 @@ describe("wireHerdrToHub", () => {
     expect(sink.messages).toContainEqual({ type: "herdr", connected: false, protocol: null });
   });
 
-  test("handleClientMessage pin delegates to focus.pin", async () => {
-    const { wired, focus, state } = await setup();
-    const paneId = state.get().focusedPaneId!;
-    const pane = state.get().panes.get(paneId)!;
-    const cwd = pane.foreground_cwd ?? pane.cwd!;
-    wired.handleClientMessage({ type: "pin", worktreeRoot: cwd });
-    await settle();
-    expect(focus.pinned()).toBe(cwd);
-  });
-
   test("handleClientMessage focus-pane in the same workspace only calls pane.focus", async () => {
     const { wired, gw, state } = await setup();
     const focusedWorkspace = state.get().focusedWorkspaceId!;

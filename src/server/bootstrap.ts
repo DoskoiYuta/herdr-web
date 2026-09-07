@@ -97,7 +97,7 @@ export function createRuntime(deps: RuntimeDeps) {
     },
   });
 
-  // フォーカス中（またはピン留め中）の worktree だけをポーリングする（plan F3-4）
+  // フォーカス中の worktree だけをポーリングする（plan F3-4）
   let watchedRoot: string | null = null;
   const rootWatchedListeners = new Set<(root: string) => void>();
   const unsubscribeFocus = focus.onChange((payload) => {
@@ -172,7 +172,7 @@ export function createRuntime(deps: RuntimeDeps) {
       repoChangedListeners.add(cb);
       return () => repoChangedListeners.delete(cb);
     },
-    /** Item 1: fires with a root right after it newly becomes the watched (focused/pinned) worktree. */
+    /** Item 1: fires with a root right after it newly becomes the watched (focused) worktree. */
     onRootWatched(cb: (root: string) => void): () => void {
       rootWatchedListeners.add(cb);
       return () => rootWatchedListeners.delete(cb);

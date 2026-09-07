@@ -258,7 +258,7 @@ describe("createHerdrStore", () => {
 
   test("send() forwards to the underlying socket", () => {
     const { store, socket } = createStore();
-    store.send({ type: "pin", worktreeRoot: "/repo" });
-    expect(socket.sent).toEqual([JSON.stringify({ type: "pin", worktreeRoot: "/repo" })]);
+    store.send({ type: "focus-pane", pane: "w1:p1" });
+    expect(socket.sent).toEqual([JSON.stringify({ type: "focus-pane", pane: "w1:p1" })]);
   });
 });

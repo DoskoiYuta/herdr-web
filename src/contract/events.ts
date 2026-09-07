@@ -170,14 +170,7 @@ export type ServerEventMessage = v.InferOutput<typeof ServerEventMessageSchema>;
 // /ws/events: client -> server
 // ---------------------------------------------------------------------------
 
-export const PinMessageSchema = v.object({
-  type: v.literal("pin"),
-  worktreeRoot: v.nullable(v.string()),
-});
 export const FocusPaneMessageSchema = v.object({ type: v.literal("focus-pane"), pane: v.string() });
 
-export const ClientEventMessageSchema = v.variant("type", [
-  PinMessageSchema,
-  FocusPaneMessageSchema,
-]);
+export const ClientEventMessageSchema = v.variant("type", [FocusPaneMessageSchema]);
 export type ClientEventMessage = v.InferOutput<typeof ClientEventMessageSchema>;

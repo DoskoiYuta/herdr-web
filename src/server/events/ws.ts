@@ -9,7 +9,7 @@ export type EventsWssDeps = {
   logger?: Pick<typeof console, "warn">;
 };
 
-/** `/ws/events`: サーバー → クライアントは hub のブロードキャスト、クライアント → サーバーは pin / focus-pane。 */
+/** `/ws/events`: サーバー → クライアントは hub のブロードキャスト、クライアント → サーバーは focus-pane。 */
 export function createEventsWss(deps: EventsWssDeps): WebSocketServer {
   const { hub, onClientMessage, logger = console } = deps;
   const wss = new WebSocketServer({ noServer: true });

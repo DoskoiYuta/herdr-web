@@ -413,7 +413,7 @@ describe("createRuntime: worktree_removed gateway event", () => {
   });
 });
 
-// Item 1: a review created while its worktree is NOT the focused/pinned root
+// Item 1: a review created while its worktree is NOT the focused root
 // never gets a repo-changed tick to reconcile against, because the poller
 // only polls watched roots and its first tick after watch() just seeds its
 // cache (never fires onChanged). Focusing a pane on that root must itself

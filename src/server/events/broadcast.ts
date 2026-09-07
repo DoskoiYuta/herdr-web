@@ -56,7 +56,7 @@ export interface WireHerdrToHubOptions {
 }
 
 export interface WiredHerdr {
-  /** Feed a parsed `{ type: "pin" | "focus-pane", ... }` message from a client here (plan.md §9.2, §12-9). */
+  /** Feed a parsed `{ type: "focus-pane" }` message from a client here (plan.md §9.2, §12-9). */
   handleClientMessage(message: ClientEventMessage): void;
   /** worktree の解決結果が変わりうるとき（HEAD / refs 変化）に tree を再送する。 */
   refreshTree(): void;
@@ -74,7 +74,7 @@ function effectiveCwd(
  * `tree` to newly attached clients and whenever state resets, `pane-updated` /
  * `pane-removed` on granular pane changes, `focus` on focus changes, and
  * `herdr` on gateway connectivity changes. Also exposes `handleClientMessage`
- * for `pin` / `focus-pane` from clients — `focus-pane` calls `workspace.focus`
+ * for `focus-pane` from clients — it calls `workspace.focus`
  * first when the target pane's workspace differs from the currently focused
  * one (plan.md §12-9), then `pane.focus`.
  */
@@ -164,7 +164,6 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
   return {
     handleClientMessage(message: ClientEventMessage): void {
       match(message)
-        .with({ type: "pin" }, (m) => focus.pin(m.worktreeRoot))
         .with({ type: "focus-pane" }, (m) => void handleFocusPane(m.pane))
         .exhaustive();
     },

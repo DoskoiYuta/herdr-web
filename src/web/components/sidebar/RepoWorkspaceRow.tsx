@@ -1,4 +1,4 @@
-import { Bot, GitBranch, Pin } from "lucide-react";
+import { Bot, GitBranch } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,6 @@ import { STATUS_META } from "./PaneRow";
 
 export type RepoWorkspaceRowProps = {
   workspace: WorkspaceGroup;
-  pinnedWorktreeRoot: string | null;
   /** herdr で現在フォーカスされている workspace。背景ハイライトはこれだけを表す。 */
   focusedWorkspaceId: string | null;
   onSelectPane: (paneId: string) => void;
@@ -47,7 +46,6 @@ const SUMMARY_STATUSES = ["blocked", "working", "done"] as const;
  * terminated, calling `closeWorkspace(id, { confirm: true })`). */
 export function RepoWorkspaceRow({
   workspace,
-  pinnedWorktreeRoot,
   focusedWorkspaceId,
   onSelectPane,
 }: RepoWorkspaceRowProps) {
@@ -78,9 +76,6 @@ export function RepoWorkspaceRow({
   // pane.focused は workspace ごとの「その workspace 内でアクティブな pane」なので、
   // 選択状態の判定には使わない（全 workspace がハイライトされてしまう）。
   const isFocusedWorkspace = workspace.workspaceId === focusedWorkspaceId;
-  const isPinned =
-    pinnedWorktreeRoot != null &&
-    workspace.panes.some((p) => p.worktreeRoot === pinnedWorktreeRoot);
 
   const branchBadges = new Map<string, Set<string>>();
   for (const pane of workspace.panes) {
@@ -151,11 +146,9 @@ export function RepoWorkspaceRow({
             className={cn(
               "flex w-full flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted",
               isFocusedWorkspace && "bg-muted font-medium",
-              isPinned && "ring-1 ring-inset ring-primary",
             )}
           >
             <span className="min-w-0 flex-1 truncate">{workspace.workspaceLabel}</span>
-            {isPinned && <Pin className="size-3 shrink-0 text-primary" aria-label="ピン留め中" />}
             {SUMMARY_STATUSES.map((status) => {
               const count = counts[status];
               if (count === 0) return null;

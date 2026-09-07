@@ -108,7 +108,7 @@ describe("connectEvents", () => {
     connectEvents(
       { protocol: "http:", host: "localhost:8080" },
       { onMessage: vi.fn(), WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket },
-    ).send({ type: "pin", worktreeRoot: "/x" });
+    ).send({ type: "focus-pane", pane: "p0" });
     const socket = FakeWebSocket.instances[0]!;
     expect(socket.sent).toEqual([]);
 

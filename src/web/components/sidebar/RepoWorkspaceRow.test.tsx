@@ -43,7 +43,6 @@ function workspace(overrides: Partial<WorkspaceGroup> = {}): WorkspaceGroup {
 function defaultProps() {
   return {
     workspace: workspace(),
-    pinnedWorktreeRoot: null,
     focusedWorkspaceId: null,
     onSelectPane: vi.fn(),
   };
