@@ -119,7 +119,7 @@ export function createHerdrAskLauncher(deps: HerdrAskLauncherDeps): AskSessionLa
         // that specific error for a few seconds.
         const startParams = {
           name: params.label.replace(":", "-"),
-          kind: "claude",
+          kind: params.agent,
           paneId: pane.pane_id,
           timeoutMs: 60_000,
         };
@@ -136,7 +136,7 @@ export function createHerdrAskLauncher(deps: HerdrAskLauncherDeps): AskSessionLa
           throw new Error(`agent.prompt: ${outcome.status}`);
         }
 
-        return ok({ kind: "herdr", label: params.label });
+        return ok({ kind: "herdr", label: params.label, agent: params.agent });
       } catch (e) {
         try {
           await gateway.workspaceClose(workspace.workspace_id);

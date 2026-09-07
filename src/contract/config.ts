@@ -59,6 +59,12 @@ export const ConfigSchema = v.object({
         "質問 {id} にユーザーから返信があります。`hw ask show {id}` で読み、`hw ask reply {id}` で回答してください。",
       ),
       maxSessions: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1)), 5),
+      /** herdr `agent.start` の `kind` として選べる値。herdr 自体は自由文字列を
+       * 取り対応一覧を持たないため（`herdr agent start --help` にしか出ない）、
+       * ここで持つ。 */
+      agents: v.optional(v.array(v.string()), ["claude", "codex", "gemini"]),
+      /** `agents` に無ければ起動時に `agents[0]` へ丸める（server/config.ts）。 */
+      defaultAgent: v.optional(v.string(), "claude"),
     }),
     {},
   ),
@@ -70,5 +76,11 @@ export type ConfigInput = v.InferInput<typeof ConfigSchema>;
 export const ClientConfigSchema = v.object({
   terminal: v.object({ fontFamily: v.string(), fontSize: v.number(), lineHeight: v.number() }),
   graphInitialCommits: v.number(),
+  ask: v.object({
+    agents: v.array(v.string()),
+    defaultAgent: v.string(),
+    /** 専用ワークスペースの同時起動上限（送信先ダイアログの残り枠表示用）。 */
+    maxSessions: v.number(),
+  }),
 });
 export type ClientConfig = v.InferOutput<typeof ClientConfigSchema>;

@@ -100,6 +100,13 @@ vi.mock("@/lib/api", () => ({
       `/api/fs/raw?root=${encodeURIComponent(params.root)}&path=${encodeURIComponent(params.path)}&t=${params.tick}`,
     trash: (...args: [{ root: string; path: string }]) => trashMock(...args),
   },
+  configApi: {
+    get: vi.fn().mockResolvedValue({
+      terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1 },
+      graphInitialCommits: 200,
+      ask: { agents: ["claude", "codex", "gemini"], defaultAgent: "claude", maxSessions: 5 },
+    }),
+  },
   askApi: {
     forFile: (...args: unknown[]) => askForFileMock(...args),
     counts: (...args: unknown[]) => askCountsMock(...args),

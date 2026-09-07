@@ -50,6 +50,13 @@ vi.mock("@/lib/api", () => ({
     file: (...args: unknown[]) => fileMock(...args),
     rawUrl: () => "/raw",
   },
+  configApi: {
+    get: vi.fn().mockResolvedValue({
+      terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1 },
+      graphInitialCommits: 200,
+      ask: { agents: ["claude", "codex", "gemini"], defaultAgent: "claude", maxSessions: 5 },
+    }),
+  },
   askApi: {
     create: (...args: unknown[]) => createMock(...args),
     forFile: (...args: unknown[]) => forFileMock(...args),
@@ -64,6 +71,13 @@ vi.mock("@/lib/api", () => ({
   TrashUnavailableError: class extends Error {},
   AskLimitError,
   AskUnavailableError,
+  AskUnknownAgentError: class extends Error {
+    agents: string[];
+    constructor(agents: string[]) {
+      super("対応していないエージェントです");
+      this.agents = agents;
+    }
+  },
 }));
 
 vi.mock("@/components/tree/PathTree", () => ({
@@ -81,34 +95,6 @@ vi.mock("@/components/tree/PathTree", () => ({
         </button>
       ))}
     </div>
-  ),
-}));
-
-// Radix Select (AskComposer's send-target picker) needs pointer-capture APIs
-// jsdom doesn't implement — stub it as a native <select>.
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: React.ReactNode;
-  }) => (
-    <select
-      data-testid="target-select"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
-    <option value={value}>{children}</option>
   ),
 }));
 
@@ -247,7 +233,7 @@ async function selectFileAndDragLines23() {
   screen.getByText("end-selection").click();
 }
 
-test("selecting lines opens the composer; submitting with the default target creates an ask anchored to those lines", async () => {
+test("selecting lines opens the composer; opening the target dialog and submitting the default target creates an ask anchored to those lines", async () => {
   createMock.mockResolvedValue(makeAsk());
   render(renderPanel());
   await selectFileAndDragLines23();
@@ -255,7 +241,8 @@ test("selecting lines opens the composer; submitting with the default target cre
   fireEvent.change(await screen.findByPlaceholderText("質問を入力"), {
     target: { value: "why?" },
   });
-  fireEvent.click(screen.getByText("送信"));
+  fireEvent.click(screen.getByText("送信先を選ぶ…"));
+  fireEvent.click(await screen.findByText("新規セッションで質問する"));
 
   await vi.waitFor(() => expect(createMock).toHaveBeenCalled());
   expect(createMock).toHaveBeenCalledWith(
@@ -264,13 +251,13 @@ test("selecting lines opens the composer; submitting with the default target cre
       worktreeRoot: "/repo",
       path: "a.ts",
       body: "why?",
-      target: { kind: "new" },
+      target: { kind: "new", agent: "claude" },
       anchor: expect.objectContaining({ lines: ["line2", "line3"] }),
     }),
   );
 });
 
-test("choosing a pane target sends { kind: 'pane', paneId }", async () => {
+test("choosing a pane target in the dialog sends { kind: 'pane', paneId }", async () => {
   createMock.mockResolvedValue(makeAsk());
   render(
     renderPanel({
@@ -288,9 +275,9 @@ test("choosing a pane target sends { kind: 'pane', paneId }", async () => {
                 {
                   paneId: "pane-1",
                   workspaceId: "w",
-                  workspaceLabel: null,
+                  workspaceLabel: "ws-1",
                   tabId: "t",
-                  tabLabel: null,
+                  tabLabel: "tab-1",
                   label: "worker",
                   agent: "claude",
                   agentStatus: "idle",
@@ -311,8 +298,9 @@ test("choosing a pane target sends { kind: 'pane', paneId }", async () => {
   fireEvent.change(await screen.findByPlaceholderText("質問を入力"), {
     target: { value: "why?" },
   });
-  fireEvent.change(screen.getByTestId("target-select"), { target: { value: "pane-1" } });
-  fireEvent.click(screen.getByText("送信"));
+  fireEvent.click(screen.getByText("送信先を選ぶ…"));
+  fireEvent.click(await screen.findByRole("button", { name: /worker/ }));
+  fireEvent.click(screen.getByText(/に質問する/));
 
   await vi.waitFor(() =>
     expect(createMock).toHaveBeenCalledWith(
@@ -411,7 +399,7 @@ test("再送 on a thread with an agent_blocked prompt calls askApi.resend", asyn
   await vi.waitFor(() => expect(resendMock).toHaveBeenCalledWith("anchored-1"));
 });
 
-test("shows the ask-limit message when askApi.create rejects with AskLimitError", async () => {
+test("shows the ask-limit message when askApi.create rejects with AskLimitError, keeping the dialog open", async () => {
   createMock.mockRejectedValue(new AskLimitError(3));
   render(renderPanel());
   await selectFileAndDragLines23();
@@ -419,14 +407,16 @@ test("shows the ask-limit message when askApi.create rejects with AskLimitError"
   fireEvent.change(await screen.findByPlaceholderText("質問を入力"), {
     target: { value: "why?" },
   });
-  fireEvent.click(screen.getByText("送信"));
+  fireEvent.click(screen.getByText("送信先を選ぶ…"));
+  fireEvent.click(await screen.findByText("新規セッションで質問する"));
 
   expect(
     await screen.findByText("質問セッションの上限 (3) に達しています。解決して閉じてください"),
   ).toBeInTheDocument();
+  expect(screen.getByText("質問の送信先")).toBeInTheDocument();
 });
 
-test("shows the herdr-unavailable message when askApi.create rejects with AskUnavailableError", async () => {
+test("shows the herdr-unavailable message when askApi.create rejects with AskUnavailableError, keeping the dialog open", async () => {
   createMock.mockRejectedValue(new AskUnavailableError());
   render(renderPanel());
   await selectFileAndDragLines23();
@@ -434,9 +424,11 @@ test("shows the herdr-unavailable message when askApi.create rejects with AskUna
   fireEvent.change(await screen.findByPlaceholderText("質問を入力"), {
     target: { value: "why?" },
   });
-  fireEvent.click(screen.getByText("送信"));
+  fireEvent.click(screen.getByText("送信先を選ぶ…"));
+  fireEvent.click(await screen.findByText("新規セッションで質問する"));
 
   expect(await screen.findByText("herdr 未接続")).toBeInTheDocument();
+  expect(screen.getByText("質問の送信先")).toBeInTheDocument();
 });
 
 test("selecting a different file clears the composer", async () => {

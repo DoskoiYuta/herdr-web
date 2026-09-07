@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { AskWithSession } from "../contract/ask";
 import type { Review } from "../contract/review";
 import {
+  formatAskShow,
   formatReviewList,
   formatReviewLine,
   formatReviewShow,
@@ -8,6 +10,27 @@ import {
   formatTarget,
   shortId,
 } from "./format";
+
+function makeAskWithSession(overrides: Partial<AskWithSession> = {}): AskWithSession {
+  return {
+    id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    repo: "/repo/.git",
+    worktreeRoot: "/repo",
+    path: "src/a.ts",
+    anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
+    createdAtHead: "abc123",
+    status: "open",
+    session: { kind: "herdr", label: "ask:abc12345", agent: "claude" },
+    sessionStatus: "working",
+    thread: [
+      { seq: 0, author: "user", body: "why?", at: "2026-01-01T00:00:00Z", agentSession: null },
+    ],
+    lastPrompt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function makeReview(overrides: Partial<Review> = {}): Review {
   return {
@@ -141,6 +164,23 @@ describe("formatReviewShow", () => {
     );
     expect(out).toContain("  >   return 1;");
     expect(out).toContain("  >   return 2;");
+  });
+});
+
+describe("formatAskShow", () => {
+  // 無いと壊れる: どのエージェントが答えているかが `hw ask show` だけでは分からず、
+  // pane に手動で移動して確かめる必要が出る。
+  test("includes the session's agent when present", () => {
+    const out = formatAskShow(makeAskWithSession());
+    expect(out).toContain("agent: claude");
+  });
+
+  test.each([
+    [{ kind: "pane", paneId: "p1" } as const, "不明"],
+    [{ kind: "herdr", label: "ask:x", agent: null } as const, "不明"],
+  ])("shows 不明 when the session has no agent (%j)", (session, expected) => {
+    const out = formatAskShow(makeAskWithSession({ session }));
+    expect(out).toContain(`agent: ${expected}`);
   });
 });
 

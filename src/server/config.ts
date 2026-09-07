@@ -18,11 +18,26 @@ export function defaultConfigPath(): string {
   return join(configDir(), "config.json");
 }
 
+/** `ask.defaultAgent` が `ask.agents` に無ければ先頭へ丸める。herdr は `agent.start`
+ * の `kind` を検証しないので、ここで丸めないと存在しないエージェント種別が
+ * そのまま渡ってしまう。 */
+function roundAskDefaultAgent(config: Config): { config: Config; problem: string | null } {
+  const { agents, defaultAgent } = config.ask;
+  if (agents.includes(defaultAgent)) return { config, problem: null };
+  const rounded = agents[0] ?? defaultAgent;
+  return {
+    config: { ...config, ask: { ...config.ask, defaultAgent: rounded } },
+    problem: `ask.defaultAgent: "${defaultAgent}" は ask.agents に無いため "${rounded}" を使います`,
+  };
+}
+
 export function parseConfig(raw: unknown): { config: Config; problem: string | null } {
   const r = v.safeParse(ConfigSchema, raw);
-  if (r.success) return { config: r.output, problem: null };
-  const msg = r.issues.map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; ");
-  return { config: v.parse(ConfigSchema, {}), problem: msg };
+  if (!r.success) {
+    const msg = r.issues.map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; ");
+    return { config: v.parse(ConfigSchema, {}), problem: msg };
+  }
+  return roundAskDefaultAgent(r.output);
 }
 
 export async function loadConfig(path = defaultConfigPath()): Promise<LoadedConfig> {

@@ -17,7 +17,13 @@ export type AskStatus = v.InferOutput<typeof AskStatusSchema>;
  * - pane: 既存のエージェント pane（送信時に選んだもの）。
  */
 export const AskSessionSchema = v.variant("kind", [
-  v.object({ kind: v.literal("herdr"), label: v.string() }),
+  v.object({
+    kind: v.literal("herdr"),
+    label: v.string(),
+    /** herdr `agent.start` の `kind`。既存行（この列追加前に作られたセッション）
+     * には無いので null 許容 — 表示は「不明」。 */
+    agent: v.optional(v.nullable(v.string()), null),
+  }),
   v.object({ kind: v.literal("pane"), paneId: v.string() }),
 ]);
 export type AskSession = v.InferOutput<typeof AskSessionSchema>;
@@ -78,8 +84,10 @@ export type AskWithSession = v.InferOutput<typeof AskWithSessionSchema>;
 /* ------------------------------------------------------------------ */
 
 export const AskTargetSchema = v.variant("kind", [
-  /** 専用ワークスペースで claude を起動して質問する（既定） */
-  v.object({ kind: v.literal("new") }),
+  /** 専用ワークスペースでエージェントを起動して質問する（既定）。`agent` を
+   * 省略すると `config.ask.defaultAgent`。`config.ask.agents` に無い値は
+   * サービス側で 400 `unknown_agent` にする（valibot では検証しない）。 */
+  v.object({ kind: v.literal("new"), agent: v.optional(v.string()) }),
   /** 既存のエージェント pane に質問する */
   v.object({ kind: v.literal("pane"), paneId: v.string() }),
 ]);

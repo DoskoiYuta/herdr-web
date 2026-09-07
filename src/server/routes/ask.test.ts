@@ -1,5 +1,6 @@
 import { err } from "neverthrow";
 import { describe, expect, test } from "bun:test";
+import type { AskTarget } from "../../contract/ask";
 import type { Anchor } from "../../contract/review";
 import { createFakeAskLauncher } from "../ask/testing/fake-launcher";
 import { createTestApp } from "../testing/app-deps";
@@ -26,7 +27,7 @@ const createBody = {
   anchor,
   createdAtHead: "head1",
   body: "why is this here?",
-  target: { kind: "new" as const },
+  target: { kind: "new" } as AskTarget,
 };
 
 function postAsk(
@@ -48,7 +49,23 @@ describe("POST /api/ask", () => {
     expect(res.status).toBe(201);
     const body = await json(res);
     expect(body.status).toBe("open");
-    expect(body.session).toEqual({ kind: "herdr", label: `ask:${body.id.slice(-8)}` });
+    expect(body.session).toEqual({
+      kind: "herdr",
+      label: `ask:${body.id.slice(-8)}`,
+      agent: "claude",
+    });
+  });
+
+  // 無いと壊れる: サービス層の unknown_agent がここでマップされていないと、
+  // 存在しないエージェントの選択が 500 として返り、UI がエラー文言を出し分けられない。
+  test("400 unknown_agent when the requested agent isn't in config.ask.agents", async () => {
+    const { launcher } = createFakeAskLauncher();
+    const { app } = createTestApp({ askLauncher: launcher });
+    const res = await postAsk(app, { target: { kind: "new", agent: "gpt4" } });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.error).toBe("unknown_agent");
+    expect(body.agents).toEqual(["claude", "codex", "gemini"]);
   });
 
   test("409 limit_reached when maxSessions is exhausted", async () => {

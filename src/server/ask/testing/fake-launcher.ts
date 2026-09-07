@@ -3,7 +3,14 @@ import type { AskSession, AskSessionStatus } from "../../../contract/ask";
 import type { AskSessionLauncher, LaunchError, PromptError } from "../ports";
 
 export type FakeLauncherCall =
-  | { kind: "start"; askId: string; worktreeRoot: string; label: string; prompt: string }
+  | {
+      kind: "start";
+      askId: string;
+      worktreeRoot: string;
+      label: string;
+      prompt: string;
+      agent: string;
+    }
   | { kind: "prompt"; session: AskSession; text: string }
   | { kind: "status"; session: AskSession }
   | { kind: "close"; session: AskSession }
@@ -21,7 +28,7 @@ export function createFakeAskLauncher(options: FakeAskLauncherOptions = {}) {
   const launcher: AskSessionLauncher = {
     async start(params) {
       calls.push({ kind: "start", ...params });
-      return options.startResult ?? ok({ kind: "herdr", label: params.label });
+      return options.startResult ?? ok({ kind: "herdr", label: params.label, agent: params.agent });
     },
     async prompt(session, text) {
       calls.push({ kind: "prompt", session, text });

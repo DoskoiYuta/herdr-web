@@ -60,6 +60,10 @@ bun run build      # dist/web と dist/herdr-web, dist/hw を生成
   "notify": {
     "debounceMs": 10000,
     "template": "レビューコメントが {count} 件あります。`hw review list` で確認して対応してください。"
+  },
+  "ask": {
+    "agents": ["claude", "codex", "gemini"],
+    "defaultAgent": "claude"
   }
 }
 ```
@@ -67,6 +71,7 @@ bun run build      # dist/web と dist/herdr-web, dist/hw を生成
 - `dbPath` の既定は `~/.config/herdr-web/herdr-web.db`（SQLite, WAL）。
 - `allowedRoots`: `$HOME` 配下以外のリポジトリを開きたいときに追加する。
 - 環境変数 `PORT` / `HOST` が設定を上書きする。
+- `ask.agents`: 質問の新規セッションで選べるエージェント種別。herdr の `agent.start` は `kind` に自由文字列を取り対応一覧を持たないため（`herdr agent start --help` にしか出ない）、ここで持つ。`ask.defaultAgent` が `agents` に無ければ起動時に警告して先頭に丸める。
 
 ## 出先からのアクセス
 

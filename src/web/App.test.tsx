@@ -39,6 +39,7 @@ vi.mock("@/lib/api", () => ({
     get: vi.fn(async () => ({
       terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1 },
       graphInitialCommits: 200,
+      ask: { agents: ["claude", "codex", "gemini"], defaultAgent: "claude", maxSessions: 5 },
     })),
   },
   gitApi: {

@@ -97,6 +97,8 @@ export function formatAskShow(ask: AskWithSession): string {
   lines.push(`status: ${ask.status}`);
   lines.push(`worktreeRoot: ${ask.worktreeRoot}`);
   lines.push(`session: ${ask.sessionStatus}`);
+  const agent = ask.session?.kind === "herdr" ? ask.session.agent : null;
+  lines.push(`agent: ${agent ?? "不明"}`);
   lines.push(`createdAt: ${ask.createdAt}`);
   lines.push(`updatedAt: ${ask.updatedAt}`);
   lines.push("");

@@ -37,6 +37,10 @@ export type AskServiceDeps = {
   /** ユーザー返信時に送るテンプレート (config.ask.replyTemplate) */
   replyTemplate: string;
   maxSessions: number;
+  /** herdr が対応するエージェント種別 (config.ask.agents) */
+  agents: string[];
+  /** target.agent 省略時に使う既定値 (config.ask.defaultAgent) */
+  defaultAgent: string;
   generateId?: () => string;
   locks?: Locks;
 };
@@ -69,6 +73,10 @@ export function createAskService(deps: AskServiceDeps) {
     ];
 
     if (req.target.kind === "new") {
+      const agent = req.target.agent ?? deps.defaultAgent;
+      if (!deps.agents.includes(agent)) {
+        return err({ type: "unknown_agent", agents: deps.agents });
+      }
       const activeCount = await activeHerdrSessionCount();
       if (activeCount >= deps.maxSessions) {
         return err({ type: "limit_reached", limit: deps.maxSessions });
@@ -79,6 +87,7 @@ export function createAskService(deps: AskServiceDeps) {
         worktreeRoot: req.worktreeRoot,
         label,
         prompt,
+        agent,
       });
       // Launch failure: nothing to clean up — the ask is deliberately not
       // persisted (plan.md F10: honest failure over a half-created ask).

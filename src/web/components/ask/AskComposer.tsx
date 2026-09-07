@@ -1,54 +1,26 @@
 // 「質問」composer — opened after a line selection ends in a text file
-// (F10). Modeled on review/ReviewAnnotation.tsx's ComposerAnnotation but adds
-// the send-target picker (新規セッション vs. an existing agent pane at this
-// worktree), which review's composer doesn't need since review targets are
-// resolved server-side at send time.
+// (F10). Body only: the send-target picker (新規セッション / 既存 pane) lives
+// in AskTargetDialog (ui-redesign.md §5.4/§5.5), opened from here rather than
+// picked inline, so the composer itself never knows about agents or panes.
 import { useState } from "react";
-import type { AskTarget } from "@contract/ask";
-import type { PaneRow } from "@contract/events";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-
-const NEW_SESSION_VALUE = "__new__";
-
-function paneLabel(pane: PaneRow): string {
-  return pane.label ?? pane.terminalTitleStripped ?? pane.agent ?? pane.paneId;
-}
 
 export interface AskComposerProps {
   onCancel: () => void;
-  onSubmit: (body: string, target: AskTarget) => void | Promise<void>;
-  /** Agent panes at the current worktree (`agentPanesAt(repos, worktreeRoot)`),
-   * offered as additional send targets alongside the default 新規セッション. */
-  panes: PaneRow[];
+  /** 「送信先を選ぶ…」（または ⌘Enter）で AskTargetDialog を開く。 */
+  onOpenTargetDialog: (body: string) => void;
   /** `createdAtHead`/repo not yet resolved — disable submit (same pattern as
    * review's ComposerAnnotation `disabled`). */
   disabled?: boolean;
 }
 
-export function AskComposer({ onCancel, onSubmit, panes, disabled = false }: AskComposerProps) {
+export function AskComposer({ onCancel, onOpenTargetDialog, disabled = false }: AskComposerProps) {
   const [body, setBody] = useState("");
-  const [targetValue, setTargetValue] = useState(NEW_SESSION_VALUE);
-  const [busy, setBusy] = useState(false);
 
-  const target: AskTarget =
-    targetValue === NEW_SESSION_VALUE ? { kind: "new" } : { kind: "pane", paneId: targetValue };
-
-  const submit = async () => {
-    if (!body.trim() || busy || disabled) return;
-    setBusy(true);
-    try {
-      await onSubmit(body.trim(), target);
-    } finally {
-      setBusy(false);
-    }
+  const openDialog = () => {
+    if (!body.trim() || disabled) return;
+    onOpenTargetDialog(body.trim());
   };
 
   return (
@@ -63,42 +35,21 @@ export function AskComposer({ onCancel, onSubmit, panes, disabled = false }: Ask
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Escape") onCancel();
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) openDialog();
         }}
         className="min-h-12 text-sm"
       />
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">送信先</span>
-        <Select value={targetValue} onValueChange={setTargetValue}>
-          <SelectTrigger size="sm" className="h-7 flex-1 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NEW_SESSION_VALUE}>新規セッションで質問</SelectItem>
-            {panes.map((pane) => (
-              <SelectItem key={pane.paneId} value={pane.paneId}>
-                {paneLabel(pane)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
       {disabled && (
         <p className="text-xs text-muted-foreground">
           リポジトリを解決できていません（少し待ってから再度お試しください）
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           キャンセル
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => void submit()}
-          disabled={busy || disabled || !body.trim()}
-        >
-          送信
+        <Button type="button" size="sm" onClick={openDialog} disabled={disabled || !body.trim()}>
+          送信先を選ぶ…
         </Button>
       </div>
     </div>

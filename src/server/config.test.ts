@@ -19,6 +19,22 @@ describe("parseConfig", () => {
     expect(problem).toContain("port");
     expect(config.port).toBe(8080);
   });
+
+  test("defaults ask.agents and ask.defaultAgent", () => {
+    const { config } = parseConfig({});
+    expect(config.ask.agents).toEqual(["claude", "codex", "gemini"]);
+    expect(config.ask.defaultAgent).toBe("claude");
+  });
+
+  // 無いと壊れる: defaultAgent が agents に無いまま使うと、AskSessionLauncher に
+  // 存在しないエージェント種別が渡って起動が失敗し続ける。
+  test("rounds ask.defaultAgent to agents[0] and reports it when defaultAgent isn't in agents", () => {
+    const { config, problem } = parseConfig({
+      ask: { agents: ["codex", "gemini"], defaultAgent: "claude" },
+    });
+    expect(config.ask.defaultAgent).toBe("codex");
+    expect(problem).toContain("defaultAgent");
+  });
 });
 
 describe("loadConfig", () => {

@@ -35,6 +35,8 @@ export function createAskRuntime(deps: AskRuntimeDeps) {
     template: deps.config.ask.template,
     replyTemplate: deps.config.ask.replyTemplate,
     maxSessions: deps.config.ask.maxSessions,
+    agents: deps.config.ask.agents,
+    defaultAgent: deps.config.ask.defaultAgent,
   });
 
   return { repository, service, routes: { repository, service } };
