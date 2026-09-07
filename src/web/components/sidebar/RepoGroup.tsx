@@ -1,30 +1,41 @@
-import { ChevronRight, CircleCheck, OctagonAlert, Plus } from "lucide-react";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Plus } from "lucide-react";
+import { useCallback, useState } from "react";
 import type { Repo } from "@contract/events";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { herdrApi } from "@/lib/api";
+import { herdrApi, askApi } from "@/lib/api";
+import { useAskEvents } from "@/lib/HerdrStoreContext";
+import { askEventMatchesRepo } from "@/lib/askEvent";
 import { askWorkspacesFor, groupByWorkspace } from "@/lib/repoWorkspaces";
 import { cn } from "@/lib/utils";
-import { AskSessionGroup, type AskFileLocation } from "./AskSessionGroup";
+import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
+import { AskSessionRow, type AskFileLocation } from "./AskSessionRow";
 import { RepoWorkspaceRow } from "./RepoWorkspaceRow";
+
+const ASK_STATUS_QUERY = "open,replied,outdated";
+const ASK_LIST_REFETCH_MS = 30_000;
 
 export type RepoGroupProps = {
   repo: Repo;
   /** basename が他リポジトリと衝突する場合、見出しに親ディレクトリも添える。 */
   displayName: string;
   focusedWorkspaceId: string | null;
+  focusedPaneId: string | null;
+  focusedAgentSessionId: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onSelectPane: (paneId: string) => void;
+  onOpenDiff: (paneId: string) => void;
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
 };
 
-/** plan.md F8-1 / F8-4: repository ヘッダーに名前と blocked/done バッジ（blocked を
- * 最優先、色だけに頼らずアイコンも出す）を出し、折りたたみ可能にする。中身は
- * `repository > worktree > pane` ではなく `repository > workspace`（leaf 行）。
+/** ui-redesign.md §5.2: repository ヘッダーに名前と blocked/done 集計（ドット＋
+ * 数字。Badge ではなく AgentStatusDot、色だけに頼らずアイコンも出す）を出し、
+ * 折りたたみ可能にする。中身は `Repository > Workspace > Pane` の 3 段 —
+ * ワークスペース行（`RepoWorkspaceRow`、質問セッションは `AskSessionRow`）を
+ * 同じ段にフラットに並べる（別グループの折りたたみ枠は持たない）。
  *
  * ヘッダーには「ワークスペースを作成」ボタンも出す。クリックするとインライン
  * フォーム（ラベル入力、既定値はリポジトリ名）が開き、そのリポジトリの main
@@ -35,9 +46,12 @@ export function RepoGroup({
   repo,
   displayName,
   focusedWorkspaceId,
+  focusedPaneId,
+  focusedAgentSessionId,
   collapsed,
   onToggleCollapse,
   onSelectPane,
+  onOpenDiff,
   onOpenAskFile,
 }: RepoGroupProps) {
   const workspaces = groupByWorkspace(repo);
@@ -46,7 +60,26 @@ export function RepoGroup({
   const [label, setLabel] = useState(repo.name);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [askCollapsed, setAskCollapsed] = useState(false);
+
+  const queryClient = useQueryClient();
+  const askListQuery = useQuery({
+    queryKey: ["ask-list", repo.key],
+    queryFn: () => askApi.list({ repo: repo.key, status: ASK_STATUS_QUERY }),
+    staleTime: Infinity,
+    refetchInterval: ASK_LIST_REFETCH_MS,
+    enabled: askWorkspaces.length > 0,
+  });
+  useAskEvents(
+    useCallback(
+      (event) => {
+        if (askEventMatchesRepo(event, repo.key)) {
+          void queryClient.invalidateQueries({ queryKey: ["ask-list", repo.key] });
+        }
+      },
+      [repo.key, queryClient],
+    ),
+  );
+  const asks = askListQuery.data ?? [];
 
   const mainRoot = repo.worktrees.find((w) => w.isMain)?.root ?? repo.worktrees[0]?.root ?? null;
 
@@ -99,16 +132,10 @@ export function RepoGroup({
           />
           <span className="min-w-0 flex-1 truncate">{displayName}</span>
           {repo.counts.blocked > 0 && (
-            <Badge variant="destructive" className="gap-0.5">
-              <OctagonAlert className="size-3" aria-hidden="true" />
-              {repo.counts.blocked}
-            </Badge>
+            <AgentStatusDot status="blocked" label={String(repo.counts.blocked)} />
           )}
           {repo.counts.done > 0 && (
-            <Badge variant="secondary" className="gap-0.5 text-green-600 dark:text-green-400">
-              <CircleCheck className="size-3" aria-hidden="true" />
-              {repo.counts.done}
-            </Badge>
+            <AgentStatusDot status="done" label={String(repo.counts.done)} />
           )}
         </button>
         <button
@@ -154,17 +181,27 @@ export function RepoGroup({
               key={workspace.workspaceId}
               workspace={workspace}
               focusedWorkspaceId={focusedWorkspaceId}
+              focusedPaneId={focusedPaneId}
+              focusedAgentSessionId={focusedAgentSessionId}
               onSelectPane={onSelectPane}
+              onOpenDiff={onOpenDiff}
             />
           ))}
-          <AskSessionGroup
-            workspaces={askWorkspaces}
-            repoKey={repo.key}
-            collapsed={askCollapsed}
-            onToggleCollapse={() => setAskCollapsed((prev) => !prev)}
-            onSelectPane={onSelectPane}
-            onOpenAskFile={onOpenAskFile}
-          />
+          {askWorkspaces.map((workspace) => (
+            <AskSessionRow
+              key={workspace.workspaceId}
+              workspace={workspace}
+              ask={asks.find(
+                (a) => a.session?.kind === "herdr" && a.session.label === workspace.workspaceLabel,
+              )}
+              focusedPaneId={focusedPaneId}
+              onSelectPane={onSelectPane}
+              onOpenAskFile={onOpenAskFile}
+              onResolved={() =>
+                void queryClient.invalidateQueries({ queryKey: ["ask-list", repo.key] })
+              }
+            />
+          ))}
         </div>
       )}
     </div>

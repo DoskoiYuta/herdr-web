@@ -412,7 +412,11 @@ export function ToolPane() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
+      <header
+        data-testid="tool-header"
+        style={{ borderLeft: `3px solid ${worktreeRoot ? "var(--focus)" : "transparent"}` }}
+        className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5"
+      >
         <div className="min-w-0">
           {worktreeRoot ? (
             <>

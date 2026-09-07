@@ -242,6 +242,9 @@ describe("App", () => {
 
   test("clicking a sidebar workspace row sends focus-pane", async () => {
     await renderApp();
+    // Navigator は herdr 未接続時ツリーの代わりに空状態を出す (ui-redesign.md
+    // §5.2) — このテストが見るのはツリーの中身なので、接続済みにしておく。
+    emit({ type: "herdr", connected: true, protocol: 20 });
     emit({
       type: "tree",
       repos: [
@@ -281,11 +284,12 @@ describe("App", () => {
 
   // 無いと壊れる: 判断依頼は worktree ごとの行でしか見られず、他の worktree の
   // 依頼を見るには focus を移すしかなくなる (plan F13-8)。ui-redesign.md
-  // §5.4: decisions は ToolPane の通常タブなので、バッジのクリックはタブ切替。
-  test("clicking the decision badge switches to the Decisions tab and lists open decisions across worktrees", async () => {
+  // §5.4: decisions は ToolPane の通常タブ（バッジはタブ自体に付く。サイドバー
+  // の判断依頼バッジは M12 で廃止した）。
+  test("clicking the Decisions tab lists open decisions across worktrees", async () => {
     await renderApp();
     emit(focusMessage());
-    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
     expect(await screen.findByText("依頼A")).toBeInTheDocument();
     expect(await screen.findByText("依頼B")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute("data-state", "active");
@@ -293,11 +297,11 @@ describe("App", () => {
 
   // レビュー指摘（High 1）: Decisions は worktree 横断なので、herdr の focus
   // が無い（起動直後・全 pane クローズ後）状態でも動くはず。無いと壊れる:
-  // ToolPane が worktree 未選択で早期 return すると、このバッジ自体は出ても
+  // ToolPane が worktree 未選択で早期 return すると、Decisions タブ自体は出ても
   // 押した先の一覧が表示されない。
-  test("the decision badge works with no herdr focus at all", async () => {
+  test("the Decisions tab works with no herdr focus at all", async () => {
     await renderApp();
-    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
     expect(await screen.findByText("依頼A")).toBeInTheDocument();
     expect(await screen.findByText("依頼B")).toBeInTheDocument();
   });
@@ -316,7 +320,7 @@ describe("App", () => {
         expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active"),
       );
 
-      fireEvent.click(await screen.findByTestId("decision-count-badge"));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
       await waitFor(() =>
         expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute(
           "data-state",
@@ -380,11 +384,11 @@ describe("App", () => {
         ),
       );
 
-      fireEvent.click(await screen.findByTestId("decision-count-badge"));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
       fireEvent.click(await screen.findByText("依頼A"));
       await screen.findByText("h"); // decision item header from the fixture
 
-      // Two pushes got us here (badge -> Decisions tab, row -> detail); back through both.
+      // Two pushes got us here (tab click -> Decisions tab, row -> detail); back through both.
       router.history.back();
       router.history.back();
       await waitFor(() =>
@@ -411,7 +415,7 @@ describe("App", () => {
         expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(`${root}:a:b`),
       );
 
-      fireEvent.click(await screen.findByTestId("decision-count-badge"));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
       expect(await screen.findByText("依頼A")).toBeInTheDocument();
 
       fireEvent.mouseDown(screen.getByRole("tab", { name: "Diff" }));
@@ -467,7 +471,7 @@ describe("App", () => {
       ],
     });
 
-    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
     fireEvent.click(await screen.findByText("依頼A"));
     fireEvent.click(await screen.findByText("src/other.ts"));
 

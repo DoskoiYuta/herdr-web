@@ -290,6 +290,19 @@ describe("ToolPane", () => {
     expect(screen.queryByTestId("diff-panel-stub")).not.toBeInTheDocument();
   });
 
+  // ui-redesign.md D5: Navigator のフォーカス行と Tool header を同じ色で結ぶ。
+  // 無いと壊れる: worktree 未選択でもアクセントが出続け、フォーカス移動の視覚的
+  // 手がかりが常時表示されて意味を失う。
+  test.each([
+    ["a worktree is focused", "/Users/dev/project", "var(--focus)"],
+    ["no worktree is focused", null, "transparent"],
+  ])("tool header accent bar reflects focus (%s)", async (_label, worktreeRoot, expected) => {
+    await renderFocused({ worktreeRoot });
+    expect(screen.getByTestId("tool-header").getAttribute("style")).toContain(
+      `border-left: 3px solid ${expected}`,
+    );
+  });
+
   test("Decisions tab works with no worktree selected", async () => {
     await renderFocused({ worktreeRoot: null });
     await selectTab("Decisions");
