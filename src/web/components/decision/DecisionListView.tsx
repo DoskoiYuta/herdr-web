@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Decision, DecisionSpec, DecisionStatus } from "@contract/decision";
+import type { Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
 import { useDecisionEvents, useHerdrState } from "@/lib/HerdrStoreContext";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +17,8 @@ import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { StatusChip } from "@/components/ui/status/StatusChip";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import { deliveryOf, turnOf } from "@/lib/statusVocab";
-import { isTypingTarget } from "./DecisionView";
-import { DECISION_STATUS_LABEL } from "./decisionLabels";
+import { findPane, isTypingTarget } from "./DecisionView";
+import { agentLabel, DECISION_STATUS_LABEL } from "./decisionLabels";
 import { useDecisionCounts } from "./hooks/useDecisionCounts";
 
 type StatusTab = "open" | "answered" | "all";
@@ -92,12 +93,14 @@ function DecisionRow({
   decision,
   index,
   nowMs,
+  repos,
   onSelect,
   onResend,
 }: {
   decision: Decision;
   index?: number;
   nowMs: number;
+  repos: Repo[];
   onSelect: (id: string) => void;
   onResend: (id: string) => Promise<void>;
 }) {
@@ -105,6 +108,7 @@ function DecisionRow({
   const showDelivery = decision.delivery !== null && delivery.state !== "sent";
   const [busy, setBusy] = useState(false);
   const worktree = worktreeBasename(decision.worktreeRoot);
+  const pane = findPane(repos, decision.paneId, decision.agent);
 
   return (
     <li>
@@ -135,7 +139,7 @@ function DecisionRow({
           </div>
           <div className="truncate text-xs text-muted-foreground">{secondarySummary(decision)}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {[worktree, decision.agent ?? "?", relativeTime(decision.createdAt, nowMs)]
+            {[worktree, agentLabel(decision.agent, pane), relativeTime(decision.createdAt, nowMs)]
               .filter(Boolean)
               .join(" · ")}
           </div>
@@ -284,6 +288,7 @@ export function DecisionListView({ onSelect }: DecisionListViewProps) {
                 decision={decision}
                 index={i}
                 nowMs={nowMs}
+                repos={state.repos}
                 onSelect={onSelect}
                 onResend={resend}
               />
@@ -299,6 +304,7 @@ export function DecisionListView({ onSelect }: DecisionListViewProps) {
                   key={decision.id}
                   decision={decision}
                   nowMs={nowMs}
+                  repos={state.repos}
                   onSelect={onSelect}
                   onResend={resend}
                 />

@@ -134,6 +134,51 @@ describe("DecisionListView", () => {
     expect(within(row).queryByText(forbidden)).not.toBeInTheDocument();
   });
 
+  // レビュー指摘（実走）: `hw` が呼び出し元 pane を解決できなかった依頼は
+  // `decision.agent` が null で、一覧行のメタが「?」になっていた。pane が
+  // herdr state に見つかるなら、pane 側の agent 名を出す。無いと壊れる:
+  // agent 不明な行がすべて「?」に潰れ、誰のエージェントか分からない。
+  test("falls back to the live pane's agent name when decision.agent is null", async () => {
+    list.mockResolvedValue([decision({ id: "d1", agent: null, paneId: "pane-1" })]);
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/repo/.git",
+          name: "repo",
+          counts: { blocked: 0, done: 0 },
+          worktrees: [
+            {
+              root: "/repo/a",
+              branch: "main",
+              isMain: true,
+              panes: [
+                {
+                  paneId: "pane-1",
+                  workspaceId: "w1",
+                  workspaceLabel: null,
+                  tabId: "t1",
+                  tabLabel: null,
+                  label: null,
+                  agent: "codex",
+                  agentStatus: "working",
+                  terminalTitleStripped: null,
+                  focused: false,
+                  cwd: null,
+                  foregroundCwd: null,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    renderWithStore(<DecisionListView onSelect={vi.fn()} />, { store });
+
+    const row = await screen.findByTestId("decision-row-d1");
+    expect(within(row).getByText(/codex/)).toBeInTheDocument();
+    expect(within(row).queryByText(/(^|\s)\?(\s|$)/)).not.toBeInTheDocument();
+  });
+
   // 無いと壊れる: 状態ごとに同じ chip ラベルしか出ないと、一覧で
   // answered/dismissed/cancelled が見分けられない。
   test("distinct decision statuses render distinct status-chip labels", async () => {

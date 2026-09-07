@@ -452,6 +452,53 @@ describe("DecisionView", () => {
     expect(screen.getByLabelText("状態: blocked")).toBeInTheDocument();
   });
 
+  // レビュー指摘（実走）: `hw` が呼び出し元 pane を解決できなかった依頼は
+  // `decision.agent` が null になる。pane が herdr state に見つかるなら、
+  // pane 側の agent 名を出すべき。無いと壊れる: agent 名の欄が空欄のまま
+  // 何のエージェントか分からない。
+  test("falls back to the live pane's agent name when decision.agent is null", async () => {
+    const decision = baseDecision({ paneId: "pane-1", agent: null });
+    get.mockResolvedValue(decision);
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/repo/.git",
+          name: "repo",
+          counts: { blocked: 0, done: 0 },
+          worktrees: [
+            {
+              root: "/repo",
+              branch: "main",
+              isMain: true,
+              panes: [
+                {
+                  paneId: "pane-1",
+                  workspaceId: "w1",
+                  workspaceLabel: null,
+                  tabId: "t1",
+                  tabLabel: null,
+                  label: null,
+                  agent: "codex",
+                  agentStatus: "working",
+                  terminalTitleStripped: null,
+                  focused: false,
+                  cwd: null,
+                  foregroundCwd: null,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    renderWithStore(<DecisionView id="decision-1" />, { store });
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    expect(screen.getByLabelText("状態: working")).toBeInTheDocument();
+    expect(screen.getByText("codex")).toBeInTheDocument();
+  });
+
   // 無いと壊れる: pane が見つからないのに何も言わないと、エージェントが
   // まだ生きているのか判断できない。tree は既に届いている（repos が空でない）
   // 状態でテストする — repos 空はまだ tree 未着のケース（後述のテスト）。

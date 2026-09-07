@@ -24,7 +24,7 @@ import { StatusChip } from "@/components/ui/status/StatusChip";
 import { deliveryOf, turnOf } from "@/lib/statusVocab";
 import { BlockView, type OpenLocation } from "./BlockView";
 import { CompareOptions } from "./CompareOptions";
-import { DECISION_STATUS_LABEL } from "./decisionLabels";
+import { agentLabel, DECISION_STATUS_LABEL } from "./decisionLabels";
 
 export type DecisionViewProps = {
   id: string;
@@ -55,7 +55,11 @@ function useElapsedMinutes(createdAt: string | null): number {
 /** herdr は pane id を再利用しうるので、paneId が一致しても `agent` が
  * 一致しなければ別セッションの pane と判断し、見つからなかった扱いにする
  * （`agent` が null の依頼はレガシーデータなので id 一致だけで信頼する）。 */
-function findPane(repos: Repo[], paneId: string | null, agent: string | null): PaneRow | null {
+export function findPane(
+  repos: Repo[],
+  paneId: string | null,
+  agent: string | null,
+): PaneRow | null {
   if (!paneId) return null;
   for (const repo of repos) {
     for (const worktree of repo.worktrees) {
@@ -497,7 +501,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           {settling ? (
             <AgentStatusDot status="unknown" label="状態を取得中" />
           ) : pane ? (
-            <AgentStatusDot status={pane.agentStatus} label={decision.agent ?? undefined} />
+            <AgentStatusDot status={pane.agentStatus} label={agentLabel(decision.agent, pane)} />
           ) : (
             <span>{decision.agent ?? "?"} · pane 消失</span>
           )}
