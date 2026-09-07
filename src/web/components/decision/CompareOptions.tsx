@@ -55,7 +55,7 @@ export function CompareOptions({
               }
             }}
             className={`flex cursor-pointer flex-col gap-1.5 rounded-md border p-2 text-left ${
-              checked ? "border-primary bg-primary/5" : "border-border"
+              checked ? "border-primary bg-accent ring-1 ring-primary" : "border-border"
             }`}
           >
             <div className="flex items-center gap-1.5 text-sm font-medium">

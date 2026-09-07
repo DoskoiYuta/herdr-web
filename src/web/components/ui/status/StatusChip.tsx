@@ -18,7 +18,7 @@ const TURN_CLASS: Record<Turn, string> = {
   void: "bg-muted text-muted-foreground",
 };
 
-export function StatusChip({ turn }: { turn: Turn }) {
+export function StatusChip({ turn, label }: { turn: Turn; label?: string }) {
   return (
     <Badge
       variant="outline"
@@ -26,7 +26,7 @@ export function StatusChip({ turn }: { turn: Turn }) {
       data-turn={turn}
       className={cn("border-transparent", TURN_CLASS[turn])}
     >
-      {TURN_LABEL[turn]}
+      {label ?? TURN_LABEL[turn]}
     </Badge>
   );
 }

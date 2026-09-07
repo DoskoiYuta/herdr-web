@@ -44,12 +44,14 @@ export function turnOf(
     }
   }
   // decision: §6.2 に「進行中」の行は無い（open が要対応、確定すればすぐ完了/無効）。
+  // dismissed（人間の却下）・cancelled（エージェントの取り下げ）はどちらも
+  // 「無効」— 「完了」は人間が実際に回答した answered だけ。
   switch (input as DecisionStatus) {
     case "open":
       return "action";
     case "answered":
-    case "dismissed":
       return "done";
+    case "dismissed":
     case "cancelled":
       return "void";
   }
