@@ -1,14 +1,7 @@
 // docs/ui-redesign.md §6.3: 配達状態の 6 語。canResend のときだけ chip 内に
 // 「再送」を出す（Review notify / Decision delivery / Ask lastPrompt 共通）。
 // design.pen P0: StatusChip と違い pill ではなく角丸 6px の secondary 塗り。
-import {
-  Circle,
-  Clock,
-  Flag,
-  HelpCircle,
-  Send,
-  TriangleAlert,
-} from "lucide-react";
+import { Check, Clock, Flag, HelpCircle, Send, TriangleAlert } from "lucide-react";
 import type { DeliveryResult, DeliveryState } from "@/lib/statusVocab";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -25,7 +18,7 @@ const STATE_LABEL: Record<DeliveryState, string> = {
 const STATE_ICON: Record<DeliveryState, typeof Send> = {
   unsent: Send,
   pending: Clock,
-  sent: Circle,
+  sent: Check,
   blocked: TriangleAlert,
   no_target: Flag,
   unknown: HelpCircle,
