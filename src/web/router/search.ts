@@ -10,6 +10,9 @@ const ToolSearchSchema = v.object({
   sub: v.optional(v.string()),
   path: v.optional(v.pipe(v.string(), v.minLength(1))),
   line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+  /** Diff の `path`/`line` がどちら側の行かを固定する。省略時は "new"
+   * （ToolPane の既定）。old 側にアンカーされた review へのジャンプ専用。 */
+  side: v.optional(v.picklist(["old", "new"])),
   md: v.optional(v.picklist(["source", "preview"])),
   /** worktree が `focus-pane` 経由でまだ切り替わっていない間、他の worktree の
    * `path`/`line` を誤って適用しないためのゲート（別 worktree のファイルを開く
@@ -18,24 +21,43 @@ const ToolSearchSchema = v.object({
   /** decisions タブ専用: 選択中の判断依頼 id。無ければ一覧を描く。`path`/`line`
    * と同様、タブ切替で落とす。 */
   id: v.optional(v.pipe(v.string(), v.minLength(1))),
+  /** Inbox ダイアログの開閉（docs/ui-redesign.md §5.4）。タブと違い落とさない —
+   * リロードで復元、閉じる操作で消す。TanStack Router の search は JSON で
+   * 直列化されるため、⌘I で書いた search はそのまま `?inbox=1`（数値）になる。
+   * `v.literal("1")`（文字列）にすると、その URL を直接開いたときの生の値
+   * （JSON パースされた数値 1）が検証落ちして開かなくなる。 */
+  inbox: v.optional(v.literal(1)),
 });
 
 export type ToolSearch = v.InferOutput<typeof ToolSearchSchema>;
 
 const FIELDS = Object.keys(ToolSearchSchema.entries) as (keyof ToolSearch)[];
 
+/** `inbox` は数値の 1 だけを正とするが、呼び出し元によっては文字列 "1" や
+ * 真偽値 true を渡すことがある（テスト、あるいは将来別経路で書かれた値）ため
+ * 丸めておく。それ以外はそのまま `v.literal(1)` に通して弾く。 */
+function normalizeInboxCandidate(value: unknown): unknown {
+  return value === 1 || value === "1" || value === true ? 1 : value;
+}
+
 /** `validateSearch` 用。URL の search params（文字列 or 未定義）をフィールドごとに
  * `v.safeParse` し、不正/未指定なフィールドは欠落として結果から落とす — 1 つの
  * フィールドの不正値が他のフィールドまで巻き込んで既定値に戻ることはない。
  * TanStack Router の既定 search parser は数字のみの値を JSON として解釈し
  * number に変換してしまう（`?path=123` の path が数値 123 になる）ため、`line`
- * 以外のフィールドは文字列に戻してから検証する。 */
+ * 以外のほとんどのフィールドは文字列に戻してから検証する。`inbox` だけは
+ * 数値の 1 が正なので逆に丸めて数値のまま検証する（`normalizeInboxCandidate`）。 */
 export function parseToolSearch(raw: Record<string, unknown>): ToolSearch {
   const out: Partial<ToolSearch> = {};
   for (const key of FIELDS) {
     const value = raw[key];
     if (value === undefined) continue;
-    const candidate = key === "line" ? Number(value) : String(value);
+    const candidate =
+      key === "line"
+        ? Number(value)
+        : key === "inbox"
+          ? normalizeInboxCandidate(value)
+          : String(value);
     const schema = ToolSearchSchema.entries[key];
     const result = v.safeParse(schema, candidate);
     if (result.success && result.output !== undefined) {

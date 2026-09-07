@@ -13,6 +13,7 @@ import type { FetchRunner } from "../git/fetch";
 import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
 import { createHerdrState } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
+import { createInboxService } from "../inbox/service";
 import type { ReviewEvent } from "../review/ports";
 import { createReviewRuntime } from "../review/runtime";
 import { createApp, type AppDeps } from "../app";
@@ -78,6 +79,13 @@ export function createTestApp(opts: TestAppOptions = {}) {
     onEvent: (e) => decisionEvents.push(e),
     logger: { info() {}, warn() {}, error() {} },
   });
+  const inbox = createInboxService({
+    reviewRepository: review.repository,
+    askRepository: ask.repository,
+    decisionRepository: decision.repository,
+    state,
+    resolver,
+  });
   const deps: AppDeps = {
     version: "test",
     herdrStatus: () => fake.status(),
@@ -92,6 +100,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
     ask: ask.routes,
     decision: { ...decision.routes, buildUrl: (id) => `http://test/decisions/${id}` },
+    inbox: { service: inbox },
   };
   return {
     app: createApp(deps),
@@ -103,6 +112,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     askEvents,
     decision,
     decisionEvents,
+    inbox,
     db,
   };
 }

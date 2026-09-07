@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { encodeModifiedEnter, isMaximizeToggleKey } from "./termKeys";
+import { encodeModifiedEnter, isInboxToggleKey, isMaximizeToggleKey } from "./termKeys";
 
 const base = {
   type: "keydown",
@@ -39,5 +39,19 @@ describe("isMaximizeToggleKey", () => {
     ["keyup", { ...key, metaKey: true, type: "keyup" }, false],
   ] as const)("%s -> %s", (_label, event, expected) => {
     expect(isMaximizeToggleKey(event)).toBe(expected);
+  });
+});
+
+describe("isInboxToggleKey", () => {
+  const key = { type: "keydown", key: "i", ctrlKey: false, metaKey: false };
+
+  test.each([
+    ["mac ⌘I", { ...key, metaKey: true }, true],
+    ["Ctrl+I", { ...key, ctrlKey: true }, true],
+    ["without Cmd/Ctrl", key, false],
+    ["a different key", { ...key, metaKey: true, key: "o" }, false],
+    ["keyup", { ...key, metaKey: true, type: "keyup" }, false],
+  ] as const)("%s -> %s", (_label, event, expected) => {
+    expect(isInboxToggleKey(event)).toBe(expected);
   });
 });

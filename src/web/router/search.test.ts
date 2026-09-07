@@ -32,4 +32,30 @@ describe("parseToolSearch", () => {
     expect(parseToolSearch({ id: "abc123" })).toEqual({ id: "abc123" });
     expect(parseToolSearch({ id: "" })).toEqual({});
   });
+
+  // 無いと壊れる: `?inbox=1` をリロードしても Inbox ダイアログが復元されない。
+  // TanStack Router の search は JSON で直列化されるため、⌘I で開くと URL は
+  // `?inbox=1`（数値）になる。文字列 `"1"` や `true` を渡す呼び出し元が
+  // 生じても数値 1 に丸め、不正値は落とす。
+  test.each([
+    [1, { inbox: 1 }],
+    ["1", { inbox: 1 }],
+    [true, { inbox: 1 }],
+    ["x", {}],
+    [0, {}],
+    [undefined, {}],
+  ] as const)("parseToolSearch({ inbox: %s }) -> %s", (raw, expected) => {
+    expect(parseToolSearch({ inbox: raw })).toEqual(expected);
+  });
+
+  // 無いと壊れる: old 側にアンカーされた review へのジャンプが side を運べないと、
+  // ToolPane の既定 "new" にフォールバックし、無関係な行を開いてしまう。
+  test.each([
+    ["old", { side: "old" }],
+    ["new", { side: "new" }],
+    ["other", {}],
+    [undefined, {}],
+  ] as const)("parseToolSearch({ side: %s }) -> %s", (raw, expected) => {
+    expect(parseToolSearch({ side: raw })).toEqual(expected);
+  });
 });

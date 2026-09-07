@@ -53,3 +53,18 @@ export function isMaximizeToggleKey(e: {
   if (!e.shiftKey) return false;
   return e.metaKey || e.ctrlKey;
 }
+
+/**
+ * Inbox ダイアログの開閉（⌘I / Ctrl+I）。`isMaximizeToggleKey` と同じ作りで、
+ * xterm にフォーカスがあっても `attachCustomKeyEventHandler` から判定できる。
+ */
+export function isInboxToggleKey(e: {
+  type: string;
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}): boolean {
+  if (e.type !== "keydown") return false;
+  if (e.key.toLowerCase() !== "i") return false;
+  return e.metaKey || e.ctrlKey;
+}

@@ -7,7 +7,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
-import { encodeModifiedEnter, isMaximizeToggleKey } from "@/lib/termKeys";
+import { encodeModifiedEnter, isInboxToggleKey, isMaximizeToggleKey } from "@/lib/termKeys";
 import { connectTermSocket, sendInput, sendResize } from "@/lib/termSocket";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,8 @@ export type TerminalProps = {
   lineHeight?: number;
   /** D7: ⌘⇧M / Ctrl+Shift+M（xterm にフォーカスがあっても効く）。 */
   onToggleMaximize?: () => void;
+  /** Inbox ダイアログの開閉（⌘I / Ctrl+I、xterm にフォーカスがあっても効く）。 */
+  onToggleInbox?: () => void;
 };
 
 const DEFAULT_FONT_FAMILY =
@@ -57,6 +59,7 @@ export function Terminal({
   fontSize = DEFAULT_FONT_SIZE,
   lineHeight = DEFAULT_LINE_HEIGHT,
   onToggleMaximize,
+  onToggleInbox,
 }: TerminalProps) {
   const [reconnectNonce, setReconnectNonce] = useState(0);
   return (
@@ -68,6 +71,7 @@ export function Terminal({
       fontSize={fontSize}
       lineHeight={lineHeight}
       onToggleMaximize={onToggleMaximize}
+      onToggleInbox={onToggleInbox}
       onReconnect={() => setReconnectNonce((n) => n + 1)}
     />
   );
@@ -76,7 +80,9 @@ export function Terminal({
 type TerminalSessionProps = Required<
   Pick<TerminalProps, "fontFamily" | "fontSize" | "lineHeight">
 > &
-  Pick<TerminalProps, "session" | "className" | "onToggleMaximize"> & { onReconnect: () => void };
+  Pick<TerminalProps, "session" | "className" | "onToggleMaximize" | "onToggleInbox"> & {
+    onReconnect: () => void;
+  };
 
 // key={reconnectNonce} で丸ごと再マウントすることで PTY 接続をやり直す。
 // そのぶんこの内側のコンポーネントの effect 依存配列には
@@ -88,6 +94,7 @@ function TerminalSession({
   fontSize,
   lineHeight,
   onToggleMaximize,
+  onToggleInbox,
   onReconnect,
 }: TerminalSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,6 +106,10 @@ function TerminalSession({
   useEffect(() => {
     onToggleMaximizeRef.current = onToggleMaximize;
   }, [onToggleMaximize]);
+  const onToggleInboxRef = useRef(onToggleInbox);
+  useEffect(() => {
+    onToggleInboxRef.current = onToggleInbox;
+  }, [onToggleInbox]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -130,6 +141,11 @@ function TerminalSession({
       if (isMaximizeToggleKey(event)) {
         event.preventDefault();
         onToggleMaximizeRef.current?.();
+        return false;
+      }
+      if (isInboxToggleKey(event)) {
+        event.preventDefault();
+        onToggleInboxRef.current?.();
         return false;
       }
       const seq = encodeModifiedEnter(event);

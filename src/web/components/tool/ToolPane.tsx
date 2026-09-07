@@ -193,7 +193,11 @@ export function ToolPane() {
   const subRepoId = effectiveSearch.sub ?? "";
   const initialLocation: DiffInitialLocation | null =
     tab === "diff" && !rootPending && effectiveSearch.path
-      ? { path: effectiveSearch.path, line: effectiveSearch.line ?? 1, side: "new" }
+      ? {
+          path: effectiveSearch.path,
+          line: effectiveSearch.line ?? 1,
+          side: effectiveSearch.side ?? "new",
+        }
       : null;
   const filesSelectedPath = tab === "files" && !rootPending ? (effectiveSearch.path ?? null) : null;
   const filesMdMode = effectiveSearch.md ?? "preview";
@@ -211,6 +215,7 @@ export function ToolPane() {
           ...prev,
           path: undefined,
           line: undefined,
+          side: undefined,
           root: undefined,
           id: undefined,
         }),
@@ -277,6 +282,7 @@ export function ToolPane() {
           to: undefined,
           path: undefined,
           line: undefined,
+          side: undefined,
           root: undefined,
         }),
       });

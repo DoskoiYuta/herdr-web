@@ -119,11 +119,13 @@ vi.mock("@/components/diff/DiffPanel", () => ({
     from,
     to,
     sendButton,
+    initialLocation,
   }: {
     repo: string;
     from?: string;
     to?: string;
     sendButton?: React.ReactNode;
+    initialLocation?: { path: string; line: number; side: string } | null;
   }) => {
     useEffect(() => {
       diffPanelMountCount += 1;
@@ -132,6 +134,11 @@ vi.mock("@/components/diff/DiffPanel", () => ({
       <div data-testid="diff-panel-stub">
         {repo}:{from ?? "WORKTREE"}:{to ?? "HEAD"}
         {sendButton}
+        {initialLocation && (
+          <span data-testid="diff-panel-initial-location">
+            {initialLocation.path}:{initialLocation.line}:{initialLocation.side}
+          </span>
+        )}
       </div>
     );
   },
@@ -344,6 +351,25 @@ describe("ToolPane", () => {
     expect(router.state.location.search).not.toHaveProperty("line");
     expect(router.state.location.search).toMatchObject({ path: "src/a.ts" });
   });
+
+  // 無いと壊れる: old 側にアンカーされた review へジャンプしても search の side が
+  // 通らないと ToolPane が既定の "new" にフォールバックし、無関係な行を開く
+  // （Inbox の replied レビュー行導線、docs/ui-redesign.md §5.4）。
+  test.each([
+    ["old", "old"],
+    ["new", "new"],
+    [undefined, "new"],
+  ] as const)(
+    "navigating to the diff tab with path/line/side=%s passes side=%s down to DiffPanel",
+    async (side, expectedSide) => {
+      const store = makeFakeStore({ focus: focusMessage() });
+      const query = side ? `path=a.ts&line=10&side=${side}` : "path=a.ts&line=10";
+      await renderWithRouter(() => <ToolPane />, { path: `/focus/diff?${query}`, store });
+      expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent(
+        `a.ts:10:${expectedSide}`,
+      );
+    },
+  );
 
   test("selecting a commit in the graph tab sets the diff comparison and shows a reset button", async () => {
     await renderFocused();
