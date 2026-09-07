@@ -286,8 +286,8 @@ toast を 1 系統に。用途: 下書き追加 / 送信完了（N 件、宛先�
 | -------- | ------------------------- | -------- | ------------------------ | ------------------------ |
 | 要対応   | replied、未送信下書きあり | replied  | open                     | blocked                  |
 | 進行中   | open（送信済み）          | open     | —（answered で配達済み） | working                  |
-| 完了     | resolved                  | resolved | answered / dismissed     | done / idle              |
-| 無効     | outdated                  | outdated | cancelled                | unknown / セッション消失 |
+| 完了     | resolved                  | resolved | answered                 | done / idle              |
+| 無効     | outdated                  | outdated | dismissed / cancelled    | unknown / セッション消失 |
 
 内部状態は変えない。表示語は Inbox のフィルタとグルーピングにだけ使い、スレッドカードには完了 / 無効のときだけ chip を付ける。要対応はアウトラインの明滅で示す。
 
