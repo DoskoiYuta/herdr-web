@@ -60,7 +60,11 @@ vi.mock("@/lib/api", () => ({
       byCommit: {},
       worktree: { unresolved: 0, drafts: 0 },
       pendingDrafts: 0,
+      replied: 0,
     })),
+  },
+  askApi: {
+    counts: vi.fn(async () => ({ unresolved: 0, byPath: {}, replied: 0 })),
   },
   decisionApi: {
     counts: vi.fn(async () => ({ total: 2 })),
@@ -184,7 +188,8 @@ describe("App", () => {
     await renderApp();
     expect(screen.getByLabelText("サイドバー")).toBeInTheDocument();
     expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
-    expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
+    // ヘッダーと Diff タブの空状態の 2 箇所に出る（ToolPane.test.tsx で検証済み）。
+    expect(screen.getAllByText("herdr 未接続 / worktree 未選択").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("separator").length).toBeGreaterThan(0);
   });
 
@@ -192,7 +197,9 @@ describe("App", () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
     // ツールルートは `hidden` で隠すだけでアンマウントしない。
-    expect(screen.getByText("herdr 未接続 / worktree 未選択")).not.toBeVisible();
+    for (const el of screen.getAllByText("herdr 未接続 / worktree 未選択")) {
+      expect(el).not.toBeVisible();
+    }
     expect(screen.getByRole("button", { name: "ツール領域を開く" })).toBeInTheDocument();
   });
 
@@ -201,6 +208,21 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
     const stored = JSON.parse(localStorage.getItem("herdr-web:layout") ?? "{}");
     expect(stored.toolCollapsed).toBe(true);
+  });
+
+  // レビュー指摘（High 2）: ⌘⇧M でツールを最大化しても Terminal は PTY 接続を
+  // 保つため常にマウントされたままのはず。無いと壊れる: レールを JSX 分岐で
+  // 描くと `<Terminal>` 自体が消え、最大化のたびに PTY 接続がやり直しになる。
+  test("maximizing the tool area with ⌘⇧M does not unmount the terminal", async () => {
+    await renderApp();
+    expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "m", metaKey: true, shiftKey: true });
+    expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ターミナルに戻す" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "m", metaKey: true, shiftKey: true });
+    expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
   });
 
   test("a focus message switches the displayed worktree in the tool pane", async () => {
@@ -258,8 +280,22 @@ describe("App", () => {
   });
 
   // 無いと壊れる: 判断依頼は worktree ごとの行でしか見られず、他の worktree の
-  // 依頼を見るには focus を移すしかなくなる (plan F13-8)。
-  test("clicking the decision badge opens a list of open decisions across worktrees", async () => {
+  // 依頼を見るには focus を移すしかなくなる (plan F13-8)。ui-redesign.md
+  // §5.4: decisions は ToolPane の通常タブなので、バッジのクリックはタブ切替。
+  test("clicking the decision badge switches to the Decisions tab and lists open decisions across worktrees", async () => {
+    await renderApp();
+    emit(focusMessage());
+    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    expect(await screen.findByText("依頼A")).toBeInTheDocument();
+    expect(await screen.findByText("依頼B")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute("data-state", "active");
+  });
+
+  // レビュー指摘（High 1）: Decisions は worktree 横断なので、herdr の focus
+  // が無い（起動直後・全 pane クローズ後）状態でも動くはず。無いと壊れる:
+  // ToolPane が worktree 未選択で早期 return すると、このバッジ自体は出ても
+  // 押した先の一覧が表示されない。
+  test("the decision badge works with no herdr focus at all", async () => {
     await renderApp();
     fireEvent.click(await screen.findByTestId("decision-count-badge"));
     expect(await screen.findByText("依頼A")).toBeInTheDocument();
@@ -270,7 +306,7 @@ describe("App", () => {
   describe("routing (plan.md F14-7)", () => {
     // 無いと壊れる: URL が画面状態を持たないと、ブラウザの戻る/進むが完全な
     // no-op になり、判断依頼を開いて戻るとツール領域ごと消えるなどの事故が起きる。
-    test("browser back/forward switches both the active tab and the decision view", async () => {
+    test("browser back/forward switches the active tab, including the Decisions tab", async () => {
       const { router } = await renderApp();
       emit(focusMessage());
       expect(screen.getByRole("tab", { name: "Diff" })).toHaveAttribute("data-state", "active");
@@ -281,13 +317,17 @@ describe("App", () => {
       );
 
       fireEvent.click(await screen.findByTestId("decision-count-badge"));
-      expect(await screen.findByText("判断依頼")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute(
+          "data-state",
+          "active",
+        ),
+      );
 
       router.history.back();
       await waitFor(() =>
         expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active"),
       );
-      expect(screen.queryByText("判断依頼")).not.toBeInTheDocument();
 
       router.history.back();
       await waitFor(() =>
@@ -344,7 +384,7 @@ describe("App", () => {
       fireEvent.click(await screen.findByText("依頼A"));
       await screen.findByText("h"); // decision item header from the fixture
 
-      // Two pushes got us here (badge -> list, row -> detail); back through both.
+      // Two pushes got us here (badge -> Decisions tab, row -> detail); back through both.
       router.history.back();
       router.history.back();
       await waitFor(() =>
@@ -354,9 +394,11 @@ describe("App", () => {
       );
     });
 
-    // 無いと壊れる: 判断依頼を閉じると常に /focus/diff へ飛び、タブ・比較範囲が
-    // 失われる。
-    test("closing the decision list returns to the previous URL (tab and comparison intact)", async () => {
+    // 無いと壊れる: decisions タブから別タブへ切り替えると比較範囲や選択タブが
+    // 失われ、レビュー中の commit 比較が作業ツリー比較に巻き戻ってしまう
+    // （ui-redesign.md §5.4: decisions は ToolPane の通常タブなので、離れる操作は
+    // 「閉じる」ボタンではなく他のタブへのクリックになる）。
+    test("switching from the Decisions tab back to Diff (a plain tab click, not history.back) keeps the comparison", async () => {
       const root = "/Users/dev/project";
       const { router } = await renderApp();
       emit(focusMessage({ worktreeRoot: root, repoKey: `${root}/.git` }));
@@ -370,11 +412,12 @@ describe("App", () => {
       );
 
       fireEvent.click(await screen.findByTestId("decision-count-badge"));
-      expect(await screen.findByText("判断依頼")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+      expect(await screen.findByText("依頼A")).toBeInTheDocument();
 
-      await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
-      expect(router.state.location.search).toMatchObject({ from: "a", to: "b" });
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Diff" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(`${root}:a:b`),
+      );
     });
   });
 

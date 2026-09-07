@@ -4,6 +4,7 @@
 // per-panel setting) and the close button (no "quit" flow here). Restyled
 // with the shadcn Button component instead of raw CSS.
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ViewerControls } from "@/components/tool/ViewerControls";
 import type { Settings } from "./state.ts";
@@ -22,6 +23,9 @@ export interface ToolbarProps {
   /** Expand every file in the diff. */
   onExpandAll(): void;
   disabled: boolean;
+  /** レビュー下書きの一括送信ボタン（ui-redesign.md §5.4: Diff でしか使わない
+   * ので、ここに置く）。`SendDraftsButton` 自身が 0 件なら null を返す。 */
+  sendButton?: ReactNode;
 }
 
 export default function Toolbar({
@@ -36,6 +40,7 @@ export default function Toolbar({
   onCollapseAll,
   onExpandAll,
   disabled,
+  sendButton,
 }: ToolbarProps) {
   return (
     <div id="toolbar" className="flex items-center gap-1 border-b border-border p-1">
@@ -102,6 +107,7 @@ export default function Toolbar({
       >
         ↻
       </Button>
+      {sendButton}
     </div>
   );
 }

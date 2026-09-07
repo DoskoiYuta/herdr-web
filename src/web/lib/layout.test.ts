@@ -16,12 +16,17 @@ describe("readLayout", () => {
       toolWidth: 400,
       toolCollapsed: true,
       sidebar: { width: 300, collapsed: true },
+      maximized: "tool" as const,
     };
     expect(readLayout(writeLayout(layout))).toEqual(layout);
   });
 
-  test("old values without a sidebar field stay valid and get the default sidebar", () => {
+  test("old values without sidebar/maximized fields stay valid and get the defaults", () => {
     const old = { toolWidth: 400, toolCollapsed: false };
-    expect(readLayout(JSON.stringify(old))).toEqual({ ...old, sidebar: DEFAULT_LAYOUT.sidebar });
+    expect(readLayout(JSON.stringify(old))).toEqual({
+      ...old,
+      sidebar: DEFAULT_LAYOUT.sidebar,
+      maximized: null,
+    });
   });
 });

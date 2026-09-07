@@ -59,3 +59,26 @@ describe("countsUsecase pendingDrafts", () => {
     expect(result._unsafeUnwrap().pendingDrafts).toBe(1);
   });
 });
+
+describe("countsUsecase replied", () => {
+  // 無いと壊れる: M10 で Diff タブに付けるバッジは replied 件数を数えるので、
+  // フィールドが無ければバッジが常に 0/undefined になる。
+  test("counts replied reviews visible from this worktree (listVisible と同じ可視性)", async () => {
+    const replied = makeReview({
+      id: "replied-1",
+      status: "replied",
+      thread: [{ seq: 0, author: "user", body: "why?", at: "t", agentSession: null, draft: false }],
+    });
+    const open = makeReview({ id: "open-1", status: "open" });
+    await repository.save(replied);
+    await repository.save(open);
+
+    const counts = countsUsecase({
+      repository,
+      listVisible: listVisibleUsecase({ repository, gitHistory }),
+    });
+    const result = await counts({ repo: "/repo", worktree: "/repo" });
+
+    expect(result._unsafeUnwrap().replied).toBe(1);
+  });
+});

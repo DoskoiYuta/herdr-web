@@ -235,6 +235,8 @@ export const ReviewCountsResponseSchema = v.object({
   worktree: ReviewCountSchema,
   /** `POST /send` が送る対象（`worktreeRoot` が `worktree` に一致し、下書きを持つ review）の数 */
   pendingDrafts: v.number(),
+  /** Diff タブの通知バッジ（ui-redesign.md §5.4）: `worktree` から見える replied 件数 */
+  replied: v.number(),
 });
 export type ReviewCountsResponse = v.InferOutput<typeof ReviewCountsResponseSchema>;
 

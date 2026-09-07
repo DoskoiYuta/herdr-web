@@ -15,6 +15,9 @@ const ToolSearchSchema = v.object({
    * `path`/`line` を誤って適用しないためのゲート（別 worktree のファイルを開く
    * 導線専用）。この値が現在の focus worktree と一致した時点で消す。 */
   root: v.optional(v.pipe(v.string(), v.minLength(1))),
+  /** decisions タブ専用: 選択中の判断依頼 id。無ければ一覧を描く。`path`/`line`
+   * と同様、タブ切替で落とす。 */
+  id: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 export type ToolSearch = v.InferOutput<typeof ToolSearchSchema>;
@@ -42,9 +45,11 @@ export function parseToolSearch(raw: Record<string, unknown>): ToolSearch {
   return out as ToolSearch;
 }
 
-export const TOOL_TABS = ["diff", "graph", "files", "docker", "process"] as const;
+export const TOOL_TABS = ["files", "graph", "diff", "decisions", "process", "compose"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 
+/** 旧 `"docker"` タブ値（改名前の URL）は `"compose"` に丸める。 */
 export function normalizeTab(raw: string | undefined): ToolTab {
+  if (raw === "docker") return "compose";
   return (TOOL_TABS as readonly string[]).includes(raw ?? "") ? (raw as ToolTab) : "diff";
 }

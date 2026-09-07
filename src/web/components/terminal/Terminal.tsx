@@ -7,7 +7,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
-import { encodeModifiedEnter } from "@/lib/termKeys";
+import { encodeModifiedEnter, isMaximizeToggleKey } from "@/lib/termKeys";
 import { connectTermSocket, sendInput, sendResize } from "@/lib/termSocket";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,8 @@ export type TerminalProps = {
   fontFamily?: string;
   fontSize?: number;
   lineHeight?: number;
+  /** D7: ⌘⇧M / Ctrl+Shift+M（xterm にフォーカスがあっても効く）。 */
+  onToggleMaximize?: () => void;
 };
 
 const DEFAULT_FONT_FAMILY =
@@ -54,6 +56,7 @@ export function Terminal({
   fontFamily = DEFAULT_FONT_FAMILY,
   fontSize = DEFAULT_FONT_SIZE,
   lineHeight = DEFAULT_LINE_HEIGHT,
+  onToggleMaximize,
 }: TerminalProps) {
   const [reconnectNonce, setReconnectNonce] = useState(0);
   return (
@@ -64,6 +67,7 @@ export function Terminal({
       fontFamily={fontFamily}
       fontSize={fontSize}
       lineHeight={lineHeight}
+      onToggleMaximize={onToggleMaximize}
       onReconnect={() => setReconnectNonce((n) => n + 1)}
     />
   );
@@ -72,7 +76,7 @@ export function Terminal({
 type TerminalSessionProps = Required<
   Pick<TerminalProps, "fontFamily" | "fontSize" | "lineHeight">
 > &
-  Pick<TerminalProps, "session" | "className"> & { onReconnect: () => void };
+  Pick<TerminalProps, "session" | "className" | "onToggleMaximize"> & { onReconnect: () => void };
 
 // key={reconnectNonce} で丸ごと再マウントすることで PTY 接続をやり直す。
 // そのぶんこの内側のコンポーネントの effect 依存配列には
@@ -83,11 +87,18 @@ function TerminalSession({
   fontFamily,
   fontSize,
   lineHeight,
+  onToggleMaximize,
   onReconnect,
 }: TerminalSessionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [disconnected, setDisconnected] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
+  // 呼び出し側が毎レンダー新しい関数を渡しても PTY 接続をやり直さないよう、
+  // 最新のコールバックは ref 経由で読む（effect の依存配列には積まない）。
+  const onToggleMaximizeRef = useRef(onToggleMaximize);
+  useEffect(() => {
+    onToggleMaximizeRef.current = onToggleMaximize;
+  }, [onToggleMaximize]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -116,6 +127,11 @@ function TerminalSession({
     }
 
     term.attachCustomKeyEventHandler((event) => {
+      if (isMaximizeToggleKey(event)) {
+        event.preventDefault();
+        onToggleMaximizeRef.current?.();
+        return false;
+      }
       const seq = encodeModifiedEnter(event);
       if (seq !== null) {
         event.preventDefault();
