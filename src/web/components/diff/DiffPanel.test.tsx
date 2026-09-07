@@ -295,3 +295,22 @@ test("the right pane orders files like the FileTree (dirs first, alphabetical), 
     "z.ts",
   ]);
 });
+
+// docs/ui-redesign.md §5.4: no changes vs HEAD gets a dedicated empty state
+// (branch/HEAD + "Graph を開く"), not a blank viewer. Without this, a repo
+// with nothing to review would look indistinguishable from one still loading.
+test("shows the empty state (with a working Graph-open button) when the patch has no files and no untracked", async () => {
+  fetchMock.mockImplementation(async () => jsonResponse(patch("h1", [])));
+  const onOpenGraph = vi.fn();
+  renderPanel({ repo: "/repo", repoChangedTick: 0, onOpenGraph });
+  await waitFor(() => expect(screen.getByText("作業ツリーは HEAD と同じです")).toBeInTheDocument());
+  expect(screen.queryByTestId("scroll-root")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Graph を開く" }));
+  expect(onOpenGraph).toHaveBeenCalledTimes(1);
+});
+
+test("does not show the empty state while a non-empty patch is still the only one ever applied", async () => {
+  renderPanel({ repo: "/repo", repoChangedTick: 0 });
+  await waitFor(() => expect(screen.getByTestId("scroll-root")).toBeInTheDocument());
+  expect(screen.queryByText("作業ツリーは HEAD と同じです")).not.toBeInTheDocument();
+});

@@ -139,7 +139,7 @@ export function ToolPane() {
   const navigate = routeApi.useNavigate();
   const state = useHerdrState();
   const { send } = useHerdrStoreActions();
-  const { openLocation, message: openLocationMessage } = useOpenWorktreeLocation();
+  const { openLocation } = useOpenWorktreeLocation();
 
   const worktreeRoot = state.focus?.worktreeRoot ?? null;
   const tab: ToolTab = normalizeTab(params.tab);
@@ -412,11 +412,6 @@ export function ToolPane() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      {openLocationMessage && (
-        <p className="shrink-0 border-b border-border px-2 py-1 text-xs text-destructive">
-          {openLocationMessage}
-        </p>
-      )}
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
         <div className="min-w-0">
           {worktreeRoot ? (
@@ -570,6 +565,7 @@ export function ToolPane() {
                 pollMs={subRepoPollMs}
                 initialLocation={initialLocation}
                 onInitialLocationConsumed={handleInitialLocationConsumed}
+                onOpenGraph={() => handleTabChange("graph")}
                 sendButton={
                   <SendDraftsButton
                     repoKey={resolvedRepoKey}

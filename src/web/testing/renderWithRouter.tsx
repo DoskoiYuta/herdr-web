@@ -19,6 +19,7 @@ import type { ReactElement } from "react";
 import { vi } from "vitest";
 import type { AskEvent } from "@contract/ask";
 import type { DecisionEvent } from "@contract/decision";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
 import type { HerdrStore, HerdrStoreState, ReviewEvent } from "@/lib/herdrStore";
 import { parseToolSearch } from "@/router/search";
@@ -97,7 +98,9 @@ export function renderWithStore(ui: ReactElement, opts: { store?: FakeHerdrStore
   const queryClient = new QueryClient();
   const wrap = (next: ReactElement) => (
     <QueryClientProvider client={queryClient}>
-      <HerdrStoreProvider store={store}>{next}</HerdrStoreProvider>
+      <ToastProvider>
+        <HerdrStoreProvider store={store}>{next}</HerdrStoreProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
   const utils = rtlRender(wrap(ui));
@@ -133,9 +136,11 @@ export async function renderWithRouter(
   await router.load();
   const utils = rtlRender(
     <QueryClientProvider client={queryClient}>
-      <HerdrStoreProvider store={store}>
-        <RouterProvider router={router} />
-      </HerdrStoreProvider>
+      <ToastProvider>
+        <HerdrStoreProvider store={store}>
+          <RouterProvider router={router} />
+        </HerdrStoreProvider>
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return { ...utils, router, store };

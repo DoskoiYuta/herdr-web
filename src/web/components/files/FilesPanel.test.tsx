@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
 import { makeFakeStore } from "@/testing/renderWithRouter";
 import type { StatusResponse } from "@contract/git";
@@ -218,9 +219,11 @@ function renderPanel(props: FilesPanelTestProps = {}): ReactElement {
   const client = new QueryClient();
   return (
     <QueryClientProvider client={client}>
-      <HerdrStoreProvider store={makeFakeStore()}>
-        <TestFilesPanel {...props} />
-      </HerdrStoreProvider>
+      <ToastProvider>
+        <HerdrStoreProvider store={makeFakeStore()}>
+          <TestFilesPanel {...props} />
+        </HerdrStoreProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

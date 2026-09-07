@@ -16,6 +16,8 @@ import {
   setDecisionDraft,
 } from "@/lib/decisionDrafts";
 import { Button } from "@/components/ui/button";
+import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
+import { deliveryOf } from "@/lib/statusVocab";
 import { BlockView, type OpenLocation } from "./BlockView";
 import { CompareOptions } from "./CompareOptions";
 
@@ -424,9 +426,10 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
   }
 
   const isOpen = decision.status === "open";
-  const canResend =
-    (decision.status === "answered" || decision.status === "dismissed") &&
-    decision.delivery?.state !== "sent";
+  const delivery = deliveryOf("decision", decision.delivery);
+  // §6.3 の canResend は状態だけを見る。cancelled（取り下げ）はエージェント側の
+  // 操作で終わっているので、配達が滞っていても再送の宛先が無い。
+  const canResend = delivery.canResend && decision.status !== "cancelled";
 
   return (
     <div
@@ -516,24 +519,13 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           </Button>
         </footer>
       ) : (
-        <footer className="flex shrink-0 flex-col gap-1 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-          <span>
-            配達:{" "}
-            {decision.delivery
-              ? `${decision.delivery.state} (試行 ${decision.delivery.attempts} 回)`
-              : "-"}
-          </span>
-          {canResend && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => void resend()}
-              disabled={busy}
-            >
-              再送
-            </Button>
-          )}
+        <footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          <span>配達:</span>
+          <DeliveryChip
+            delivery={{ ...delivery, canResend }}
+            onResend={busy ? undefined : () => void resend()}
+          />
+          {decision.delivery && <span>試行 {decision.delivery.attempts} 回</span>}
         </footer>
       )}
     </div>

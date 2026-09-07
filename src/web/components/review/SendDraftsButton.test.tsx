@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PaneRow } from "@contract/events";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { SendDraftsButton, type SendDraftsButtonProps } from "./SendDraftsButton";
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
@@ -56,7 +57,9 @@ function renderButton(overrides: Partial<SendDraftsButtonProps> = {}) {
   };
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <SendDraftsButton {...props} />
+      <ToastProvider>
+        <SendDraftsButton {...props} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return { ...utils, props };
@@ -70,8 +73,8 @@ describe("SendDraftsButton", () => {
   // 無いと壊れる: 0 件でも disabled ボタンが出続けると、Diff の toolbar が常に
   // 送信ボタンで埋まる（ui-redesign.md §5.4: 0 件は非表示）。
   test("renders nothing when pendingDrafts is 0", () => {
-    const { container } = renderButton({ pendingDrafts: 0 });
-    expect(container).toBeEmptyDOMElement();
+    renderButton({ pendingDrafts: 0 });
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   test("shows the count and, with a single agent pane, POSTs /api/review/send with its pane id", async () => {

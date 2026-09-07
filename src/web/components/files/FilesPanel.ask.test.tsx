@@ -8,6 +8,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
 import { makeFakeStore } from "@/testing/renderWithRouter";
 import type { CodeViewLineSelection, LineAnnotation } from "@pierre/diffs";
@@ -205,9 +206,11 @@ function renderPanel(props: FilesPanelTestProps = {}): ReactElement {
   const client = new QueryClient();
   return (
     <QueryClientProvider client={client}>
-      <HerdrStoreProvider store={makeFakeStore()}>
-        <TestFilesPanel {...props} />
-      </HerdrStoreProvider>
+      <ToastProvider>
+        <HerdrStoreProvider store={makeFakeStore()}>
+          <TestFilesPanel {...props} />
+        </HerdrStoreProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
@@ -324,7 +327,7 @@ test("anchored for-file matches render inline as ask threads", async () => {
   ] satisfies ForFileMatch[]);
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  expect(await screen.findByTestId("ask-thread")).toBeInTheDocument();
+  expect(await screen.findByTestId("thread-card")).toBeInTheDocument();
   expect(screen.queryByTestId("ask-mismatch-strip")).not.toBeInTheDocument();
 });
 
@@ -338,7 +341,7 @@ test("outdated (unanchored) for-file matches render in the mismatch strip, not i
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
   expect(await screen.findByTestId("ask-mismatch-strip")).toHaveTextContent("一致しない質問 1 件");
-  expect(screen.queryByTestId("ask-thread")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("thread-card")).not.toBeInTheDocument();
 });
 
 test("replying to an inline thread calls askApi.reply with the ask id", async () => {
@@ -347,10 +350,10 @@ test("replying to an inline thread calls askApi.reply with the ask id", async ()
   ] satisfies ForFileMatch[]);
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  await screen.findByTestId("ask-thread");
+  await screen.findByTestId("thread-card");
 
   fireEvent.change(screen.getByPlaceholderText("返信"), { target: { value: "because" } });
-  fireEvent.click(screen.getByText("返信"));
+  fireEvent.click(screen.getByRole("button", { name: "送信" }));
   await vi.waitFor(() =>
     expect(replyMock).toHaveBeenCalledWith("anchored-1", {
       body: "because",
@@ -366,7 +369,7 @@ test("解決 on an inline thread calls askApi.resolve with the ask id", async ()
   ] satisfies ForFileMatch[]);
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  await screen.findByTestId("ask-thread");
+  await screen.findByTestId("thread-card");
 
   screen.getByText("解決").click();
   await vi.waitFor(() => expect(resolveMock).toHaveBeenCalledWith("anchored-1"));
@@ -383,13 +386,13 @@ test("解決 removes the inline thread once for-file stops returning it", async 
   resolveMock.mockResolvedValue(makeAsk({ id: "anchored-1", status: "resolved" }));
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  await screen.findByTestId("ask-thread");
+  await screen.findByTestId("thread-card");
 
   forFileMock.mockResolvedValueOnce([]);
   screen.getByText("解決").click();
 
   await vi.waitFor(() => expect(resolveMock).toHaveBeenCalledWith("anchored-1"));
-  await vi.waitFor(() => expect(screen.queryByTestId("ask-thread")).not.toBeInTheDocument());
+  await vi.waitFor(() => expect(screen.queryByTestId("thread-card")).not.toBeInTheDocument());
 });
 
 test("再送 on a thread with an agent_blocked prompt calls askApi.resend", async () => {
@@ -402,7 +405,7 @@ test("再送 on a thread with an agent_blocked prompt calls askApi.resend", asyn
   ] satisfies ForFileMatch[]);
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  await screen.findByTestId("ask-thread");
+  await screen.findByTestId("thread-card");
 
   screen.getByText("再送").click();
   await vi.waitFor(() => expect(resendMock).toHaveBeenCalledWith("anchored-1"));

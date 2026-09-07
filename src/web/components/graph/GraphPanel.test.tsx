@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { GraphPanel } from "./GraphPanel";
 import type { GraphResponse } from "@contract/git";
 
@@ -60,7 +61,11 @@ function setupFetchMock(graph: GraphResponse) {
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
+  );
 }
 
 // jsdom never fires ResizeObserver, so react-virtual's default measurement

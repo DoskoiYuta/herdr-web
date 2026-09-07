@@ -102,8 +102,8 @@ beforeEach(() => {
 
 describe("AskSessionGroup", () => {
   test("renders nothing when there are no ask workspaces", () => {
-    const { container } = renderWithStore(<AskSessionGroup {...defaultProps()} workspaces={[]} />);
-    expect(container).toBeEmptyDOMElement();
+    renderWithStore(<AskSessionGroup {...defaultProps()} workspaces={[]} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   test("shows the workspace label and status icon, and clicking selects its first pane", () => {
