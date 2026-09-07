@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, useRouterState } from "@tanstack/react-router";
 import { Check, Copy, Unplug } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubRepo } from "@contract/git";
@@ -144,6 +144,12 @@ export function ToolPane() {
   const repoKey = state.focus?.repoKey ?? null;
   const focusInfo = state.focus;
   const repoChangedTick = worktreeRoot ? (state.repoChanged[worktreeRoot]?.tick ?? 0) : 0;
+  // Inbox の行クリックなどが同じ tick で別タブへの navigate を pending にした
+  // まま、この後の自動 navigate（`root`/古い search を落とす）が `to` 無しで
+  // 発行されると、まだコミットされていない旧タブを基準に組み立てられ、
+  // pending 中の遷移ごと後勝ちで巻き戻す。router が idle（前の navigate が
+  // commit 済み）になってから、現在の（解決済みの）タブを明示して発行する。
+  const routerIdle = useRouterState({ select: (s) => s.status === "idle" });
 
   // 別 worktree のファイル位置を開く導線（ask の「対象ファイルを開く」、判断
   // 依頼の `location` Block）が付ける search の `root`: herdr の focus がまだ
@@ -152,10 +158,16 @@ export function ToolPane() {
   const intendedRoot = search.root ?? null;
   const rootPending = intendedRoot !== null && intendedRoot !== worktreeRoot;
   useEffect(() => {
+    if (!routerIdle) return;
     if (intendedRoot !== null && intendedRoot === worktreeRoot) {
-      void navigate({ search: (prev) => ({ ...prev, root: undefined }), replace: true });
+      void navigate({
+        to: "/focus/$tab",
+        params: (prev) => prev,
+        search: (prev) => ({ ...prev, root: undefined }),
+        replace: true,
+      });
     }
-  }, [intendedRoot, worktreeRoot, navigate]);
+  }, [intendedRoot, worktreeRoot, navigate, routerIdle]);
 
   // `/focus/$tab` の worktreeRoot は herdr の focus に追従するので、URL を変えずに
   // 変わることがある。前の worktree の比較範囲・選択サブリポジトリ・ジャンプ先が
@@ -184,8 +196,16 @@ export function ToolPane() {
   }
   const effectiveSearch = searchCleared ? EMPTY_SEARCH : search;
   useEffect(() => {
-    if (searchCleared) void navigate({ search: () => ({}), replace: true });
-  }, [searchCleared, navigate]);
+    if (!routerIdle) return;
+    if (searchCleared) {
+      void navigate({
+        to: "/focus/$tab",
+        params: (prev) => prev,
+        search: () => ({}),
+        replace: true,
+      });
+    }
+  }, [searchCleared, navigate, routerIdle]);
 
   const comparison: CommitRange =
     effectiveSearch.from && effectiveSearch.to
