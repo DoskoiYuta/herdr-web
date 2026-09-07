@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -131,6 +131,7 @@ vi.mock("@/components/tree/PathTree", () => ({
     onExpandedDirsChange,
     contextMenuItems,
     onExternalDrop,
+    onExternalDragOver,
   }: {
     paths: string[];
     onSelectFile: (path: string) => void;
@@ -140,6 +141,7 @@ vi.mock("@/components/tree/PathTree", () => ({
       kind: "file" | "directory";
     }) => { label: string; onSelect: () => void }[];
     onExternalDrop?: (target: { dir: string }, dataTransfer: DataTransfer) => void;
+    onExternalDragOver?: (dir: string | null) => void;
   }) => (
     <div data-testid="path-tree-stub">
       {paths.map((p) => (
@@ -170,6 +172,12 @@ vi.mock("@/components/tree/PathTree", () => ({
         }
       >
         drop-into-src
+      </button>
+      <button type="button" onClick={() => onExternalDragOver?.("src")}>
+        drag-over-src
+      </button>
+      <button type="button" onClick={() => onExternalDragOver?.(null)}>
+        drag-leave
       </button>
     </div>
   ),
@@ -265,6 +273,19 @@ test("selecting a .md file loads and routes it to MarkdownView", async () => {
   expect(fileMock).toHaveBeenCalledWith({ root: "/repo", path: "a.md" });
 });
 
+test("switching the markdown viewer to ソース routes it to CodeFileView instead", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  render(renderPanel());
+  (await screen.findByText("a.md")).click();
+  await screen.findByTestId("markdown-view-stub");
+
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "ソース" }));
+
+  expect(await screen.findByTestId("code-file-view-stub")).toHaveTextContent("a.md:# hi");
+  expect(screen.queryByTestId("markdown-view-stub")).not.toBeInTheDocument();
+});
+
 test("selecting a non-markdown file routes it to CodeFileView", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
   fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "const x = 1;", size: 12 });
@@ -322,12 +343,33 @@ test("shows a load-failure message when the image preview errors", async () => {
   expect(await screen.findByText("プレビューを読み込めませんでした")).toBeInTheDocument();
 });
 
+test("clicking the image preview toggles fit and full-size, resetting on a new selection", async () => {
+  lsMock.mockResolvedValue(
+    ls([
+      { name: "logo.png", kind: "file" },
+      { name: "b.png", kind: "file" },
+    ]),
+  );
+  render(renderPanel());
+  (await screen.findByText("logo.png")).click();
+  const img = await screen.findByAltText("logo.png");
+  expect(img).toHaveAttribute("data-zoomed", "false");
+
+  img.click();
+  await waitFor(() => expect(img).toHaveAttribute("data-zoomed", "true"));
+
+  (await screen.findByText("b.png")).click();
+  const img2 = await screen.findByAltText("b.png");
+  expect(img2).toHaveAttribute("data-zoomed", "false");
+});
+
 test("shows the binary-file message with size", async () => {
   lsMock.mockResolvedValue(ls([{ name: "bin", kind: "file" }]));
   fileMock.mockResolvedValue({ kind: "binary", path: "bin", size: 42 });
   render(renderPanel());
   (await screen.findByText("bin")).click();
-  expect(await screen.findByText("バイナリファイル (42 bytes)")).toBeInTheDocument();
+  expect(await screen.findByText("バイナリファイル")).toBeInTheDocument();
+  expect(screen.getAllByText("42 bytes").length).toBeGreaterThan(0);
 });
 
 test("shows the too-large message with size and the cap", async () => {
@@ -335,9 +377,28 @@ test("shows the too-large message with size and the cap", async () => {
   fileMock.mockResolvedValue({ kind: "too-large", path: "big", size: 5_000_000 });
   render(renderPanel());
   (await screen.findByText("big")).click();
-  expect(
-    await screen.findByText("大きすぎるため表示しません (5000000 bytes、上限 2 MiB)"),
-  ).toBeInTheDocument();
+  expect(await screen.findByText("2 MiB を超えています")).toBeInTheDocument();
+  expect(screen.getAllByText("5000000 bytes").length).toBeGreaterThan(0);
+});
+
+// 無いと壊れる: バイナリ/too-large 状態でパスをコピーする手段が無いと、
+// 中身を見られないファイルをエージェントに渡す方法が無くなる。
+test("binary/too-large states offer a 絶対パスをコピー action", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "bin", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "binary", path: "bin", size: 42 });
+  render(renderPanel());
+  (await screen.findByText("bin")).click();
+  await screen.findByText("バイナリファイル");
+
+  // The tree stub also renders a same-labelled context-menu button (for
+  // "a.md", unrelated to this test) — scope to the ones outside the tree.
+  const copyButtons = screen
+    .getAllByRole("button", { name: "絶対パスをコピー" })
+    .filter((btn) => !btn.closest('[data-testid="path-tree-stub"]'));
+  expect(copyButtons).toHaveLength(1);
+  copyButtons[0]!.click();
+
+  await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith("/repo/bin"));
 });
 
 test("shows a not-found message when gitApi.file throws FileNotFoundError", async () => {
@@ -417,6 +478,21 @@ test("shows a message when the clipboard write fails", async () => {
   render(renderPanel());
   (await screen.findByText("相対パスをコピー")).click();
   expect(await screen.findByText("クリップボードにコピーできませんでした")).toBeInTheDocument();
+});
+
+test("shows a hint naming the hovered directory while an external drag is over the tree, and clears it on drag-leave", async () => {
+  lsMock.mockResolvedValue(ls([]));
+  render(renderPanel());
+
+  expect(screen.queryByText(/にドロップして取り込む/)).not.toBeInTheDocument();
+
+  (await screen.findByText("drag-over-src")).click();
+  expect(await screen.findByText("src/ にドロップして取り込む")).toBeInTheDocument();
+
+  (await screen.findByText("drag-leave")).click();
+  await waitFor(() =>
+    expect(screen.queryByText(/にドロップして取り込む/)).not.toBeInTheDocument(),
+  );
 });
 
 test("dropping files uploads them to the hovered directory and invalidates the ls queries", async () => {

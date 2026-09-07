@@ -62,6 +62,11 @@ export interface PathTreeProps {
    * includes `"Files"`) — the library's own internal drag-to-move only acts
    * when it started an internal drag session, so this never fires for it. */
   onExternalDrop?: (target: { dir: string }, dataTransfer: DataTransfer) => void;
+  /** Fired while an OS drag hovers the tree, with the directory a drop would
+   * land in right now (`null` once the drag leaves). ui-redesign.md §5.4:
+   * lets the caller show a "<dir>/ にドロップして取り込む" hint below the
+   * tree. Only fires alongside `onExternalDrop`. */
+  onExternalDragOver?: (dir: string | null) => void;
 }
 
 function targetDirFromRow(row: Element | null): string {
@@ -103,6 +108,7 @@ export function PathTree({
   style,
   contextMenuItems,
   onExternalDrop,
+  onExternalDragOver,
 }: PathTreeProps) {
   const onSelectFileRef = useRef(onSelectFile);
   useLayoutEffect(() => {
@@ -255,22 +261,44 @@ export function PathTree({
     dragDepthRef.current += 1;
     setIsDropTarget(true);
   }, []);
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
-    if (!hasFilesPayload(e.dataTransfer)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  }, []);
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLElement>) => {
-    if (!hasFilesPayload(e.dataTransfer)) return;
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) setIsDropTarget(false);
-  }, []);
+  const lastDragOverDirRef = useRef<string | null>(null);
+  const handleDragOver = useCallback(
+    (e: React.DragEvent<HTMLElement>) => {
+      if (!hasFilesPayload(e.dataTransfer)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      if (!onExternalDragOver) return;
+      const row = e.currentTarget.shadowRoot
+        ?.elementFromPoint(e.clientX, e.clientY)
+        ?.closest('[data-type="item"]');
+      const dir = targetDirFromRow(row ?? null);
+      if (dir !== lastDragOverDirRef.current) {
+        lastDragOverDirRef.current = dir;
+        onExternalDragOver(dir);
+      }
+    },
+    [onExternalDragOver],
+  );
+  const handleDragLeave = useCallback(
+    (e: React.DragEvent<HTMLElement>) => {
+      if (!hasFilesPayload(e.dataTransfer)) return;
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) {
+        setIsDropTarget(false);
+        lastDragOverDirRef.current = null;
+        onExternalDragOver?.(null);
+      }
+    },
+    [onExternalDragOver],
+  );
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLElement>) => {
       if (!hasFilesPayload(e.dataTransfer)) return;
       e.preventDefault();
       dragDepthRef.current = 0;
       setIsDropTarget(false);
+      lastDragOverDirRef.current = null;
+      onExternalDragOver?.(null);
       // The host element is a custom element with its own shadow DOM, so a
       // plain `document.elementFromPoint` would only ever resolve back to
       // the host itself — reach through `shadowRoot` to hit the actual row.
@@ -279,7 +307,7 @@ export function PathTree({
         ?.closest('[data-type="item"]');
       onExternalDrop?.({ dir: targetDirFromRow(row ?? null) }, e.dataTransfer);
     },
-    [onExternalDrop],
+    [onExternalDrop, onExternalDragOver],
   );
 
   return (
