@@ -3,15 +3,20 @@ import { getRouteApi } from "@tanstack/react-router";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubRepo } from "@contract/git";
-import type { PaneRow } from "@contract/events";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { DockerPanel } from "@/components/docker/DockerPanel";
 import { FilesPanel } from "@/components/files/FilesPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
 import { ProcessPanel } from "@/components/process/ProcessPanel";
+import { DecisionListView } from "@/components/decision/DecisionListView";
+import { DecisionView } from "@/components/decision/DecisionView";
+import type { OpenLocation } from "@/components/decision/BlockView";
+import { useDecisionCounts } from "@/components/decision/hooks/useDecisionCounts";
+import { useAskCounts } from "@/components/ask/hooks/useAskCounts";
 import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
+import { SendDraftsButton } from "@/components/review/SendDraftsButton";
+import { TabBadge } from "@/components/tool/TabBadge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -20,15 +25,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { gitApi, reviewApi, SendTargetError } from "@/lib/api";
-import { useHerdrState, useReviewEvents } from "@/lib/HerdrStoreContext";
+import { gitApi } from "@/lib/api";
+import { useHerdrState, useAskEvents, useReviewEvents } from "@/lib/HerdrStoreContext";
+import { useHerdrStoreActions } from "@/lib/HerdrStoreContext";
+import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
+import { askEventMatchesRepo } from "@/lib/askEvent";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { agentPanesAt } from "@/lib/sendTargets";
-import { cn } from "@/lib/utils";
 import { normalizeTab, type ToolSearch, type ToolTab } from "@/router/search";
-import { STATUS_META } from "@/components/sidebar/PaneRow";
-import { PaneLayoutMiniMap } from "./PaneLayoutMiniMap";
-import { usePanePreview } from "./hooks/usePanePreview";
 
 /** A sub-repo/submodule selection never gets its own `repoChangedTick` from
  * the server — the poller only watches the *focused* worktree (see
@@ -53,24 +57,36 @@ const EMPTY_SEARCH: ToolSearch = {};
 
 const routeApi = getRouteApi("/focus/$tab");
 
-function ResumeCopyButton({ sessionId }: { sessionId: string }) {
+const TAB_LABEL: Record<ToolTab, string> = {
+  files: "Files",
+  graph: "Graph",
+  diff: "Diff",
+  decisions: "Decisions",
+  process: "Process",
+  compose: "Compose",
+};
+
+/** エージェント非依存の session 表示（ui-redesign.md D9）: `session <先頭4>…
+ * <末尾4>` + コピーアイコン。コピーする文字列は session id そのもの
+ * （コマンドは組み立てない）。 */
+function SessionCopyButton({ sessionId }: { sessionId: string }) {
   const [copied, setCopied] = useState(false);
-  const command = `claude --resume ${sessionId}`;
+  const label = `session ${sessionId.slice(0, 4)}…${sessionId.slice(-4)}`;
 
   const copy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(command);
+      await navigator.clipboard.writeText(sessionId);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // クリップボード API が使えない環境では何もしない
     }
-  }, [command]);
+  }, [sessionId]);
 
   return (
     <Button type="button" size="xs" variant="outline" onClick={copy} className="gap-1">
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-      {command}
+      {label}
     </Button>
   );
 }
@@ -82,7 +98,7 @@ function FocusInfoBar({
 }) {
   if (!focusInfo.agent && !focusInfo.agentSession) return null;
   const session = focusInfo.agentSession;
-  const showResume = session?.source === "herdr:claude" && session.kind === "id";
+  const showSession = session?.kind === "id";
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
@@ -92,7 +108,7 @@ function FocusInfoBar({
           {focusInfo.agentStatus ? ` · ${focusInfo.agentStatus}` : ""}
         </span>
       )}
-      {showResume && <ResumeCopyButton sessionId={session.value} />}
+      {showSession && <SessionCopyButton sessionId={session.value} />}
     </div>
   );
 }
@@ -103,73 +119,17 @@ function basename(path: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-/** Send-target picker candidate card (ToolPane's dialog, 2+ agent panes at
- * the current worktree). Renders immediately from `pane` (the sidebar's
- * PaneRow) and fills in workspace/tab/title, the layout minimap, and the
- * output tail once `usePanePreview` resolves — a failed/slow preview just
- * leaves those parts out, the card stays clickable throughout. */
-function SendTargetCard({
-  pane,
-  fetchPreview,
-  onSelect,
-}: {
-  pane: PaneRow;
-  fetchPreview: boolean;
-  onSelect: (paneId: string) => void;
-}) {
-  const { data: preview } = usePanePreview(pane.paneId, fetchPreview);
-  const meta = STATUS_META[preview?.agentStatus ?? pane.agentStatus];
-  const StatusIcon = meta.icon;
-  const workspaceLabel = preview?.workspaceLabel ?? pane.workspaceLabel;
-  const tabLabel = preview?.tabLabel ?? pane.tabLabel;
-  const title = preview?.title ?? pane.label ?? pane.tabLabel ?? pane.paneId;
-  const sessionId = preview?.agentSession?.slice(0, 8) ?? null;
-  const tail = preview?.tail ?? [];
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      className="h-auto flex-col items-stretch gap-1.5 p-2 text-left whitespace-normal"
-      onClick={() => onSelect(pane.paneId)}
-    >
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="truncate">
-          {workspaceLabel ?? "?"} › {tabLabel ?? "?"}
-        </span>
-        {sessionId && <span className="shrink-0 font-mono">{sessionId}</span>}
-      </div>
-      <div className="flex items-center gap-2">
-        {preview?.layout && (
-          <PaneLayoutMiniMap layout={preview.layout} candidatePaneId={pane.paneId} />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <StatusIcon
-              className={cn("size-3 shrink-0", meta.className, meta.spin && "animate-spin")}
-            />
-            <span className="truncate text-sm font-medium">{title}</span>
-          </div>
-          {tail.length > 0 && (
-            <pre className="mt-1 max-h-24 overflow-hidden rounded bg-muted/50 p-1 font-mono text-[10px] whitespace-pre-wrap break-all text-muted-foreground">
-              {tail.slice(-6).join("\n")}
-            </pre>
-          )}
-        </div>
-      </div>
-    </Button>
-  );
-}
-
 /** `/focus/$tab` の唯一の下で描画される — URL がタブ・比較範囲・選択サブ
- * リポジトリ・ジャンプ先の唯一の正になる（plan.md F2-4: ピン留めは持たない）。
- * このコンポーネント自身はローカル state を持たない（送信ダイアログの開閉や
- * エラー文言のような一時的な UI 状態を除く）。 */
+ * リポジトリ・ジャンプ先・選択中の判断依頼の唯一の正になる（plan.md F2-4:
+ * ピン留めは持たない）。このコンポーネント自身はローカル state を持たない
+ * （送信ダイアログの開閉やエラー文言のような一時的な UI 状態を除く）。 */
 export function ToolPane() {
   const params = routeApi.useParams();
   const search = routeApi.useSearch();
   const navigate = routeApi.useNavigate();
   const state = useHerdrState();
+  const { send } = useHerdrStoreActions();
+  const { openLocation, message: openLocationMessage } = useOpenWorktreeLocation();
 
   const worktreeRoot = state.focus?.worktreeRoot ?? null;
   const tab: ToolTab = normalizeTab(params.tab);
@@ -178,10 +138,10 @@ export function ToolPane() {
   const focusInfo = state.focus;
   const repoChangedTick = worktreeRoot ? (state.repoChanged[worktreeRoot]?.tick ?? 0) : 0;
 
-  // 別 worktree のファイル位置を開く導線（router.tsx useOpenWorktreeLocation）が
-  // 付ける search の `root`: herdr の focus がまだその worktree に切り替わって
-  // いない間は、`path`/`line` を今表示中の（無関係な）worktree に適用しない
-  // ゲート。focus が追いついたら消す。
+  // 別 worktree のファイル位置を開く導線（ask の「対象ファイルを開く」、判断
+  // 依頼の `location` Block）が付ける search の `root`: herdr の focus がまだ
+  // その worktree に切り替わっていない間は、`path`/`line` を今表示中の
+  // （無関係な）worktree に適用しない ゲート。focus が追いついたら消す。
   const intendedRoot = search.root ?? null;
   const rootPending = intendedRoot !== null && intendedRoot !== worktreeRoot;
   useEffect(() => {
@@ -231,12 +191,19 @@ export function ToolPane() {
     tab === "files" && !rootPending && effectiveSearch.path && effectiveSearch.line
       ? { path: effectiveSearch.path, line: effectiveSearch.line }
       : null;
+  const decisionId = tab === "decisions" ? (effectiveSearch.id ?? null) : null;
 
   const handleTabChange = useCallback(
     (nextTab: string) => {
       void navigate({
         params: (prev) => ({ ...prev, tab: nextTab }),
-        search: (prev) => ({ ...prev, path: undefined, line: undefined, root: undefined }),
+        search: (prev) => ({
+          ...prev,
+          path: undefined,
+          line: undefined,
+          root: undefined,
+          id: undefined,
+        }),
       });
     },
     [navigate],
@@ -307,6 +274,32 @@ export function ToolPane() {
     [navigate],
   );
 
+  const handleSelectDecision = useCallback(
+    (id: string) => {
+      void navigate({ search: (prev) => ({ ...prev, id }) });
+    },
+    [navigate],
+  );
+
+  const handleCloseDecision = useCallback(() => {
+    void navigate({ search: (prev) => ({ ...prev, id: undefined }) });
+  }, [navigate]);
+
+  const handleFocusDecisionPane = useCallback(
+    (pane: string) => send({ type: "focus-pane", pane }),
+    [send],
+  );
+
+  const handleOpenDecisionLocation: OpenLocation = useCallback(
+    (location) =>
+      openLocation({
+        worktreeRoot: location.worktreeRoot,
+        path: location.path,
+        line: location.lines ? location.lines[0] : 1,
+      }),
+    [openLocation],
+  );
+
   // Sub-repository switcher (plan.md: submodules + `.repos/<child>` nested
   // repos). Listed even for a null worktreeRoot (query stays disabled) so
   // hook order is unconditional.
@@ -321,6 +314,18 @@ export function ToolPane() {
   const selectedSubRepo = subRepos.find((r) => r.id === subRepoId) ?? null;
   const isSubRepoSelected = selectedSubRepo !== null && selectedSubRepo.kind !== "root";
   const subRepoRoot = selectedSubRepo?.root ?? worktreeRoot ?? "";
+
+  // ui-redesign.md §5.3: worktree 見出し行のブランチ表示（既存の
+  // `RootResponse.branch` を使う）。サブリポジトリ選択の有無に関わらず、常に
+  // worktreeRoot 自身のブランチを表示する。
+  const worktreeRootInfoQuery = useQuery({
+    queryKey: ["git-root", worktreeRoot],
+    queryFn: () => gitApi.root(worktreeRoot as string),
+    enabled: worktreeRoot !== null,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const worktreeBranch = worktreeRootInfoQuery.data?.branch ?? null;
 
   // repoKey にも選択中のサブリポジトリを反映する。サブリポジトリは herdr の
   // フォーカス pane が把握している repoKey とは別の git-common-dir を持つので、
@@ -340,15 +345,15 @@ export function ToolPane() {
   // クエリをこの間隔でポーリングして代替する。
   const subRepoPollMs = isSubRepoSelected ? SUB_REPO_POLL_MS : undefined;
 
-  // git-graph の review 件数バッジ + 送信ボタン（F5-10）。review WS イベントと
-  // repoChangedTick の両方で tick を上げ、`staleTime: Infinity` のクエリを
-  // 明示的に再フェッチする（useGraph/useReviewList と同じ流儀）。
+  // git-graph の review 件数バッジ + Diff タブの送信ボタン（F5-10）。review WS
+  // イベントと repoChangedTick の両方で tick を上げ、`staleTime: Infinity` の
+  // クエリを明示的に再フェッチする（useGraph/useReviewList と同じ流儀）。
   const [reviewTick, setReviewTick] = useState(0);
-  const countsQuery = useReviewCounts(
+  const reviewCountsQuery = useReviewCounts(
     resolvedRepoKey && subRepoRoot ? { repo: resolvedRepoKey, worktree: subRepoRoot } : null,
     reviewTick + repoChangedTick,
   );
-  const reviewCounts = countsQuery.data ?? null;
+  const reviewCounts = reviewCountsQuery.data ?? null;
   const pendingDrafts = reviewCounts?.pendingDrafts ?? 0;
 
   useReviewEvents(
@@ -360,6 +365,27 @@ export function ToolPane() {
     ),
   );
 
+  // Files タブの通知バッジ（ui-redesign.md §5.4: replied な質問の件数）。
+  const [askTick, setAskTick] = useState(0);
+  const askCountsQuery = useAskCounts(
+    resolvedRepoKey && worktreeRoot ? { repo: resolvedRepoKey, worktree: worktreeRoot } : null,
+    askTick + repoChangedTick,
+  );
+  const askReplied = askCountsQuery.data?.replied ?? 0;
+
+  useAskEvents(
+    useCallback(
+      (event) => {
+        if (askEventMatchesRepo(event, resolvedRepoKey)) setAskTick((t) => t + 1);
+      },
+      [resolvedRepoKey],
+    ),
+  );
+
+  // Decisions タブの通知バッジ（worktree 横断のまま、ui-redesign.md §5.4）。
+  const decisionCountsQuery = useDecisionCounts();
+  const decisionTotal = decisionCountsQuery.data?.total ?? 0;
+
   // 送信先候補は subRepoRoot ではなく worktreeRoot（実際の git worktree）に
   // 紐付く — pane はサブリポジトリ選択とは無関係にトップの worktree で開かれる。
   const agentPanes = useMemo(
@@ -367,40 +393,7 @@ export function ToolPane() {
     [repos, worktreeRoot],
   );
 
-  const [sendBusy, setSendBusy] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  const sendTo = useCallback(
-    async (pane?: string) => {
-      if (!resolvedRepoKey || !subRepoRoot || sendBusy) return;
-      setSendBusy(true);
-      setSendError(null);
-      try {
-        await reviewApi.send({ repo: resolvedRepoKey, worktreeRoot: subRepoRoot, pane });
-        setReviewTick((t) => t + 1);
-        setPickerOpen(false);
-      } catch (err) {
-        setSendError(
-          err instanceof SendTargetError
-            ? SEND_TARGET_ERROR_MESSAGE[err.type]
-            : "送信に失敗しました",
-        );
-      } finally {
-        setSendBusy(false);
-      }
-    },
-    [resolvedRepoKey, subRepoRoot, sendBusy],
-  );
-
-  const handleSend = useCallback(() => {
-    if (pendingDrafts === 0 || sendBusy || agentPanes.length === 0) return;
-    if (agentPanes.length === 1) {
-      void sendTo(agentPanes[0]!.paneId);
-      return;
-    }
-    setPickerOpen(true);
-  }, [pendingDrafts, sendBusy, agentPanes, sendTo]);
+  const handleDraftsSent = useCallback(() => setReviewTick((t) => t + 1), []);
 
   if (!worktreeRoot) {
     return (
@@ -412,10 +405,27 @@ export function ToolPane() {
 
   return (
     <div className="flex h-full w-full flex-col">
+      {openLocationMessage && (
+        <p className="shrink-0 border-b border-border px-2 py-1 text-xs text-destructive">
+          {openLocationMessage}
+        </p>
+      )}
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{basename(worktreeRoot)}</div>
-          <div className="truncate text-xs text-muted-foreground">
+          <div className="flex items-baseline gap-2">
+            <span className="truncate text-sm font-semibold">{basename(worktreeRoot)}</span>
+            {worktreeBranch && (
+              <span className="shrink-0 text-xs text-muted-foreground">{worktreeBranch}</span>
+            )}
+          </div>
+          <div
+            className="truncate text-xs text-muted-foreground/70"
+            title={
+              selectedSubRepo && selectedSubRepo.id !== ""
+                ? `${worktreeRoot}/${selectedSubRepo.id}`
+                : worktreeRoot
+            }
+          >
             {selectedSubRepo && selectedSubRepo.id !== ""
               ? `${worktreeRoot}/${selectedSubRepo.id}`
               : worktreeRoot}
@@ -444,74 +454,45 @@ export function ToolPane() {
               </SelectContent>
             </Select>
           )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pendingDrafts === 0 || sendBusy || agentPanes.length === 0}
-            title={agentPanes.length === 0 ? SEND_TARGET_ERROR_MESSAGE.no_agent : undefined}
-            onClick={handleSend}
-          >
-            送信 ({pendingDrafts})
-          </Button>
         </div>
       </header>
-      {sendError && (
-        <p className="shrink-0 border-b border-border px-2 py-1 text-xs text-destructive">
-          {sendError}
-        </p>
-      )}
-
-      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>送信先を選択</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-1.5">
-            {agentPanes.map((pane) => (
-              <SendTargetCard
-                key={pane.paneId}
-                pane={pane}
-                fetchPreview={pickerOpen}
-                onSelect={(paneId) => void sendTo(paneId)}
-              />
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {focusInfo && <FocusInfoBar focusInfo={focusInfo} />}
 
       <Tabs value={tab} onValueChange={handleTabChange} className="min-h-0 flex-1">
         <TabsList className="mx-2 mt-2 w-fit">
-          <TabsTrigger value="diff">Diff</TabsTrigger>
-          <TabsTrigger value="graph">Graph</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="docker">Docker</TabsTrigger>
-          <TabsTrigger value="process">Process</TabsTrigger>
+          <TabsTrigger value="files">
+            {TAB_LABEL.files}
+            <TabBadge count={askReplied} />
+          </TabsTrigger>
+          <TabsTrigger value="graph">{TAB_LABEL.graph}</TabsTrigger>
+          <TabsTrigger value="diff">
+            {TAB_LABEL.diff}
+            <TabBadge count={reviewCounts?.replied ?? 0} />
+          </TabsTrigger>
+          <TabsTrigger value="decisions">
+            {TAB_LABEL.decisions}
+            <TabBadge count={decisionTotal} />
+          </TabsTrigger>
+          <TabsTrigger value="process">{TAB_LABEL.process}</TabsTrigger>
+          <TabsTrigger value="compose">{TAB_LABEL.compose}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
-          {comparison && (
-            <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-              <span>
-                {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
-              </span>
-              <Button type="button" size="sm" variant="ghost" onClick={resetToWorktree}>
-                作業ツリーに戻る
-              </Button>
-            </div>
-          )}
-          <DiffPanel
-            key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
+        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
+          <FilesPanel
+            key={subRepoRoot}
             repo={subRepoRoot}
-            repoKey={resolvedRepoKey}
-            from={comparison?.from}
-            to={comparison?.to}
             repoChangedTick={repoChangedTick}
             pollMs={subRepoPollMs}
-            initialLocation={initialLocation}
-            onInitialLocationConsumed={handleInitialLocationConsumed}
+            repoKey={resolvedRepoKey}
+            worktreeRoot={worktreeRoot}
+            repos={repos}
+            selectedPath={filesSelectedPath}
+            onSelectedPathChange={handleFilesSelectedPathChange}
+            mdMode={filesMdMode}
+            onMdModeChange={handleFilesMdModeChange}
+            initialLocation={filesInitialLocation}
+            onInitialLocationConsumed={handleFilesInitialLocationConsumed}
           />
         </TabsContent>
 
@@ -543,39 +524,60 @@ export function ToolPane() {
           </div>
         </TabsContent>
 
-        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
-          <FilesPanel
-            key={subRepoRoot}
+        <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
+          {comparison && (
+            <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+              <span>
+                {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
+              </span>
+              <Button type="button" size="sm" variant="ghost" onClick={resetToWorktree}>
+                作業ツリーに戻る
+              </Button>
+            </div>
+          )}
+          <DiffPanel
+            key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
             repo={subRepoRoot}
+            repoKey={resolvedRepoKey}
+            from={comparison?.from}
+            to={comparison?.to}
             repoChangedTick={repoChangedTick}
             pollMs={subRepoPollMs}
-            repoKey={resolvedRepoKey}
-            worktreeRoot={worktreeRoot}
-            repos={repos}
-            selectedPath={filesSelectedPath}
-            onSelectedPathChange={handleFilesSelectedPathChange}
-            mdMode={filesMdMode}
-            onMdModeChange={handleFilesMdModeChange}
-            initialLocation={filesInitialLocation}
-            onInitialLocationConsumed={handleFilesInitialLocationConsumed}
+            initialLocation={initialLocation}
+            onInitialLocationConsumed={handleInitialLocationConsumed}
+            sendButton={
+              <SendDraftsButton
+                repoKey={resolvedRepoKey}
+                worktreeRoot={subRepoRoot}
+                pendingDrafts={pendingDrafts}
+                agentPanes={agentPanes}
+                onSent={handleDraftsSent}
+              />
+            }
           />
         </TabsContent>
 
-        <TabsContent value="docker" className="min-h-0 flex-1 overflow-hidden">
-          <DockerPanel key={subRepoRoot} root={subRepoRoot} />
+        <TabsContent value="decisions" className="min-h-0 flex-1 overflow-hidden">
+          {decisionId ? (
+            <DecisionView
+              id={decisionId}
+              onClose={handleCloseDecision}
+              onFocusPane={handleFocusDecisionPane}
+              onOpenLocation={handleOpenDecisionLocation}
+            />
+          ) : (
+            <DecisionListView onSelect={handleSelectDecision} />
+          )}
         </TabsContent>
 
         <TabsContent value="process" className="min-h-0 flex-1 overflow-hidden">
           <ProcessPanel key={subRepoRoot} root={subRepoRoot} />
         </TabsContent>
+
+        <TabsContent value="compose" className="min-h-0 flex-1 overflow-hidden">
+          <DockerPanel key={subRepoRoot} root={subRepoRoot} />
+        </TabsContent>
       </Tabs>
     </div>
   );
 }
-
-/** 送信先が確定できなかったときの `POST /api/review/send` 409 レスポンスの表示文言。 */
-const SEND_TARGET_ERROR_MESSAGE: Record<SendTargetError["type"], string> = {
-  no_agent: "この worktree にエージェントがいません",
-  ambiguous_target: "送信先を選んでください",
-  invalid_target: "選んだセッションはこの worktree にいません",
-};

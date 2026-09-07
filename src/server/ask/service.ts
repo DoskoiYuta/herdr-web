@@ -234,12 +234,14 @@ export function createAskService(deps: AskServiceDeps) {
     const list = await deps.repository.list({ repo, worktreeRoot: worktree });
     const byPath: Record<string, number> = {};
     let unresolved = 0;
+    let replied = 0;
     for (const ask of list) {
+      if (ask.status === "replied") replied++;
       if (ask.status !== "open" && ask.status !== "replied") continue;
       unresolved++;
       byPath[ask.path] = (byPath[ask.path] ?? 0) + 1;
     }
-    return { unresolved, byPath };
+    return { unresolved, byPath, replied };
   }
 
   async function focusSession(id: string): Promise<Result<void, NotFoundError>> {

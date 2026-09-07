@@ -135,6 +135,8 @@ export const AskCountsQuerySchema = v.object({ repo: v.string(), worktree: v.str
 export const AskCountsResponseSchema = v.object({
   unresolved: v.number(),
   byPath: v.record(v.string(), v.number()),
+  /** Files タブの通知バッジ（ui-redesign.md §5.4）: この worktree の replied 件数 */
+  replied: v.number(),
 });
 export type AskCountsResponse = v.InferOutput<typeof AskCountsResponseSchema>;
 

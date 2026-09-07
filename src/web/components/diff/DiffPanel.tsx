@@ -4,7 +4,7 @@
 // here. DiffPanel does NOT own comparison state (`from`/`to`) — that's
 // lifted to the parent ToolPane, which passes them down as props.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
@@ -130,6 +130,8 @@ export interface DiffPanelProps {
    * を null に戻すこと — さもないと、以降の poller 更新のたびに `items` が
    * 変わるたび同じ場所へ再スクロールしてしまう。 */
   onInitialLocationConsumed?: () => void;
+  /** レビュー下書きの一括送信ボタン（ui-redesign.md §5.4）。Toolbar の右端に渡す。 */
+  sendButton?: ReactNode;
 }
 
 export function DiffPanel({
@@ -141,6 +143,7 @@ export function DiffPanel({
   pollMs,
   initialLocation = null,
   onInitialLocationConsumed,
+  sendButton,
 }: DiffPanelProps) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   useEffect(() => saveSettings(settings), [settings]);
@@ -779,6 +782,7 @@ export function DiffPanel({
         onCollapseAll={collapseAll}
         onExpandAll={expandAll}
         disabled={false}
+        sendButton={sendButton}
       />
       <div className="border-b border-border px-2 py-1 text-xs text-muted-foreground">{label}</div>
       <div className="flex min-h-0 flex-1">

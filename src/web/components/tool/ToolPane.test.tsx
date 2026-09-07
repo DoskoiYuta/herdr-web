@@ -4,12 +4,28 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { FocusMessage } from "@contract/events";
 import type { SubReposResponse } from "@contract/git";
 import type { PaneRow, Repo } from "@contract/events";
+import type { AskCountsResponse } from "@contract/ask";
 import type { ReviewCountsResponse } from "@contract/review";
+import type { DecisionCounts } from "@contract/decision";
 import { makeFakeStore, renderWithRouter } from "@/testing/renderWithRouter";
 import { ToolPane } from "./ToolPane";
 
 function counts(overrides: Partial<ReviewCountsResponse> = {}): ReviewCountsResponse {
-  return { byCommit: {}, worktree: { unresolved: 0, drafts: 0 }, pendingDrafts: 0, ...overrides };
+  return {
+    byCommit: {},
+    worktree: { unresolved: 0, drafts: 0 },
+    pendingDrafts: 0,
+    replied: 0,
+    ...overrides,
+  };
+}
+
+function askCounts(overrides: Partial<AskCountsResponse> = {}): AskCountsResponse {
+  return { unresolved: 0, byPath: {}, replied: 0, ...overrides };
+}
+
+function decisionCounts(overrides: Partial<DecisionCounts> = {}): DecisionCounts {
+  return { total: 0, ...overrides };
 }
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
@@ -67,15 +83,22 @@ async function renderFocused(
     repoKey?: string | null;
     repos?: Repo[];
     focusOverrides?: Partial<FocusMessage>;
+    path?: string;
   } = {},
 ) {
-  const { worktreeRoot = "/Users/dev/project", repoKey = null, repos = [], focusOverrides } = opts;
+  const {
+    worktreeRoot = "/Users/dev/project",
+    repoKey = null,
+    repos = [],
+    focusOverrides,
+    path = "/focus/diff",
+  } = opts;
   const store = makeFakeStore({
     repos,
     focus:
       worktreeRoot === null ? null : focusMessage({ worktreeRoot, repoKey, ...focusOverrides }),
   });
-  return { ...(await renderWithRouter(() => <ToolPane />, { path: "/focus/diff", store })), store };
+  return { ...(await renderWithRouter(() => <ToolPane />, { path, store })), store };
 }
 
 // Radix `Tabs.Trigger` activates on `mousedown`, not `click` (see
@@ -84,20 +107,31 @@ async function renderFocused(
 // navigate the router (async), so wait for the trigger to actually become
 // the active tab before returning.
 async function selectTab(name: string) {
-  const trigger = screen.getByRole("tab", { name });
+  const trigger = screen.getByRole("tab", { name: new RegExp(`^${name}`) });
   fireEvent.mouseDown(trigger);
   await waitFor(() => expect(trigger).toHaveAttribute("data-state", "active"));
 }
 
 let diffPanelMountCount = 0;
 vi.mock("@/components/diff/DiffPanel", () => ({
-  DiffPanel: ({ repo, from, to }: { repo: string; from?: string; to?: string }) => {
+  DiffPanel: ({
+    repo,
+    from,
+    to,
+    sendButton,
+  }: {
+    repo: string;
+    from?: string;
+    to?: string;
+    sendButton?: React.ReactNode;
+  }) => {
     useEffect(() => {
       diffPanelMountCount += 1;
     }, []);
     return (
       <div data-testid="diff-panel-stub">
         {repo}:{from ?? "WORKTREE"}:{to ?? "HEAD"}
+        {sendButton}
       </div>
     );
   },
@@ -149,15 +183,32 @@ vi.mock("@/components/graph/GraphPanel", () => ({
   ),
 }));
 
+vi.mock("@/components/decision/DecisionListView", () => ({
+  DecisionListView: ({ onSelect }: { onSelect: (id: string) => void }) => (
+    <button type="button" data-testid="decision-list-stub" onClick={() => onSelect("d1")}>
+      decisions list
+    </button>
+  ),
+}));
+
+vi.mock("@/components/decision/DecisionView", () => ({
+  DecisionView: ({ id, onClose }: { id: string; onClose?: () => void }) => (
+    <div data-testid="decision-view-stub">
+      decision:{id}
+      <button type="button" onClick={onClose}>
+        close
+      </button>
+    </div>
+  ),
+}));
+
 const countsMock = vi.fn(async (..._args: unknown[]) => counts());
+const askCountsMock = vi.fn(async (..._args: unknown[]) => askCounts());
+const decisionCountsMock = vi.fn(async (..._args: unknown[]) => decisionCounts());
 const sendMock = vi.fn(async (..._args: unknown[]) => ({ reviews: [] }));
 const subreposMock = vi.fn(async (repo: string): Promise<SubReposResponse> => ({
   repos: [{ id: "", name: repo.split("/").pop() ?? repo, root: repo, kind: "root" }],
 }));
-// The picker dialog always fetches a preview per candidate — default to a
-// permanently-pending promise so tests that don't care about the preview
-// (and never open the picker) aren't affected; tests that do open it set
-// their own resolved/rejected value first.
 const panePreviewMock = vi.fn(async (..._args: [string]) => new Promise(() => {}));
 
 const { SendTargetError } = vi.hoisted(() => {
@@ -188,6 +239,12 @@ vi.mock("@/lib/api", () => ({
   reviewApi: {
     counts: (...args: unknown[]) => countsMock(...args),
     send: (...args: unknown[]) => sendMock(...args),
+  },
+  askApi: {
+    counts: (...args: unknown[]) => askCountsMock(...args),
+  },
+  decisionApi: {
+    counts: (...args: unknown[]) => decisionCountsMock(...args),
   },
   herdrApi: {
     panePreview: (...args: [string]) => panePreviewMock(...args),
@@ -225,16 +282,16 @@ describe("ToolPane", () => {
   test("shows only the herdr 未接続 message when no worktree is selected (F2-3)", async () => {
     await renderFocused({ worktreeRoot: null });
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
-    expect(screen.queryByLabelText("リポジトリのパスを開く")).not.toBeInTheDocument();
   });
 
-  test("shows the worktree header and tabs (no Review tab) when a worktree is selected", async () => {
+  // ui-redesign.md §5.4: タブは Files/Graph/Diff/Decisions/Process/Compose の
+  // 順。無いと壊れる: 並びがずれる、あるいは旧 Docker タブが残る/消える。
+  test("shows the worktree header and tabs in the Files/Graph/Diff/Decisions/Process/Compose order", async () => {
     await renderFocused();
     expect(screen.getByText("project")).toBeInTheDocument();
     expect(screen.getByText("/Users/dev/project")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Diff" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Graph" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Review" })).not.toBeInTheDocument();
+    const tabs = screen.getAllByRole("tab").map((el) => el.textContent);
+    expect(tabs).toEqual(["Files", "Graph", "Diff", "Decisions", "Process", "Compose"]);
     expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project:WORKTREE:HEAD",
     );
@@ -252,11 +309,9 @@ describe("ToolPane", () => {
       path: "/focus/files?path=src%2Fa.ts&line=42",
       store,
     });
-    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("tab", { name: /^Files/ })).toHaveAttribute("data-state", "active");
     expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("src/a.ts:42");
 
-    // Drive ToolPane's real onInitialLocationConsumed wiring via the stub's
-    // consume button, rather than calling router.navigate directly.
     fireEvent.click(screen.getByRole("button", { name: "consume" }));
     await waitFor(() =>
       expect(screen.queryByTestId("files-panel-initial-location")).not.toBeInTheDocument(),
@@ -283,23 +338,25 @@ describe("ToolPane", () => {
     );
   });
 
-  test("shows the focused pane's agent/status and offers a claude --resume copy button", async () => {
+  // D9: エージェント非依存。無いと壊れる: session 表示が claude 固有の
+  // コマンド文言に戻ると、他エージェントで意味のないボタンが出る。
+  test("shows a generic session copy button (not a Claude-specific command) for any agent with an id-kind session", async () => {
     const writeText = vi.fn(async () => {});
     Object.assign(navigator, { clipboard: { writeText } });
     await renderFocused({
       focusOverrides: {
-        agent: "claude",
+        agent: "codex",
         agentStatus: "working",
-        agentSession: { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" },
+        agentSession: { source: "herdr:codex", agent: "codex", kind: "id", value: "abcdefgh1234" },
       },
     });
-    expect(screen.getByText("claude · working")).toBeInTheDocument();
-    const copyButton = screen.getByRole("button", { name: "claude --resume abc-123" });
+    expect(screen.getByText("codex · working")).toBeInTheDocument();
+    const copyButton = screen.getByRole("button", { name: "session abcd…1234" });
     fireEvent.click(copyButton);
-    expect(writeText).toHaveBeenCalledWith("claude --resume abc-123");
+    expect(writeText).toHaveBeenCalledWith("abcdefgh1234");
   });
 
-  test("does not show a resume button for a non-claude agent session", async () => {
+  test("does not show a session copy button for a non-id-kind session", async () => {
     await renderFocused({
       focusOverrides: {
         agent: "codex",
@@ -308,7 +365,13 @@ describe("ToolPane", () => {
       },
     });
     expect(screen.getByText("codex · idle")).toBeInTheDocument();
-    expect(screen.queryByText(/claude --resume/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^session /)).not.toBeInTheDocument();
+  });
+
+  // ui-redesign.md §5.3: worktree 見出し行にブランチを出す。
+  test("shows the worktree's branch next to its basename", async () => {
+    await renderFocused();
+    expect(await screen.findByText("main")).toBeInTheDocument();
   });
 
   // 無いと壊れる: focus 追従中に worktree が切り替わったのに前の比較範囲が
@@ -330,33 +393,80 @@ describe("ToolPane", () => {
     );
   });
 
-  describe("review counts + send button", () => {
-    test("passes reviewCounts fetched via reviewApi.counts down to GraphPanel", async () => {
-      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 3 }));
+  describe("tab badges", () => {
+    // ui-redesign.md §5.4: Diff=replied レビュー数、Files=replied 質問数、
+    // Decisions=未回答件数。無いと壊れる: 返信/依頼が来ても気づく場所が無くなる。
+    test("shows the replied review count on Diff and the replied ask count on Files", async () => {
+      countsMock.mockResolvedValueOnce(counts({ replied: 3 }));
+      askCountsMock.mockResolvedValueOnce(askCounts({ replied: 2 }));
       await renderFocused({ repoKey: "/Users/dev/project/.git" });
-      await selectTab("Graph");
-      await waitFor(() =>
-        expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
-          "graph:/Users/dev/project:3",
-        ),
-      );
+      const diffTab = await screen.findByRole("tab", { name: /^Diff/ });
+      await waitFor(() => expect(diffTab).toHaveTextContent("3"));
+      const filesTab = screen.getByRole("tab", { name: /^Files/ });
+      await waitFor(() => expect(filesTab).toHaveTextContent("2"));
     });
 
-    test("send button shows pendingDrafts and is disabled at 0", async () => {
+    test("shows the decision total count on Decisions, worktree-crossing", async () => {
+      decisionCountsMock.mockResolvedValueOnce(decisionCounts({ total: 5 }));
+      await renderFocused();
+      const decisionsTab = await screen.findByRole("tab", { name: /^Decisions/ });
+      await waitFor(() => expect(decisionsTab).toHaveTextContent("5"));
+    });
+
+    test("shows no badge digits when counts are 0", async () => {
+      await renderFocused();
+      const diffTab = await screen.findByRole("tab", { name: /^Diff/ });
+      expect(diffTab).toHaveTextContent("Diff");
+      expect(diffTab.textContent).toBe("Diff");
+    });
+  });
+
+  describe("decisions tab", () => {
+    // ui-redesign.md §5.4: decisions タブは ToolPane の TabsContent 内に描く
+    // （別ルートのプッシュではない）。無いと壊れる: 判断依頼を開いても
+    // タブ・比較範囲を保った ToolPane がアンマウントされてしまう。
+    test("shows the list without an id search param, and the detail view once one is selected", async () => {
+      const { router } = await renderFocused();
+      await selectTab("Decisions");
+      expect(screen.getByTestId("decision-list-stub")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("decision-list-stub"));
+      await waitFor(() => expect(screen.getByTestId("decision-view-stub")).toHaveTextContent("d1"));
+      expect(router.state.location.search).toMatchObject({ id: "d1" });
+
+      fireEvent.click(screen.getByRole("button", { name: "close" }));
+      await waitFor(() => expect(screen.getByTestId("decision-list-stub")).toBeInTheDocument());
+      expect(router.state.location.search).not.toHaveProperty("id");
+    });
+
+    // 無いと壊れる: id が decisions 専用のはずが他タブへ引き継がれ、無関係な
+    // タブが判断依頼の id を URL に残し続けてしまう。
+    test("switching away from the decisions tab drops the id search param", async () => {
+      const { router } = await renderFocused({ path: "/focus/decisions?id=d1" });
+      expect(screen.getByTestId("decision-view-stub")).toBeInTheDocument();
+      await selectTab("Diff");
+      expect(router.state.location.search).not.toHaveProperty("id");
+    });
+  });
+
+  describe("send drafts button (in the Diff tab)", () => {
+    // 無いと壊れる: Diff タブに送信ボタンの置き場所が無くなる（ui-redesign.md
+    // §5.4: DiffPanel の Toolbar 右端）。個々のボタンの挙動は
+    // SendDraftsButton.test.tsx が持つので、ここでは配線だけ確認する。
+    test("renders nothing when there are no pending drafts", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 0 }));
       await renderFocused({ repoKey: "/Users/dev/project/.git" });
-      const button = await screen.findByRole("button", { name: "送信 (0)" });
-      expect(button).toBeDisabled();
+      await waitFor(() => expect(countsMock).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: /^送信/ })).not.toBeInTheDocument();
     });
 
-    test("send button is enabled with a nonzero count and, with a single agent pane, POSTs /api/review/send with its pane id", async () => {
+    test("sends via reviewApi with the resolved repo/worktree and a single agent pane", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
       await renderFocused({
         repoKey: "/Users/dev/project/.git",
         repos: reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })]),
       });
       const button = await screen.findByRole("button", { name: "送信 (2)" });
-      expect(button).not.toBeDisabled();
       fireEvent.click(button);
       await waitFor(() =>
         expect(sendMock).toHaveBeenCalledWith({
@@ -365,158 +475,6 @@ describe("ToolPane", () => {
           pane: "claude-1",
         }),
       );
-    });
-
-    test("disables the send button and shows a hint when the worktree has no agent pane", async () => {
-      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
-      await renderFocused({
-        repoKey: "/Users/dev/project/.git",
-        repos: reposWithPanes("/Users/dev/project", [pane({ agent: null })]),
-      });
-      const button = await screen.findByRole("button", { name: "送信 (2)" });
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute("title", "この worktree にエージェントがいません");
-    });
-
-    test("with two agent panes, clicking send opens a picker; choosing the second pane sends with its id", async () => {
-      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
-      await renderFocused({
-        repoKey: "/Users/dev/project/.git",
-        repos: reposWithPanes("/Users/dev/project", [
-          pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
-          pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
-        ]),
-      });
-      const button = await screen.findByRole("button", { name: "送信 (1)" });
-      fireEvent.click(button);
-
-      expect(await screen.findByText("送信先を選択")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: /ws-2.*second/s }));
-
-      await waitFor(() =>
-        expect(sendMock).toHaveBeenCalledWith({
-          repo: "/Users/dev/project/.git",
-          worktreeRoot: "/Users/dev/project",
-          pane: "claude-2",
-        }),
-      );
-    });
-
-    test("renders one card per candidate with workspace/tab/title and the tail lines from a fetched preview", async () => {
-      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
-      panePreviewMock.mockImplementation(async (paneId) => ({
-        pane: paneId,
-        workspaceLabel: `preview-ws-${paneId}`,
-        tabLabel: `preview-tab-${paneId}`,
-        title: `preview-title-${paneId}`,
-        agent: "claude",
-        agentStatus: "working",
-        agentSession: "session-abcdef123456",
-        layout: null,
-        tail: ["doing thing A", "doing thing B"],
-      }));
-      await renderFocused({
-        repoKey: "/Users/dev/project/.git",
-        repos: reposWithPanes("/Users/dev/project", [
-          pane({ paneId: "claude-1" }),
-          pane({ paneId: "claude-2", agent: "codex" }),
-        ]),
-      });
-      fireEvent.click(await screen.findByRole("button", { name: "送信 (1)" }));
-      expect(await screen.findByText("送信先を選択")).toBeInTheDocument();
-
-      const card = await screen.findByRole("button", {
-        name: /preview-ws-claude-1.*preview-tab-claude-1.*preview-title-claude-1/s,
-      });
-      expect(card).toHaveTextContent("doing thing A");
-      expect(card).toHaveTextContent("doing thing B");
-    });
-
-    test("a failed preview fetch still leaves the card usable — clicking it sends to that pane", async () => {
-      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
-      panePreviewMock.mockRejectedValue(new Error("boom"));
-      await renderFocused({
-        repoKey: "/Users/dev/project/.git",
-        repos: reposWithPanes("/Users/dev/project", [
-          pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
-          pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
-        ]),
-      });
-      fireEvent.click(await screen.findByRole("button", { name: "送信 (1)" }));
-      const card = await screen.findByRole("button", { name: /ws-1.*first/s });
-      fireEvent.click(card);
-
-      await waitFor(() =>
-        expect(sendMock).toHaveBeenCalledWith({
-          repo: "/Users/dev/project/.git",
-          worktreeRoot: "/Users/dev/project",
-          pane: "claude-1",
-        }),
-      );
-    });
-
-    test("shows a readable message when the server answers 409 no_agent", async () => {
-      countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
-      sendMock.mockRejectedValueOnce(new SendTargetError("no_agent"));
-      await renderFocused({
-        repoKey: "/Users/dev/project/.git",
-        repos: reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })]),
-      });
-      const button = await screen.findByRole("button", { name: "送信 (2)" });
-      fireEvent.click(button);
-
-      expect(await screen.findByText("この worktree にエージェントがいません")).toBeInTheDocument();
-    });
-
-    test("a review WS event for a different repo does not refetch review counts", async () => {
-      const { store } = await renderFocused({ repoKey: "/Users/dev/project/.git" });
-      await waitFor(() => expect(countsMock).toHaveBeenCalledTimes(1));
-
-      store.emitReview({
-        type: "review",
-        event: "created",
-        review: {
-          id: "r1",
-          repo: "/other/.git",
-          target: { kind: "worktree", root: "/other" },
-          worktreeRoot: "/other",
-          path: "a.txt",
-          anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
-          createdAtHead: "abc",
-          viewedAs: { from: "HEAD", to: "WORKTREE" },
-          status: "open",
-          thread: [
-            { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
-          ],
-          notify: { state: "pending", pane: null, at: null },
-          createdAt: "t",
-          updatedAt: "t",
-        },
-      });
-      expect(countsMock).toHaveBeenCalledTimes(1);
-
-      store.emitReview({
-        type: "review",
-        event: "created",
-        review: {
-          id: "r2",
-          repo: "/Users/dev/project/.git",
-          target: { kind: "worktree", root: "/Users/dev/project" },
-          worktreeRoot: "/Users/dev/project",
-          path: "a.txt",
-          anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" },
-          createdAtHead: "abc",
-          viewedAs: { from: "HEAD", to: "WORKTREE" },
-          status: "open",
-          thread: [
-            { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
-          ],
-          notify: { state: "pending", pane: null, at: null },
-          createdAt: "t",
-          updatedAt: "t",
-        },
-      });
-      await waitFor(() => expect(countsMock).toHaveBeenCalledTimes(2));
     });
   });
 

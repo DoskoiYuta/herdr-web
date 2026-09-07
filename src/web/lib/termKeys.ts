@@ -34,3 +34,22 @@ export function encodeModifiedEnter(e: {
   if (!(e.shiftKey || e.altKey || e.ctrlKey || e.metaKey)) return null;
   return `\x1b[13;${kittyModifier(e)}u`;
 }
+
+/**
+ * D7: Terminal / Tool の最大化トグル（⌘⇧M / Ctrl+Shift+M）。xterm にフォーカスが
+ * あっても効くよう、Terminal の `attachCustomKeyEventHandler` からもこれで判定する
+ * （`RESERVED_KEYS` の仕組みはブラウザ既定動作を止めるだけで、herdr-web 側の
+ * ショートカットは扱わないため別関数にする）。
+ */
+export function isMaximizeToggleKey(e: {
+  type: string;
+  key: string;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}): boolean {
+  if (e.type !== "keydown") return false;
+  if (e.key.toLowerCase() !== "m") return false;
+  if (!e.shiftKey) return false;
+  return e.metaKey || e.ctrlKey;
+}

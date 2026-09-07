@@ -242,6 +242,18 @@ describe("counts", () => {
     expect(result.unresolved).toBe(1);
     expect(result.byPath).toEqual({ "src/b.ts": 1 });
   });
+
+  // 無いと壊れる: M10 で Files タブに付けるバッジは replied 件数を数えるので、
+  // フィールドが無ければバッジが常に 0/undefined になる。
+  test("counts only replied asks separately from open", async () => {
+    const { service } = makeService();
+    const a = (await service.createAsk(baseReq))._unsafeUnwrap();
+    await service.createAsk({ ...baseReq, path: "src/b.ts" });
+    await service.replyAsk({ id: a.id, author: "agent", body: "answer" });
+
+    const result = await service.counts("/repo", "/repo");
+    expect(result.replied).toBe(1);
+  });
 });
 
 describe("resendPrompt", () => {

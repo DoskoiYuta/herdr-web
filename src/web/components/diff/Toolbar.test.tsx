@@ -56,3 +56,15 @@ test("collapse-all / expand-all buttons call their handlers", () => {
   fireEvent.click(screen.getByText("すべて展開"));
   expect(props.onExpandAll).toHaveBeenCalledOnce();
 });
+
+// 無いと壊れる: 送信ボタンの置き場所（ui-redesign.md §5.4: Diff の toolbar
+// 右端）が無いと、Diff でしか使わない送信操作を出す場所が無くなる。
+test("renders the sendButton slot at the toolbar's right end when given", () => {
+  render(<Toolbar {...baseProps()} sendButton={<button type="button">送信 (2)</button>} />);
+  expect(screen.getByRole("button", { name: "送信 (2)" })).toBeInTheDocument();
+});
+
+test("renders nothing extra when sendButton is omitted", () => {
+  render(<Toolbar {...baseProps()} />);
+  expect(screen.queryByText(/^送信/)).not.toBeInTheDocument();
+});

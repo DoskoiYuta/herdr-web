@@ -60,7 +60,11 @@ vi.mock("@/lib/api", () => ({
       byCommit: {},
       worktree: { unresolved: 0, drafts: 0 },
       pendingDrafts: 0,
+      replied: 0,
     })),
+  },
+  askApi: {
+    counts: vi.fn(async () => ({ unresolved: 0, byPath: {}, replied: 0 })),
   },
   decisionApi: {
     counts: vi.fn(async () => ({ total: 2 })),
@@ -258,19 +262,22 @@ describe("App", () => {
   });
 
   // 無いと壊れる: 判断依頼は worktree ごとの行でしか見られず、他の worktree の
-  // 依頼を見るには focus を移すしかなくなる (plan F13-8)。
-  test("clicking the decision badge opens a list of open decisions across worktrees", async () => {
+  // 依頼を見るには focus を移すしかなくなる (plan F13-8)。ui-redesign.md
+  // §5.4: decisions は ToolPane の通常タブなので、バッジのクリックはタブ切替。
+  test("clicking the decision badge switches to the Decisions tab and lists open decisions across worktrees", async () => {
     await renderApp();
+    emit(focusMessage());
     fireEvent.click(await screen.findByTestId("decision-count-badge"));
     expect(await screen.findByText("依頼A")).toBeInTheDocument();
     expect(await screen.findByText("依頼B")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute("data-state", "active");
   });
 
   // F14-7 の振る舞いテスト（URL が画面状態の正であることの確認）。
   describe("routing (plan.md F14-7)", () => {
     // 無いと壊れる: URL が画面状態を持たないと、ブラウザの戻る/進むが完全な
     // no-op になり、判断依頼を開いて戻るとツール領域ごと消えるなどの事故が起きる。
-    test("browser back/forward switches both the active tab and the decision view", async () => {
+    test("browser back/forward switches the active tab, including the Decisions tab", async () => {
       const { router } = await renderApp();
       emit(focusMessage());
       expect(screen.getByRole("tab", { name: "Diff" })).toHaveAttribute("data-state", "active");
@@ -281,13 +288,17 @@ describe("App", () => {
       );
 
       fireEvent.click(await screen.findByTestId("decision-count-badge"));
-      expect(await screen.findByText("判断依頼")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute(
+          "data-state",
+          "active",
+        ),
+      );
 
       router.history.back();
       await waitFor(() =>
         expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active"),
       );
-      expect(screen.queryByText("判断依頼")).not.toBeInTheDocument();
 
       router.history.back();
       await waitFor(() =>
@@ -344,7 +355,7 @@ describe("App", () => {
       fireEvent.click(await screen.findByText("依頼A"));
       await screen.findByText("h"); // decision item header from the fixture
 
-      // Two pushes got us here (badge -> list, row -> detail); back through both.
+      // Two pushes got us here (badge -> Decisions tab, row -> detail); back through both.
       router.history.back();
       router.history.back();
       await waitFor(() =>
@@ -354,9 +365,11 @@ describe("App", () => {
       );
     });
 
-    // 無いと壊れる: 判断依頼を閉じると常に /focus/diff へ飛び、タブ・比較範囲が
-    // 失われる。
-    test("closing the decision list returns to the previous URL (tab and comparison intact)", async () => {
+    // 無いと壊れる: decisions タブから別タブへ切り替えると比較範囲や選択タブが
+    // 失われ、レビュー中の commit 比較が作業ツリー比較に巻き戻ってしまう
+    // （ui-redesign.md §5.4: decisions は ToolPane の通常タブなので、離れる操作は
+    // 「閉じる」ボタンではなく他のタブへのクリックになる）。
+    test("switching from the Decisions tab back to Diff (a plain tab click, not history.back) keeps the comparison", async () => {
       const root = "/Users/dev/project";
       const { router } = await renderApp();
       emit(focusMessage({ worktreeRoot: root, repoKey: `${root}/.git` }));
@@ -370,11 +383,12 @@ describe("App", () => {
       );
 
       fireEvent.click(await screen.findByTestId("decision-count-badge"));
-      expect(await screen.findByText("判断依頼")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+      expect(await screen.findByText("依頼A")).toBeInTheDocument();
 
-      await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
-      expect(router.state.location.search).toMatchObject({ from: "a", to: "b" });
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Diff" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(`${root}:a:b`),
+      );
     });
   });
 
