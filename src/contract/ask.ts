@@ -20,8 +20,9 @@ export const AskSessionSchema = v.variant("kind", [
   v.object({
     kind: v.literal("herdr"),
     label: v.string(),
-    /** herdr `agent.start` の `kind`。既存行（この列追加前に作られたセッション）
-     * には無いので null 許容 — 表示は「不明」。 */
+    /** herdr `agent.start` の `kind`。この JSON フィールドが無い / 壊れている
+     * `session` を読む側（sqlite-repository の `parseSession`）はこのスキーマを
+     * 通して null に正規化する — 表示は「不明」。 */
     agent: v.optional(v.nullable(v.string()), null),
   }),
   v.object({ kind: v.literal("pane"), paneId: v.string() }),

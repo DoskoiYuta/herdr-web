@@ -82,6 +82,10 @@ describe("createSqliteAskRepository", () => {
 
     const got = await repo.get("legacy-1");
     expect(got?.session).toMatchObject({ kind: "herdr", label: "ask:legacy01" });
+    // 無いと壊れる: agent が undefined のまま返ると、AskThread/AskSessionRow の
+    // `session.agent ?? "不明"` は undefined と null を同じに扱わないコードが
+    // あれば表示が崩れる — 契約どおり null に正規化されている必要がある。
+    expect(got?.session?.kind === "herdr" ? got.session.agent : undefined).toBe(null);
   });
 
   test("list filters by repo/worktreeRoot/status/path", async () => {

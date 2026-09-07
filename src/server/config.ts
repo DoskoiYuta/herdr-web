@@ -18,16 +18,40 @@ export function defaultConfigPath(): string {
   return join(configDir(), "config.json");
 }
 
-/** `ask.defaultAgent` が `ask.agents` に無ければ先頭へ丸める。herdr は `agent.start`
- * の `kind` を検証しないので、ここで丸めないと存在しないエージェント種別が
- * そのまま渡ってしまう。 */
-function roundAskDefaultAgent(config: Config): { config: Config; problem: string | null } {
-  const { agents, defaultAgent } = config.ask;
-  if (agents.includes(defaultAgent)) return { config, problem: null };
-  const rounded = agents[0] ?? defaultAgent;
+const DEFAULT_ASK_AGENTS = ["claude", "codex", "gemini"];
+
+/** `ask.agents` の空文字除去・重複除去。結果が空になったら既定一覧に戻す
+ * （`agents: []` を丸めずに使うと `defaultAgent` がどんな値でも `agents` に
+ * 含まれず、新規セッションの質問が常に `unknown_agent` になる）。 */
+function normalizeAskAgents(agents: string[]): { agents: string[]; problem: string | null } {
+  const cleaned = [...new Set(agents.filter((a) => a.length > 0))];
+  if (cleaned.length > 0) return { agents: cleaned, problem: null };
   return {
-    config: { ...config, ask: { ...config.ask, defaultAgent: rounded } },
-    problem: `ask.defaultAgent: "${defaultAgent}" は ask.agents に無いため "${rounded}" を使います`,
+    agents: DEFAULT_ASK_AGENTS,
+    problem: `ask.agents が空のため既定値 ${JSON.stringify(DEFAULT_ASK_AGENTS)} を使います`,
+  };
+}
+
+/** `ask.agents` を正規化し、`ask.defaultAgent` がその中に無ければ先頭へ丸める。
+ * herdr は `agent.start` の `kind` を検証しないので、ここで丸めないと存在しない
+ * エージェント種別がそのまま渡ってしまう。 */
+function normalizeAsk(config: Config): { config: Config; problem: string | null } {
+  const agentsResult = normalizeAskAgents(config.ask.agents);
+  const problems: string[] = [];
+  if (agentsResult.problem) problems.push(agentsResult.problem);
+
+  let ask = { ...config.ask, agents: agentsResult.agents };
+  if (!ask.agents.includes(ask.defaultAgent)) {
+    const rounded = ask.agents[0]!;
+    problems.push(
+      `ask.defaultAgent: "${ask.defaultAgent}" は ask.agents に無いため "${rounded}" を使います`,
+    );
+    ask = { ...ask, defaultAgent: rounded };
+  }
+
+  return {
+    config: { ...config, ask },
+    problem: problems.length > 0 ? problems.join("; ") : null,
   };
 }
 
@@ -37,7 +61,7 @@ export function parseConfig(raw: unknown): { config: Config; problem: string | n
     const msg = r.issues.map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; ");
     return { config: v.parse(ConfigSchema, {}), problem: msg };
   }
-  return roundAskDefaultAgent(r.output);
+  return normalizeAsk(r.output);
 }
 
 export async function loadConfig(path = defaultConfigPath()): Promise<LoadedConfig> {
