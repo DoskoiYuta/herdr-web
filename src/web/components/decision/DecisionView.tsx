@@ -6,8 +6,9 @@ import type {
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
+import type { PaneRow, Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
-import { useDecisionEvents } from "@/lib/HerdrStoreContext";
+import { useDecisionEvents, useHerdrState } from "@/lib/HerdrStoreContext";
 import {
   clearDecisionDraft,
   type DecisionDraft,
@@ -16,10 +17,14 @@ import {
   setDecisionDraft,
 } from "@/lib/decisionDrafts";
 import { Button } from "@/components/ui/button";
+import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
-import { deliveryOf } from "@/lib/statusVocab";
+import { KindIcon } from "@/components/ui/status/KindIcon";
+import { StatusChip } from "@/components/ui/status/StatusChip";
+import { deliveryOf, turnOf } from "@/lib/statusVocab";
 import { BlockView, type OpenLocation } from "./BlockView";
 import { CompareOptions } from "./CompareOptions";
+import { DECISION_STATUS_LABEL } from "./decisionLabels";
 
 export type DecisionViewProps = {
   id: string;
@@ -45,6 +50,23 @@ function useElapsedMinutes(createdAt: string | null): number {
   }, []);
   if (createdAt === null) return 0;
   return Math.max(0, Math.round((nowMs - new Date(createdAt).getTime()) / 60_000));
+}
+
+function findPane(repos: Repo[], paneId: string | null): PaneRow | null {
+  if (!paneId) return null;
+  for (const repo of repos) {
+    for (const worktree of repo.worktrees) {
+      const pane = worktree.panes.find((p) => p.paneId === paneId);
+      if (pane) return pane;
+    }
+  }
+  return null;
+}
+
+/** `session <先頭4>…<末尾4>` — 名前に Claude を出さない (docs/ui-redesign.md §5.4)。 */
+function truncateSessionId(sessionId: string): string {
+  if (sessionId.length <= 8) return sessionId;
+  return `${sessionId.slice(0, 4)}…${sessionId.slice(-4)}`;
 }
 
 function isAnswered(answer: DecisionItemAnswer | undefined): boolean {
@@ -264,7 +286,7 @@ function DecisionItemForm({
 }
 
 /** フォーカスが入力欄にあるとき、1〜9 のショートカットは通常の文字入力として扱う。 */
-function isTypingTarget(target: EventTarget | null): boolean {
+export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 }
@@ -272,6 +294,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 /** 判断依頼ビュー (plan F13-8): context → 設問 → 回答フォーム → 送信 / 却下。 */
 export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: DecisionViewProps) {
   const queryClient = useQueryClient();
+  const state = useHerdrState();
   const query = useQuery({ queryKey: ["decision", id], queryFn: () => decisionApi.get(id) });
   const decision: Decision | undefined = query.data;
 
@@ -430,6 +453,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
   // §6.3 の canResend は状態だけを見る。cancelled（取り下げ）はエージェント側の
   // 操作で終わっているので、配達が滞っていても再送の宛先が無い。
   const canResend = delivery.canResend && decision.status !== "cancelled";
+  const hasDeliveryProblem = decision.delivery !== null && delivery.state !== "sent";
+  const pane = findPane(state.repos, decision.paneId);
 
   return (
     <div
@@ -438,21 +463,39 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && isOpen && !busy) void submit();
       }}
     >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+        <nav className="flex items-center gap-1">
+          <button type="button" onClick={onClose} className="hover:text-foreground hover:underline">
+            Decisions
+          </button>
+          <span>/</span>
+          <span>…{id.slice(-4)}</span>
+        </nav>
+        <kbd className="rounded border border-border px-1 py-0.5">Esc で閉じる</kbd>
+      </div>
+
       <header className="flex shrink-0 flex-col gap-1 border-b border-border px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="truncate text-sm font-semibold">{decision.spec.title ?? "判断依頼"}</h2>
-          {onClose && (
-            <Button type="button" size="sm" variant="ghost" onClick={onClose}>
-              閉じる
-            </Button>
-          )}
+        <div className="flex items-center gap-2">
+          <KindIcon kind="decision" />
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {decision.spec.title ?? decision.spec.items[0]?.header ?? "判断依頼"}
+          </h2>
+          <StatusChip
+            turn={turnOf("decision", decision.status)}
+            label={DECISION_STATUS_LABEL[decision.status]}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>{decision.agent ?? "?"}</span>
+          {pane ? (
+            <AgentStatusDot status={pane.agentStatus} label={decision.agent ?? undefined} />
+          ) : (
+            <span>{decision.agent ?? "?"} · pane 消失</span>
+          )}
           {decision.worktreeRoot && <span>{decision.worktreeRoot}</span>}
-          {decision.claudeSessionId && <span>session: {decision.claudeSessionId.slice(0, 8)}</span>}
+          {decision.claudeSessionId && (
+            <span>session {truncateSessionId(decision.claudeSessionId)}</span>
+          )}
           <span>{elapsedMin} 分前</span>
-          <span>状態: {decision.status}</span>
           {decision.paneId && onFocusPane && (
             <Button
               type="button"
@@ -466,18 +509,50 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         </div>
       </header>
 
-      {decision.spec.context.length > 0 && (
-        <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
-          {decision.spec.context.map((block, i) => (
-            <BlockView
-              key={i}
-              block={block}
-              worktreeRoot={decision.worktreeRoot}
-              onOpenLocation={onOpenLocation}
-            />
-          ))}
+      {hasDeliveryProblem && (
+        <div
+          data-testid="decision-delivery-warning"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-amber-500/10 px-3 py-2 text-xs"
+        >
+          <DeliveryChip
+            delivery={{ ...delivery, canResend }}
+            onResend={() => void resend()}
+            busy={busy}
+          />
+          <span>回答が相手に届いていません（試行 {decision.delivery?.attempts} 回）</span>
         </div>
       )}
+
+      {decision.spec.context.length > 0 &&
+        (isOpen ? (
+          <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
+            {decision.spec.context.map((block, i) => (
+              <BlockView
+                key={i}
+                block={block}
+                worktreeRoot={decision.worktreeRoot}
+                onOpenLocation={onOpenLocation}
+              />
+            ))}
+          </div>
+        ) : (
+          <details
+            data-testid="decision-context"
+            className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2"
+          >
+            <summary className="cursor-pointer text-xs text-muted-foreground">context</summary>
+            <div className="flex flex-col gap-2 pt-1">
+              {decision.spec.context.map((block, i) => (
+                <BlockView
+                  key={i}
+                  block={block}
+                  worktreeRoot={decision.worktreeRoot}
+                  onOpenLocation={onOpenLocation}
+                />
+              ))}
+            </div>
+          </details>
+        ))}
 
       <div className="flex flex-1 flex-col gap-3 px-3 py-2">
         {decision.spec.items.map((item, index) =>
@@ -509,7 +584,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
 
       {error && <p className="shrink-0 px-3 py-1 text-xs text-destructive">{error}</p>}
 
-      {isOpen ? (
+      {isOpen && (
         <footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2">
           <Button type="button" onClick={() => void submit()} disabled={busy}>
             送信
@@ -517,16 +592,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           <Button type="button" variant="ghost" onClick={() => void dismiss()} disabled={busy}>
             却下
           </Button>
-        </footer>
-      ) : (
-        <footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-          <span>配達:</span>
-          <DeliveryChip
-            delivery={{ ...delivery, canResend }}
-            onResend={() => void resend()}
-            busy={busy}
-          />
-          {decision.delivery && <span>試行 {decision.delivery.attempts} 回</span>}
+          <span className="text-xs text-muted-foreground">1–9 で選択 · ⌘Enter で送信</span>
         </footer>
       )}
     </div>
