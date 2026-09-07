@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { AlertTriangle, Box, Inbox, Layers, Plug, RefreshCw } from "lucide-react";
 import type { DockerContainer, DockerGroup, DockerGroupKind } from "@contract/docker";
-import { CommandTimeoutError, CommandUnavailableError, dockerApi } from "@/lib/api";
+import { CommandUnavailableError, dockerApi } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -121,7 +121,9 @@ function ContainerRow({
         {c.status}
       </TableCell>
       <TableCell className="whitespace-nowrap font-mono text-xs">
-        {c.ports.length > 0 ? c.ports.map((p) => `${p.host}→${p.container}/${p.proto}`).join(" ") : "—"}
+        {c.ports.length > 0
+          ? c.ports.map((p) => `${p.host}→${p.container}/${p.proto}`).join(" ")
+          : "—"}
       </TableCell>
       <TableCell className="max-w-0 text-xs text-muted-foreground">
         <span className="block truncate" title={c.image}>

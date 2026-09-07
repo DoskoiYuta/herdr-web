@@ -490,9 +490,7 @@ test("shows a hint naming the hovered directory while an external drag is over t
   expect(await screen.findByText("src/ にドロップして取り込む")).toBeInTheDocument();
 
   (await screen.findByText("drag-leave")).click();
-  await waitFor(() =>
-    expect(screen.queryByText(/にドロップして取り込む/)).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.queryByText(/にドロップして取り込む/)).not.toBeInTheDocument());
 });
 
 test("dropping files uploads them to the hovered directory and invalidates the ls queries", async () => {

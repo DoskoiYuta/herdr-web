@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import { Inbox as InboxIcon, PanelLeft, PlugZap } from "lucide-react";
+import { Inbox as InboxIcon, PanelLeft, PlugZap, Settings as SettingsIcon } from "lucide-react";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { useInboxCounts } from "@/components/inbox/hooks/useInboxCounts";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/layout";
 import { repoDisplayNames } from "@/lib/repoDisplay";
@@ -78,6 +80,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
   const [liveWidth, setLiveWidth] = useState(layout.width);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const inboxCounts = useInboxCounts();
   const status = connectionStatus(connection, herdrConnected);
 
@@ -204,8 +207,19 @@ export function Sidebar({
           <span className="min-w-0 flex-1 truncate">
             {status.ok ? `herdr 接続済み · protocol ${protocol ?? "?"}` : status.label}
           </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="設定"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SettingsIcon className="size-3.5" aria-hidden="true" />
+          </Button>
         </footer>
       </aside>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <ResizeHandle
         width={liveWidth}

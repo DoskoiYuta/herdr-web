@@ -41,11 +41,11 @@ import {
 import { orderItemsByTree } from "./order.ts";
 import { lineNumberToIndex, sideLines } from "./sideLines.ts";
 import {
-  DEFAULT_SETTINGS,
   initialBannerState,
+  loadSettings,
   reduceBanner,
+  saveSettings,
   updateBanner as deriveUpdateBanner,
-  validateSettings,
 } from "./state.ts";
 import type { BannerState, Settings } from "./state.ts";
 import StatusLine from "./StatusLine.tsx";
@@ -54,27 +54,8 @@ import Toolbar from "./Toolbar.tsx";
 
 const FOR_DIFF_DEBOUNCE_MS = 200;
 
-const SETTINGS_KEY = "herdr-web:diff-settings";
 /** A scrollTop at or below this is "at the top" for auto-apply purposes. */
 const NEAR_TOP_PX = 4;
-
-function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    return validateSettings(JSON.parse(raw));
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-function saveSettings(settings: Settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore — settings just won't persist across reloads
-  }
-}
 
 function buildHashMap(files: PatchResponse["files"] | undefined): Map<string, string> {
   const map = new Map<string, string>();

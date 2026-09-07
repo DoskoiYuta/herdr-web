@@ -451,9 +451,7 @@ describe("ToolPane", () => {
     expect(await screen.findByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project:aaa111:bbb222",
     );
-    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent(
-      "src/a.ts::",
-    );
+    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent("src/a.ts::");
   });
 
   // 無いと壊れる: ルートコミット（parent 無し）のファイル行クリックが
@@ -464,9 +462,7 @@ describe("ToolPane", () => {
     fireEvent.click(screen.getByTestId("graph-panel-open-file-root"));
 
     await screen.findByTestId("diff-panel-stub");
-    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent(
-      "src/root.ts::",
-    );
+    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent("src/root.ts::");
   });
 
   // D9: エージェント非依存。無いと壊れる: session 表示が claude 固有の

@@ -746,7 +746,9 @@ function FileViewerBody({
 
   if (previewKind === "image" && rawUrl !== null) {
     if (previewError) {
-      return <PanelState icon={FileWarning} title="プレビューを読み込めませんでした" tone="error" />;
+      return (
+        <PanelState icon={FileWarning} title="プレビューを読み込めませんでした" tone="error" />
+      );
     }
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 overflow-auto bg-muted p-4">

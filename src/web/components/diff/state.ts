@@ -47,6 +47,30 @@ export function validateSettings(raw: unknown, defaults: Settings = DEFAULT_SETT
   return out;
 }
 
+const SETTINGS_KEY = "herdr-web:diff-settings";
+
+/** Also read/written by the settings dialog's "Diff の既定表示" (ui-redesign.md
+ * §5.5) — kept in this pure module (rather than DiffPanel.tsx) so importing
+ * it doesn't drag in DiffPanel's own module, which tests routinely mock
+ * wholesale. */
+export function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    return validateSettings(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function saveSettings(settings: Settings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // ignore — settings just won't persist across reloads
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Update-available banner
 // ---------------------------------------------------------------------------
