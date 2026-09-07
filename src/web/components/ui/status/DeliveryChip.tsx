@@ -25,9 +25,13 @@ const STATE_CLASS: Record<DeliveryState, string> = {
 export function DeliveryChip({
   delivery,
   onResend,
+  busy = false,
 }: {
   delivery: DeliveryResult;
   onResend?: () => void | Promise<void>;
+  /** 再送リクエストが飛んでいる間 true にする — サーバーの再送処理には
+   * 状態ゲートが無いため、連打がそのまま複数回の通知になる。 */
+  busy?: boolean;
 }) {
   return (
     <Badge
@@ -40,7 +44,8 @@ export function DeliveryChip({
       {delivery.canResend && (
         <button
           type="button"
-          className="underline underline-offset-2 hover:opacity-80"
+          disabled={busy}
+          className="underline underline-offset-2 hover:opacity-80 disabled:pointer-events-none disabled:opacity-50"
           onClick={() => void onResend?.()}
         >
           再送

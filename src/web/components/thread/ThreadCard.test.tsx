@@ -49,6 +49,19 @@ test("ThreadCard: delivery chip's resend calls the given onResend", () => {
   assert.equal(onResend.mock.calls.length, 1);
 });
 
+// レビュー指摘: 再送 API に状態ゲートが無いので連打対策を ThreadCard 経由で
+// 呼び出し側から busy を渡せるようにする。
+test("ThreadCard: delivery.busy disables the resend control", () => {
+  const onResend = vi.fn();
+  render(
+    <ThreadCard
+      {...baseProps({ delivery: { state: "blocked", canResend: true, onResend, busy: true } })}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "再送" }));
+  assert.equal(onResend.mock.calls.length, 0);
+});
+
 test("ThreadCard: renders every message's body", () => {
   render(
     <ThreadCard
@@ -137,4 +150,68 @@ test("ThreadCard: a read (unread=false) card never blinks even when turn=action"
   render(<ThreadCard {...baseProps({ turn: "action", unread: false })} />);
   const card = screen.getByTestId("thread-card");
   assert.equal(card.dataset.blinking, "false");
+});
+
+// レビュー指摘: 同じカード（同じ key）が生きたまま unread が false→true に
+// 変わる典型ケース（Diff を開いたままエージェントが返信する）で、初回の
+// blinking=false という mount 時の state に固定されて二度と光らなかった。
+test("ThreadCard: blinking restarts when a card that was already read gets a new unread agent message", () => {
+  const { rerender } = render(
+    <ThreadCard
+      {...baseProps({
+        turn: "progress",
+        unread: false,
+        messages: [{ author: "user", at: "t1", body: "hello" }],
+      })}
+    />,
+  );
+  const card = screen.getByTestId("thread-card");
+  assert.equal(card.dataset.blinking, "false");
+
+  rerender(
+    <ThreadCard
+      {...baseProps({
+        turn: "action",
+        unread: true,
+        messages: [
+          { author: "user", at: "t1", body: "hello" },
+          { author: "agent", at: "t2", body: "reply" },
+        ],
+      })}
+    />,
+  );
+  assert.equal(card.dataset.blinking, "true");
+});
+
+// 一度止めた後、別の新着 agent メッセージが来たら再び明滅する（「見た」の
+// 記録はそのときの最後のメッセージ識別子に紐づけ、次のメッセージには
+// 適用されない）。
+test("ThreadCard: after stopping on one message, a later new unread message blinks again", () => {
+  const { rerender } = render(
+    <ThreadCard
+      {...baseProps({
+        turn: "action",
+        unread: true,
+        messages: [{ author: "agent", at: "t1", body: "first reply" }],
+      })}
+    />,
+  );
+  const card = screen.getByTestId("thread-card");
+  assert.equal(card.dataset.blinking, "true");
+  fireEvent.focus(screen.getByPlaceholderText("返信"));
+  assert.equal(card.dataset.blinking, "false");
+
+  rerender(
+    <ThreadCard
+      {...baseProps({
+        turn: "action",
+        unread: true,
+        messages: [
+          { author: "agent", at: "t1", body: "first reply" },
+          { author: "agent", at: "t2", body: "second reply" },
+        ],
+      })}
+    />,
+  );
+  assert.equal(card.dataset.blinking, "true");
 });

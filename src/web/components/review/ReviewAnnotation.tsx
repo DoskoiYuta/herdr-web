@@ -98,12 +98,23 @@ export function ReviewThreadCard({
   const hasUnsentDraft = review.thread.some((e) => e.draft);
   const hasSentEntry = review.thread.some((e) => !e.draft);
   const lastEntry = review.thread[review.thread.length - 1];
+  const [resendBusy, setResendBusy] = useState(false);
 
   const turn = turnOf("review", { status: review.status, hasUnsentDraft });
   const location =
     range && range.end > range.start
       ? `${review.path}:L${range.start}–L${range.end}`
       : `${review.path}:L${range?.start ?? review.anchor.lineHint}`;
+
+  const handleResend = async () => {
+    if (resendBusy) return;
+    setResendBusy(true);
+    try {
+      await onResend(review.id);
+    } finally {
+      setResendBusy(false);
+    }
+  };
 
   return (
     <div data-testid="review-thread" className={dimmed ? "opacity-60" : ""}>
@@ -113,7 +124,11 @@ export function ReviewThreadCard({
         turn={turn}
         delivery={
           hasSentEntry
-            ? { ...deliveryOf("review", review.notify), onResend: () => onResend(review.id) }
+            ? {
+                ...deliveryOf("review", review.notify),
+                onResend: handleResend,
+                busy: resendBusy,
+              }
             : undefined
         }
         unread={lastEntry?.author === "agent"}

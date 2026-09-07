@@ -523,7 +523,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           <span>配達:</span>
           <DeliveryChip
             delivery={{ ...delivery, canResend }}
-            onResend={busy ? undefined : () => void resend()}
+            onResend={() => void resend()}
+            busy={busy}
           />
           {decision.delivery && <span>試行 {decision.delivery.attempts} 回</span>}
         </footer>

@@ -325,6 +325,30 @@ describe("DecisionView", () => {
     await waitFor(() => expect(resend).toHaveBeenCalledWith("decision-1"));
   });
 
+  // レビュー指摘: 再送 API に状態ゲートが無いので、連打がそのまま複数回の
+  // 通知になる。再送中は DeliveryChip のボタンを無効化する。
+  test("disables the resend control while a resend request is in flight", async () => {
+    let resolveResend: (v: unknown) => void = () => {};
+    resend.mockReturnValue(new Promise((resolve) => (resolveResend = resolve)));
+    const decision = baseDecision({
+      status: "answered",
+      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
+      delivery: { state: "agent_blocked", attempts: 2, pane: null, at: "t" },
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByTestId("delivery-chip")).toBeInTheDocument());
+    const button = screen.getByRole("button", { name: "再送" });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(resend).toHaveBeenCalledTimes(1);
+
+    resolveResend({ ...decision, delivery: { ...decision.delivery!, state: "sent" } });
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
   // 無いと壊れる: すでに届いている確定回答にまで再送ボタンを出すと、
   // ユーザーが不要な再送を叩けてしまう。
   test("shows no resend control once delivery is sent", async () => {

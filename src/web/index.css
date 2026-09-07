@@ -85,11 +85,12 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  /* KindIcon（レビュー/質問/判断依頼/エージェント）の 4 色。docs/ui-redesign.md §6 */
-  --kind-review: oklch(0.585 0.233 277.1);
-  --kind-ask: oklch(0.6 0.118 184.7);
-  --kind-decision: oklch(0.627 0.265 303.9);
-  --kind-agent: oklch(0.552 0.016 285.9);
+  /* KindIcon（レビュー/質問/判断依頼/エージェント）の 4 色。docs/ui-redesign.md §6・
+   * design.pen P0 に合わせる（light/dark 共通）。 */
+  --kind-review: #a78bfa;
+  --kind-ask: #22d3ee;
+  --kind-decision: #f59e0b;
+  --kind-agent: #3b82f6;
 }
 
 .dark {
@@ -124,10 +125,10 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-  --kind-review: oklch(0.702 0.183 277.1);
-  --kind-ask: oklch(0.72 0.118 184.7);
-  --kind-decision: oklch(0.735 0.212 303.9);
-  --kind-agent: oklch(0.705 0.015 285.9);
+  --kind-review: #a78bfa;
+  --kind-ask: #22d3ee;
+  --kind-decision: #f59e0b;
+  --kind-agent: #3b82f6;
 }
 
 @layer base {

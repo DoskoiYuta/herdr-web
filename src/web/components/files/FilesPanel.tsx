@@ -197,16 +197,31 @@ export function FilesPanel({
 
   const runUpload = useCallback(
     async (dir: string, files: File[], overwrite: boolean) => {
+      toast({
+        kind: "info",
+        message: `インポート中… (${files.length} 件)`,
+        sticky: true,
+        id: "upload",
+      });
       try {
         const result = await fsApi.upload({ root: repo, dir, files, overwrite });
         void queryClient.invalidateQueries({ queryKey: ["ls", repo] });
-        toast({ kind: "success", message: `${result.written.length} 件をインポートしました` });
+        toast({
+          kind: "success",
+          message: `${result.written.length} 件をインポートしました`,
+          id: "upload",
+        });
       } catch (err) {
         if (err instanceof UploadConflictError) {
+          toast.dismiss("upload");
           setConflict({ dir, files, paths: err.paths });
           return;
         }
-        toast({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+        toast({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+          id: "upload",
+        });
       }
     },
     [repo, queryClient, toast],

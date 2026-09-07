@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import type { Review } from "@contract/review";
@@ -92,6 +92,24 @@ test("ReviewsAnnotation shows a resend control when notify is agent_blocked, wir
   renderAnnotation([match], { onResend });
   fireEvent.click(screen.getByRole("button", { name: "再送" }));
   expect(onResend).toHaveBeenCalledWith("r1");
+});
+
+// レビュー指摘: notifyScheduler.resend() には状態ゲートが無いので、連打が
+// そのまま複数回の通知になる。再送中はボタンを無効化して連打を防ぐ。
+test("ReviewsAnnotation disables resend while a resend request is in flight, so double-click sends only once", async () => {
+  let resolveResend: () => void = () => {};
+  const onResend = vi.fn(() => new Promise<void>((resolve) => (resolveResend = resolve)));
+  const blocked = review({ notify: { state: "agent_blocked", pane: null, at: null } });
+  const match: ForDiffMatch = { review: blocked, line: 1, span: 1, confidence: "exact" };
+  renderAnnotation([match], { onResend });
+
+  const button = screen.getByRole("button", { name: "再送" });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(onResend).toHaveBeenCalledTimes(1);
+
+  resolveResend();
+  await waitFor(() => expect(button).not.toBeDisabled());
 });
 
 test("ReviewsAnnotation dims a line-confidence match and shows the estimate note", () => {

@@ -428,6 +428,28 @@ test("dropping files uploads them to the hovered directory and invalidates the l
   expect(await screen.findByText("1 件をインポートしました")).toBeInTheDocument();
 });
 
+// レビュー指摘: toast 移行で「インポート中… (N 件)」の進捗表示が消えた。
+// アップロード中は sticky な進捗 toast が出続け、完了でそれが結果 toast に
+// 置き換わる（積み重ならない）ことを確認する。
+test("shows a sticky upload-progress toast that gets replaced by the result on completion", async () => {
+  lsMock.mockResolvedValue(ls([]));
+  let resolveUpload: (v: { written: string[] }) => void = () => {};
+  uploadMock.mockReturnValue(
+    new Promise((resolve) => {
+      resolveUpload = resolve;
+    }),
+  );
+  render(renderPanel());
+  (await screen.findByText("drop-into-src")).click();
+
+  expect(await screen.findByText("インポート中… (1 件)")).toBeInTheDocument();
+
+  resolveUpload({ written: ["a.txt"] });
+  expect(await screen.findByText("1 件をインポートしました")).toBeInTheDocument();
+  expect(screen.queryByText("インポート中… (1 件)")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("toast")).toHaveLength(1);
+});
+
 test("a 409 conflict opens a dialog listing the paths, and 上書き retries with overwrite", async () => {
   lsMock.mockResolvedValue(ls([]));
   uploadMock

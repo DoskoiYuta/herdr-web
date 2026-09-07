@@ -16,16 +16,9 @@ test("AgentStatusDot: optional label text is shown alongside the dot", () => {
   assert.ok(screen.getByText("claude"));
 });
 
-// design.pen P0: blocked は琥珀(amber)、unknown は灰系（枠線色）— 旧仕様の
-// blocked=赤/unknown=黄は廃止（design.pen 準拠）。
-test("STATUS_META: blocked is amber, not red; unknown is not yellow", () => {
-  assert.match(STATUS_META.blocked.className, /amber/);
-  assert.doesNotMatch(STATUS_META.blocked.className, /red-/);
-  assert.doesNotMatch(STATUS_META.unknown.className, /yellow/);
-});
-
-test("STATUS_META: working is blue, done is green, idle is gray/muted", () => {
-  assert.match(STATUS_META.working.className, /blue/);
-  assert.match(STATUS_META.done.className, /green/);
-  assert.match(STATUS_META.idle.className, /muted/);
+// design.pen P0: 5 状態は互いに見分けが付く色でなければならない（色の具体値
+// はテストで固定しない — design.pen 側の色調整で壊れるテストにしないため）。
+test("STATUS_META: every status has a distinct color from every other status", () => {
+  const classNames = STATUSES.map((status) => STATUS_META[status].className);
+  assert.equal(new Set(classNames).size, STATUSES.length);
 });

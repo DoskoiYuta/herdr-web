@@ -34,7 +34,7 @@ export type ThreadCardProps = {
   kind: "review" | "ask";
   location: string;
   turn: Turn;
-  delivery?: DeliveryResult & { onResend?: () => void | Promise<void> };
+  delivery?: DeliveryResult & { onResend?: () => void | Promise<void>; busy?: boolean };
   unread: boolean;
   messages: ThreadCardMessage[];
   reply: {
@@ -139,13 +139,19 @@ export function ThreadCard({
   const [busy, setBusy] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // "止めた" は特定のメッセージに紐づける（bool の一度きりのフラグにしない）
+  // — 同じカード（同じ key）のまま unread が false→true に変わる典型ケース
+  // （Diff を開いたままエージェントが返信する）で、新着メッセージごとに
+  // 明滅が再開できるようにする。
+  const lastMessageAt = messages.length > 0 ? (messages[messages.length - 1]?.at ?? null) : null;
   const shouldBlink = unread && turn === "action";
-  const [blinking, setBlinking] = useState(shouldBlink);
+  const [stoppedFor, setStoppedFor] = useState<string | null>(null);
+  const blinking = shouldBlink && stoppedFor !== lastMessageAt;
 
-  const stopBlinking = useCallback(() => setBlinking(false), []);
+  const stopBlinking = useCallback(() => setStoppedFor(lastMessageAt), [lastMessageAt]);
 
   useEffect(() => {
-    if (!shouldBlink) return;
+    if (!blinking) return;
     const node = cardRef.current;
     if (!node || typeof IntersectionObserver === "undefined") {
       const t = setTimeout(stopBlinking, VISIBLE_STOP_MS);
@@ -164,10 +170,7 @@ export function ThreadCard({
       observer.disconnect();
       if (timer !== null) clearTimeout(timer);
     };
-    // shouldBlink is derived from unread/turn at mount; once blinking is
-    // stopped it never restarts for this card instance.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldBlink, stopBlinking]);
+  }, [blinking, stopBlinking]);
 
   const submitReply = async () => {
     if (!replyBody.trim() || busy || reply.disabled) return;
@@ -196,7 +199,9 @@ export function ThreadCard({
         <KindIcon kind={kind} />
         <span className="font-mono text-[10px] text-muted-foreground">{location}</span>
         {(turn === "done" || turn === "void") && <StatusChip turn={turn} />}
-        {delivery && <DeliveryChip delivery={delivery} onResend={delivery.onResend} />}
+        {delivery && (
+          <DeliveryChip delivery={delivery} onResend={delivery.onResend} busy={delivery.busy} />
+        )}
         {positionEstimated && <span className="text-[10px] text-muted-foreground">位置は推定</span>}
         {extra}
       </div>

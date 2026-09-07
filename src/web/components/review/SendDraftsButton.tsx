@@ -123,16 +123,29 @@ export function SendDraftsButton({
         if (!mountedRef.current) return;
         onSent();
         setPickerOpen(false);
-        toast({ kind: "success", message: `下書き ${pendingDrafts} 件を送信しました` });
+        // id 固定: 前回の送信先エラー（sticky）が残っていれば、この成功で
+        // 置き換えて消す。
+        toast({
+          kind: "success",
+          message: `下書き ${pendingDrafts} 件を送信しました`,
+          id: "send-drafts",
+        });
       } catch (err) {
         if (!mountedRef.current) return;
-        toast({
-          kind: "error",
-          message:
-            err instanceof SendTargetError
-              ? SEND_TARGET_ERROR_MESSAGE[err.type]
-              : "送信に失敗しました",
-        });
+        // 送信先エラーは対処してから再送する性質なので自動で消さない
+        // （§5.6: 一過性メッセージに残すのは「その場で判断が要るもの」だけ、
+        // という原則の裏返し — これは判断が要るので消してはいけない）。
+        // ネットワーク等の一過性エラーは従来どおり自動で消える。
+        if (err instanceof SendTargetError) {
+          toast({
+            kind: "error",
+            message: SEND_TARGET_ERROR_MESSAGE[err.type],
+            sticky: true,
+            id: "send-drafts",
+          });
+        } else {
+          toast({ kind: "error", message: "送信に失敗しました", id: "send-drafts" });
+        }
       } finally {
         if (mountedRef.current) setSendBusy(false);
       }
