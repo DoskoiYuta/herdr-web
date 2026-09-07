@@ -352,6 +352,40 @@ describe("ToolPane", () => {
     expect(router.state.location.search).toMatchObject({ path: "src/a.ts" });
   });
 
+  // 実走で見つかった不具合: `/focus/files?path=...&line=...` を直接開く
+  // （リロード）と、herdr の focus はまだ null（未解決）で、そこから実値に
+  // 変わる遷移が「worktree の切り替え」と誤認されて path/line が落ちていた。
+  // 無いと壊れる: 直接開き・リロードのたびにファイル選択が失われる。
+  test("opening the files tab directly with path/line, before focus resolves, keeps them once focus catches up", async () => {
+    const store = makeFakeStore({ focus: null });
+    await renderWithRouter(() => <ToolPane />, {
+      path: "/focus/files?path=README.md&line=3",
+      store,
+    });
+    expect(screen.queryByTestId("files-panel-initial-location")).not.toBeInTheDocument();
+
+    store.setState({ focus: focusMessage() });
+    await waitFor(() =>
+      expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("README.md:3"),
+    );
+  });
+
+  // 上のケースと対比: 実値 A → 実値 B の切り替えは従来どおり search を落とす
+  // （前の worktree のジャンプ先を新しい worktree に持ち越さない）。
+  test("switching from one resolved worktree to another still drops path/line", async () => {
+    const store = makeFakeStore({ focus: focusMessage({ worktreeRoot: "/Users/dev/project" }) });
+    await renderWithRouter(() => <ToolPane />, {
+      path: "/focus/files?path=README.md&line=3",
+      store,
+    });
+    expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("README.md:3");
+
+    store.setState({ focus: focusMessage({ worktreeRoot: "/Users/dev/other" }) });
+    await waitFor(() =>
+      expect(screen.queryByTestId("files-panel-initial-location")).not.toBeInTheDocument(),
+    );
+  });
+
   // 無いと壊れる: old 側にアンカーされた review へジャンプしても search の side が
   // 通らないと ToolPane が既定の "new" にフォールバックし、無関係な行を開く
   // （Inbox の replied レビュー行導線、docs/ui-redesign.md §5.4）。

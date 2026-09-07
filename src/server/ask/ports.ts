@@ -17,6 +17,7 @@ export interface AskRepository {
 export type LaunchError =
   | { type: "herdr_unavailable" }
   | { type: "limit_reached"; limit: number }
+  | { type: "unknown_agent"; agents: string[] }
   | { type: "failed"; message: string };
 
 export type PromptError =
@@ -30,12 +31,14 @@ export type PromptError =
  * `kind === "pane"` は既存 pane なので start/close はしない。
  */
 export interface AskSessionLauncher {
-  /** 専用 workspace を作り claude を起動して `prompt` を送る。成功で `{ kind: "herdr", label }`。 */
+  /** 専用 workspace を作り `agent` を起動して `prompt` を送る。成功で
+   * `{ kind: "herdr", label, agent }`。 */
   start(params: {
     askId: string;
     worktreeRoot: string;
     label: string;
     prompt: string;
+    agent: string;
   }): Promise<Result<AskSession, LaunchError>>;
   /** そのセッションの pane に `agent.prompt` を 1 回送る。 */
   prompt(session: AskSession, text: string): Promise<Result<void, PromptError>>;

@@ -24,6 +24,19 @@ import { KindIcon } from "@/components/ui/status/KindIcon";
 
 export type AskFileLocation = { worktreeRoot: string; path: string; line: number };
 
+function basename(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx === -1 ? path : path.slice(idx + 1);
+}
+
+/** 「質問 · <agent> · <path 末尾>」。対応する ask が見つからなければ
+ * workspace のラベル（`ask:<短縮 id>`）のまま出す。 */
+function askRowLabel(ask: Ask | undefined): string | null {
+  if (!ask) return null;
+  const agent = ask.session?.kind === "herdr" ? (ask.session.agent ?? "不明") : "不明";
+  return `質問 · ${agent} · ${basename(ask.path)}`;
+}
+
 export type AskSessionRowProps = {
   workspace: WorkspaceGroup;
   /** この行のラベルに一致する ask（見つからなければ undefined — 右クリック
@@ -90,7 +103,9 @@ export function AskSessionRow({
             )}
           >
             <KindIcon kind="ask" />
-            <span className="min-w-0 flex-1 truncate">{workspace.workspaceLabel}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {askRowLabel(ask) ?? workspace.workspaceLabel}
+            </span>
             {pane && <AgentStatusDot status={pane.agentStatus} />}
           </button>
         </ContextMenuTrigger>

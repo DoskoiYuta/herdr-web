@@ -37,6 +37,9 @@ function mapLaunchError(error: LaunchError) {
   if (error.type === "herdr_unavailable") {
     return { body: { error: "herdr_unavailable" }, status: 503 as const };
   }
+  if (error.type === "unknown_agent") {
+    return { body: { error: "unknown_agent", agents: error.agents }, status: 400 as const };
+  }
   return { body: { error: error.message, type: "failed" }, status: 500 as const };
 }
 

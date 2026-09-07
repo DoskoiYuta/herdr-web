@@ -5,11 +5,11 @@
 // Tree width / font size / tree visibility are shared with Diff through
 // `@/lib/viewerSettings` rather than this panel's own localStorage key.
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CodeViewLineSelection } from "@pierre/diffs";
-import type { AskTarget } from "@contract/ask";
+import type { Anchor } from "@contract/review";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,8 @@ import { PathTree } from "@/components/tree/PathTree";
 import { ViewerControls } from "@/components/tool/ViewerControls";
 import { previewKindForPath } from "@contract/preview";
 import {
-  AskLimitError,
-  AskUnavailableError,
   askApi,
+  configApi,
   FileNotFoundError,
   fsApi,
   gitApi,
@@ -43,6 +42,7 @@ import { collectDroppedFiles } from "@/lib/dropEntries";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
 import { AskComposer } from "@/components/ask/AskComposer";
 import { AskMismatchStrip } from "@/components/ask/AskMismatchStrip";
+import { AskTargetDialog } from "@/components/ask/AskTargetDialog";
 import { AskThread } from "@/components/ask/AskThread";
 import {
   anchoredMatches,
@@ -320,8 +320,22 @@ export function FilesPanel({
 
   const cancelComposer = useCallback(() => setSelection(null), []);
 
-  const submitComposer = useCallback(
-    async (body: string, target: AskTarget) => {
+  const clientConfigQuery = useQuery({ queryKey: ["client-config"], queryFn: configApi.get });
+
+  // 送信先ダイアログ（AskTargetDialog）に渡す確定済みのアンカー・本文。ダイアログ
+  // 自体は askApi.create の呼び出しと失敗時の toast を持つ — ここは開閉と
+  // アンカー構築だけ担当する。
+  const [pendingAsk, setPendingAsk] = useState<{
+    body: string;
+    anchor: Anchor;
+    location: string;
+    path: string;
+    worktreeRoot: string;
+    createdAtHead: string | null;
+  } | null>(null);
+
+  const openAskTargetDialog = useCallback(
+    async (body: string) => {
       const data = fileQuery.data;
       if (!selection || !repoKey || !selectedPath || !data || data.kind !== "text") {
         toast({ kind: "error", message: "質問を作成できません（リポジトリを解決できていません）" });
@@ -330,29 +344,28 @@ export function FilesPanel({
       const lines = data.contents.split("\n");
       const start0 = Math.min(selection.range.start, selection.range.end) - 1;
       const end0 = Math.max(selection.range.start, selection.range.end) - 1;
-      try {
-        const anchor = await buildAnchor(lines, start0, end0, "new");
-        await askApi.create({
-          repo: repoKey,
-          worktreeRoot: repo,
-          path: selectedPath,
-          anchor,
-          createdAtHead: headRef.current,
-          body,
-          target,
-        });
-        setSelection(null);
-        refreshMatches();
-      } catch (err) {
-        if (err instanceof AskLimitError || err instanceof AskUnavailableError) {
-          toast({ kind: "error", message: err.message });
-        } else {
-          toast({ kind: "error", message: "質問の送信に失敗しました" });
-        }
-      }
+      const anchor = await buildAnchor(lines, start0, end0, "new");
+      const start1 = start0 + 1;
+      const end1 = end0 + 1;
+      const location =
+        start1 === end1 ? `${selectedPath}:L${start1}` : `${selectedPath}:L${start1}–${end1}`;
+      setPendingAsk({
+        body,
+        anchor,
+        location,
+        path: selectedPath,
+        worktreeRoot: repo,
+        createdAtHead: headRef.current,
+      });
     },
-    [selection, repoKey, selectedPath, repo, fileQuery.data, refreshMatches, toast],
+    [selection, repoKey, selectedPath, repo, fileQuery.data, toast],
   );
+
+  const handleAskCreated = useCallback(() => {
+    setPendingAsk(null);
+    setSelection(null);
+    refreshMatches();
+  }, [refreshMatches]);
 
   const handleAskReply = useCallback(
     async (id: string, body: string) => {
@@ -535,6 +548,28 @@ export function FilesPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {pendingAsk && repoKey && (
+        <AskTargetDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPendingAsk(null);
+          }}
+          location={pendingAsk.location}
+          body={pendingAsk.body}
+          createParams={{
+            repo: repoKey,
+            worktreeRoot: pendingAsk.worktreeRoot,
+            path: pendingAsk.path,
+            anchor: pendingAsk.anchor,
+            createdAtHead: pendingAsk.createdAtHead,
+          }}
+          agents={clientConfigQuery.data?.ask.agents ?? []}
+          defaultAgent={clientConfigQuery.data?.ask.defaultAgent ?? ""}
+          maxSessions={clientConfigQuery.data?.ask.maxSessions ?? 0}
+          panes={askPanes}
+          onCreated={handleAskCreated}
+        />
+      )}
       <div className="flex min-h-0 flex-1">
         {settings.showTree && (
           <>
@@ -625,10 +660,9 @@ export function FilesPanel({
               onLineSelectionEnd={() => setSelecting(false)}
               matches={anchoredMatches(matches)}
               composerLine={composerLine}
-              askPanes={askPanes}
               askDisabled={!headKnown}
               onCancelComposer={cancelComposer}
-              onSubmitComposer={submitComposer}
+              onOpenTargetDialog={openAskTargetDialog}
               onAskReply={handleAskReply}
               onAskResolve={handleAskResolve}
               onAskResend={handleAskResend}
@@ -658,10 +692,9 @@ function FileViewerBody({
   onLineSelectionEnd,
   matches,
   composerLine,
-  askPanes,
   askDisabled,
   onCancelComposer,
-  onSubmitComposer,
+  onOpenTargetDialog,
   onAskReply,
   onAskResolve,
   onAskResend,
@@ -683,10 +716,9 @@ function FileViewerBody({
   onLineSelectionEnd: () => void;
   matches: ForFileMatch[];
   composerLine: number | null;
-  askPanes: ReturnType<typeof agentPanesAt>;
   askDisabled: boolean;
   onCancelComposer: () => void;
-  onSubmitComposer: (body: string, target: AskTarget) => void | Promise<void>;
+  onOpenTargetDialog: (body: string) => void | Promise<void>;
   onAskReply: (id: string, body: string) => void | Promise<void>;
   onAskResolve: (id: string) => void | Promise<void>;
   onAskResend: (id: string) => void | Promise<void>;
@@ -779,10 +811,9 @@ function FileViewerBody({
     if (meta.kind === "composer") {
       return (
         <AskComposer
-          panes={askPanes}
           disabled={askDisabled}
           onCancel={onCancelComposer}
-          onSubmit={onSubmitComposer}
+          onOpenTargetDialog={onOpenTargetDialog}
         />
       );
     }

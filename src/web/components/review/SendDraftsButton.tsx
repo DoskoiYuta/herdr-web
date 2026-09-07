@@ -25,7 +25,7 @@ const SEND_TARGET_ERROR_MESSAGE: Record<SendTargetError["type"], string> = {
  * workspace/tab・出力末尾）。候補は `pane` から即描画し、workspace/tab/title・
  * レイアウト・出力末尾は `usePanePreview` が解決してから埋める — 取得に失敗/
  * 遅延しても、カード自体は最初からクリックできる。 */
-function SendTargetCard({
+export function SendTargetCard({
   pane,
   fetchPreview,
   onSelect,

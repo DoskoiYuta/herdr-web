@@ -136,6 +136,17 @@ export class AskUnavailableError extends Error {
   }
 }
 
+/** Thrown by `askApi.create` when the requested agent isn't in `config.ask.agents`
+ * (HTTP 400 `unknown_agent`). */
+export class AskUnknownAgentError extends Error {
+  agents: string[];
+  constructor(agents: string[]) {
+    super("対応していないエージェントです");
+    this.name = "AskUnknownAgentError";
+    this.agents = agents;
+  }
+}
+
 export const gitApi = {
   async root(path: string) {
     const res = await client.api.git.root.$get({ query: { path } });
@@ -542,6 +553,10 @@ export const askApi = {
       throw new AskLimitError(errBody.limit);
     }
     if (res.status === 503) throw new AskUnavailableError();
+    if (res.status === 400) {
+      const errBody = (await res.json()) as { error: "unknown_agent"; agents: string[] };
+      throw new AskUnknownAgentError(errBody.agents);
+    }
     if (!res.ok) throw new Error(`POST /api/ask failed: ${res.status}`);
     return v.parse(AskSchema, await res.json());
   },

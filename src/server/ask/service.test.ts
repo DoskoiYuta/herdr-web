@@ -28,6 +28,8 @@ function makeService(overrides: Partial<Parameters<typeof createFakeAskLauncher>
     template: "id={id} path={path} {startLine}-{endLine} {code} q={question}",
     replyTemplate: "reply {id}",
     maxSessions: 5,
+    agents: ["claude", "codex", "gemini"],
+    defaultAgent: "claude",
     generateId: () => `ask-${String(nextId++).padStart(16, "0")}`,
   });
   return { service, repository, calls, events };
@@ -49,7 +51,11 @@ describe("createAsk", () => {
     const result = await service.createAsk(baseReq);
     expect(result.isOk()).toBe(true);
     const ask = result._unsafeUnwrap();
-    expect(ask.session).toEqual({ kind: "herdr", label: `ask:${ask.id.slice(-8)}` });
+    expect(ask.session).toEqual({
+      kind: "herdr",
+      label: `ask:${ask.id.slice(-8)}`,
+      agent: "claude",
+    });
     expect(ask.lastPrompt).toEqual({ state: "sent", at: "2026-09-05T00:00:00.000Z" });
     expect(await repository.get(ask.id)).toEqual(ask);
     expect(events).toHaveLength(1);
@@ -83,6 +89,8 @@ describe("createAsk", () => {
       template: "{question}",
       replyTemplate: "reply {id}",
       maxSessions: 1,
+      agents: ["claude", "codex", "gemini"],
+      defaultAgent: "claude",
       generateId: () => "existing-ask-id",
     });
     await service.createAsk(baseReq);
@@ -90,6 +98,37 @@ describe("createAsk", () => {
     expect(result._unsafeUnwrapErr()).toEqual({ type: "limit_reached", limit: 1 });
     // only the first createAsk's start call — the second was rejected before reaching the launcher
     expect(calls.filter((c) => c.kind === "start")).toHaveLength(1);
+  });
+
+  // 無いと壊れる: agent を渡さなかったときに何を起動するかが未定義になる
+  // （launcher に何も渡らない、または常に一つ前のエージェントが残る）。
+  test("target=new without agent launches with config's defaultAgent", async () => {
+    const { service, calls } = makeService();
+    await service.createAsk(baseReq);
+    const startCall = calls.find((c) => c.kind === "start");
+    expect(startCall).toMatchObject({ agent: "claude" });
+  });
+
+  test.each([
+    ["codex", "codex"],
+    ["gemini", "gemini"],
+  ])("target=new with agent=%s launches with that agent", async (agent, expected) => {
+    const { service, calls } = makeService();
+    await service.createAsk({ ...baseReq, target: { kind: "new", agent } });
+    const startCall = calls.find((c) => c.kind === "start");
+    expect(startCall).toMatchObject({ agent: expected });
+  });
+
+  // 無いと壊れる: 検証が無いと herdr に存在しない kind を渡してしまい、
+  // agent.start が失敗するまで気づけない（サービス層で早期に弾く仕様）。
+  test("target=new with an agent not in config.ask.agents is rejected before calling the launcher", async () => {
+    const { service, calls } = makeService();
+    const result = await service.createAsk({ ...baseReq, target: { kind: "new", agent: "gpt4" } });
+    expect(result._unsafeUnwrapErr()).toEqual({
+      type: "unknown_agent",
+      agents: ["claude", "codex", "gemini"],
+    });
+    expect(calls.filter((c) => c.kind === "start")).toHaveLength(0);
   });
 
   test("target=pane persists the ask even when the prompt is blocked, recording lastPrompt", async () => {

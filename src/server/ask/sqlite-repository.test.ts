@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import type { Ask } from "../../contract/ask";
 import { openDb } from "../db/client";
 import { applyMigrations } from "../db/migrate";
@@ -20,7 +21,7 @@ function makeAsk(overrides: Partial<Ask> = {}): Ask {
     },
     createdAtHead: "head1",
     status: "open",
-    session: { kind: "herdr", label: "ask:00000001" },
+    session: { kind: "herdr", label: "ask:00000001", agent: "claude" },
     thread: [
       { seq: 0, author: "user", body: "why?", at: "2026-09-05T00:00:00.000Z", agentSession: null },
     ],
@@ -49,6 +50,42 @@ describe("createSqliteAskRepository", () => {
     });
     await repo.save(paneAsk);
     expect(await repo.get(paneAsk.id)).toEqual(paneAsk);
+  });
+
+  test("round-trips a herdr session's agent field", async () => {
+    const db = openDb(":memory:");
+    applyMigrations(db);
+    const repo = createSqliteAskRepository(db);
+
+    const ask = makeAsk({ session: { kind: "herdr", label: "ask:00000002", agent: "codex" } });
+    await repo.save(ask);
+    expect(await repo.get(ask.id)).toEqual(ask);
+  });
+
+  // 無いと壊れる: この列追加前に作られた行の session JSON には agent キー自体が
+  // 無い。読めずに例外を出すと、既存の質問セッションが一切表示できなくなる。
+  test("reads a pre-existing row whose session JSON has no agent key", async () => {
+    const db = openDb(":memory:");
+    applyMigrations(db);
+    const repo = createSqliteAskRepository(db);
+    const ask = makeAsk({
+      id: "legacy-1",
+      session: { kind: "herdr", label: "ask:legacy01", agent: null },
+    });
+    await repo.save(ask);
+    // Overwrite the session column with the pre-agent-field JSON shape
+    // (repo.save above already writes the current shape, so this simulates
+    // a row written by an older version of this code).
+    db.run(
+      sql`update asks set session = '{"kind":"herdr","label":"ask:legacy01"}' where id = ${ask.id}`,
+    );
+
+    const got = await repo.get("legacy-1");
+    expect(got?.session).toMatchObject({ kind: "herdr", label: "ask:legacy01" });
+    // 無いと壊れる: agent が undefined のまま返ると、AskThread/AskSessionRow の
+    // `session.agent ?? "不明"` は undefined と null を同じに扱わないコードが
+    // あれば表示が崩れる — 契約どおり null に正規化されている必要がある。
+    expect(got?.session?.kind === "herdr" ? got.session.agent : undefined).toBe(null);
   });
 
   test("list filters by repo/worktreeRoot/status/path", async () => {

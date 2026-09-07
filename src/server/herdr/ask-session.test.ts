@@ -55,10 +55,15 @@ describe("createHerdrAskLauncher.start", () => {
       worktreeRoot: "/repo",
       label: "ask:abc12345",
       prompt: "please look at this",
+      agent: "claude",
     });
 
     expect(result.isOk()).toBe(true);
-    expect(result._unsafeUnwrap()).toEqual({ kind: "herdr", label: "ask:abc12345" });
+    expect(result._unsafeUnwrap()).toEqual({
+      kind: "herdr",
+      label: "ask:abc12345",
+      agent: "claude",
+    });
 
     const snapshot = await fake.snapshot();
     const workspace = snapshot.workspaces.find((w) => w.label === "ask:abc12345");
@@ -66,6 +71,30 @@ describe("createHerdrAskLauncher.start", () => {
     const pane = snapshot.panes.find((p) => p.workspace_id === workspace!.workspace_id);
     expect(pane?.agent).toBe("claude");
     expect(prompted).toEqual([{ pane: pane!.pane_id, text: "please look at this" }]);
+  });
+
+  // 無いと壊れる: エージェント種別を herdr に渡していなければ常に "claude" 固定に
+  // なり、ユーザーが選んだ別のエージェント（codex 等）で起動できない。
+  test('passes the given agent as agent.start\'s kind, not a fixed "claude"', async () => {
+    const { fake, launcher } = await makeLauncher();
+
+    const result = await launcher.start({
+      askId: "a6",
+      worktreeRoot: "/repo",
+      label: "ask:codex001",
+      prompt: "hi",
+      agent: "codex",
+    });
+
+    expect(result._unsafeUnwrap()).toEqual({
+      kind: "herdr",
+      label: "ask:codex001",
+      agent: "codex",
+    });
+    const snapshot = await fake.snapshot();
+    const workspace = snapshot.workspaces.find((w) => w.label === "ask:codex001");
+    const pane = snapshot.panes.find((p) => p.workspace_id === workspace!.workspace_id);
+    expect(pane?.agent).toBe("codex");
   });
 
   // Without this, the claude session herdr spawns has no way to find `hw` and
@@ -84,6 +113,7 @@ describe("createHerdrAskLauncher.start", () => {
       worktreeRoot: "/repo",
       label: "ask:envcheck",
       prompt: "hi",
+      agent: "claude",
     });
 
     expect(seenEnv?.PATH?.startsWith("/fake/hw-bin")).toBe(true);
@@ -100,6 +130,7 @@ describe("createHerdrAskLauncher.start", () => {
       worktreeRoot: "/repo",
       label: "ask:new",
       prompt: "hi",
+      agent: "claude",
     });
 
     expect(result.isErr()).toBe(true);
@@ -116,6 +147,7 @@ describe("createHerdrAskLauncher.start", () => {
       worktreeRoot: "/repo",
       label: "ask:down",
       prompt: "hi",
+      agent: "claude",
     });
 
     expect(result._unsafeUnwrapErr()).toEqual({ type: "herdr_unavailable" });
@@ -133,6 +165,7 @@ describe("createHerdrAskLauncher.start", () => {
       worktreeRoot: "/repo",
       label: "ask:fails",
       prompt: "hi",
+      agent: "claude",
     });
 
     expect(result.isErr()).toBe(true);
@@ -147,7 +180,13 @@ describe("createHerdrAskLauncher session operations", () => {
     launcher: Awaited<ReturnType<typeof makeLauncher>>["launcher"],
     label: string,
   ) {
-    const result = await launcher.start({ askId: "a", worktreeRoot: "/repo", label, prompt: "q" });
+    const result = await launcher.start({
+      askId: "a",
+      worktreeRoot: "/repo",
+      label,
+      prompt: "q",
+      agent: "claude",
+    });
     return result._unsafeUnwrap();
   }
 
@@ -177,7 +216,7 @@ describe("createHerdrAskLauncher session operations", () => {
 
   test("prompt/status report gone once the session's workspace no longer exists", async () => {
     const { launcher } = await makeLauncher();
-    const session: AskSession = { kind: "herdr", label: "ask:never-existed" };
+    const session: AskSession = { kind: "herdr", label: "ask:never-existed", agent: "claude" };
 
     expect((await launcher.prompt(session, "hi"))._unsafeUnwrapErr()).toEqual({ type: "gone" });
     expect(await launcher.status(session)).toBe("gone");

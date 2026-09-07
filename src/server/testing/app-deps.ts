@@ -92,7 +92,15 @@ export function createTestApp(opts: TestAppOptions = {}) {
     git: { allowedRoots: opts.allowedRoots ?? [], fetchRunner: opts.fetchRunner },
     clientConfig: () => {
       const c = v.parse(ConfigSchema, {});
-      return { terminal: c.terminal, graphInitialCommits: c.graphInitialCommits };
+      return {
+        terminal: c.terminal,
+        graphInitialCommits: c.graphInitialCommits,
+        ask: {
+          agents: c.ask.agents,
+          defaultAgent: c.ask.defaultAgent,
+          maxSessions: c.ask.maxSessions,
+        },
+      };
     },
     review: review.routes,
     repo: review.repoRoutes,

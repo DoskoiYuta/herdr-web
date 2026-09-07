@@ -1,11 +1,21 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { Ask, AskSession, AskStatus } from "../../contract/ask";
+import * as v from "valibot";
+import { AskSessionSchema, type Ask, type AskSession, type AskStatus } from "../../contract/ask";
 import type { Db } from "../db/client";
 import { askEntries, asks } from "../db/schema";
 import type { AskListFilter, AskRepository } from "./ports";
 
 type AskRow = typeof asks.$inferSelect;
 type AskEntryRow = typeof askEntries.$inferSelect;
+
+/** `AskSessionSchema` を通して読む — 列追加前の行には `agent` キー自体が無く、
+ * それを生キャストで返すと `undefined` のまま漏れる（表示側は `null` を前提に
+ * `?? "不明"` している）。不正な JSON なら null 扱い（`session: null` と同じ）。 */
+function parseSession(raw: unknown): AskSession | null {
+  if (raw == null) return null;
+  const result = v.safeParse(AskSessionSchema, raw);
+  return result.success ? result.output : null;
+}
 
 function rowToAsk(row: AskRow, entryRows: AskEntryRow[]): Ask {
   return {
@@ -16,7 +26,7 @@ function rowToAsk(row: AskRow, entryRows: AskEntryRow[]): Ask {
     anchor: row.anchor as Ask["anchor"],
     createdAtHead: row.createdAtHead,
     status: row.status as AskStatus,
-    session: row.session as AskSession | null,
+    session: parseSession(row.session),
     thread: entryRows
       .slice()
       .sort((a, b) => a.seq - b.seq)

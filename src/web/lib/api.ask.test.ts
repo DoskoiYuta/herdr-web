@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { Ask } from "@contract/ask";
-import { askApi } from "./api";
+import type { Ask, CreateAskRequest } from "@contract/ask";
+import { askApi, AskUnknownAgentError } from "./api";
 
 function ask(overrides: Partial<Ask> = {}): Ask {
   return {
@@ -11,7 +11,7 @@ function ask(overrides: Partial<Ask> = {}): Ask {
     anchor: { side: "new", lines: ["hello"], before: [], after: [], lineHint: 1, hash: "deadbeef" },
     createdAtHead: "abc123",
     status: "open",
-    session: { kind: "herdr", label: "ask:abc12345" },
+    session: { kind: "herdr", label: "ask:abc12345", agent: "claude" },
     thread: [
       { seq: 0, author: "user", body: "why?", at: "2026-09-05T00:00:00.000Z", agentSession: null },
     ],
@@ -38,6 +38,35 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+const createBody: CreateAskRequest = {
+  repo: "/repo/.git",
+  worktreeRoot: "/repo",
+  path: "a.txt",
+  anchor: { side: "new", lines: ["hello"], before: [], after: [], lineHint: 1, hash: "deadbeef" },
+  createdAtHead: "abc123",
+  body: "why?",
+  target: { kind: "new", agent: "gpt4" },
+};
+
+describe("askApi.create", () => {
+  // 無いと壊れる: 400 unknown_agent が汎用の Error として投げられると、送信先
+  // ダイアログが他の理由（herdr 未接続など）と区別してエラーを出し分けられない。
+  test("throws AskUnknownAgentError with the allowed agents on 400 unknown_agent", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: "unknown_agent", agents: ["claude", "codex"] }, 400),
+    );
+    await expect(askApi.create(createBody)).rejects.toThrow(AskUnknownAgentError);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: "unknown_agent", agents: ["claude", "codex"] }, 400),
+    );
+    const err = await askApi
+      .create(createBody)
+      .then(() => null)
+      .catch((e: unknown) => e as AskUnknownAgentError);
+    expect(err?.agents).toEqual(["claude", "codex"]);
+  });
 });
 
 describe("askApi.list", () => {

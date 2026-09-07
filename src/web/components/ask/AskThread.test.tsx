@@ -104,3 +104,23 @@ test("shows the done status chip once the for-file prop says resolved, even with
   renderThread({ ask: ask({ status: "resolved" }), startLine: 2, endLine: 2 });
   expect(screen.getByTestId("status-chip")).toHaveAttribute("data-turn", "done");
 });
+
+// 無いと壊れる: どのエージェントが答えているセッションかがスレッド上で分からず、
+// D9（UI からエージェント前提を外す）の意味が無くなる。
+test("shows the session's agent alongside its status", () => {
+  renderThread({
+    ask: ask({ session: { kind: "herdr", label: "ask:x", agent: "codex" } }),
+    startLine: 2,
+    endLine: 2,
+  });
+  expect(screen.getByTestId("ask-session-status")).toHaveTextContent("codex");
+});
+
+test("shows 不明 when the session has no recorded agent", () => {
+  renderThread({
+    ask: ask({ session: { kind: "herdr", label: "ask:x", agent: null } }),
+    startLine: 2,
+    endLine: 2,
+  });
+  expect(screen.getByTestId("ask-session-status")).toHaveTextContent("不明");
+});

@@ -139,6 +139,11 @@ const api = createApp({
   clientConfig: () => ({
     terminal: config.terminal,
     graphInitialCommits: config.graphInitialCommits,
+    ask: {
+      agents: config.ask.agents,
+      defaultAgent: config.ask.defaultAgent,
+      maxSessions: config.ask.maxSessions,
+    },
   }),
   review: review.routes,
   repo: review.repoRoutes,

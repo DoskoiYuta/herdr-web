@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ConfigInput } from "../contract/config";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +19,40 @@ describe("parseConfig", () => {
     const { config, problem } = parseConfig({ port: "abc", notify: { debounceMs: -1 } });
     expect(problem).toContain("port");
     expect(config.port).toBe(8080);
+  });
+
+  test("defaults ask.agents and ask.defaultAgent", () => {
+    const { config } = parseConfig({});
+    expect(config.ask.agents).toEqual(["claude", "codex", "gemini"]);
+    expect(config.ask.defaultAgent).toBe("claude");
+  });
+
+  // 無いと壊れる: defaultAgent が agents に無いまま使うと、AskSessionLauncher に
+  // 存在しないエージェント種別が渡って起動が失敗し続ける。
+  test("rounds ask.defaultAgent to agents[0] and reports it when defaultAgent isn't in agents", () => {
+    const { config, problem } = parseConfig({
+      ask: { agents: ["codex", "gemini"], defaultAgent: "claude" },
+    });
+    expect(config.ask.defaultAgent).toBe("codex");
+    expect(problem).toContain("defaultAgent");
+  });
+
+  // 無いと壊れる: agents が [] のまま丸めずに使うと、defaultAgent がどんな値でも
+  // agents に含まれ得ず、新規セッションの質問が常に unknown_agent になる。
+  test.each([
+    [{ ask: { agents: [] } } satisfies ConfigInput, ["claude", "codex", "gemini"], "claude"],
+    [{ ask: { agents: ["claude", "claude"] } } satisfies ConfigInput, ["claude"], "claude"],
+    [{ ask: { agents: ["", "codex"] } } satisfies ConfigInput, ["codex"], "codex"],
+    [{ ask: { agents: ["codex", "gemini"] } } satisfies ConfigInput, ["codex", "gemini"], "codex"],
+  ])("normalizes ask.agents/defaultAgent for %j", (input, expectedAgents, expectedDefault) => {
+    const { config } = parseConfig(input);
+    expect(config.ask.agents).toEqual(expectedAgents);
+    expect(config.ask.defaultAgent).toBe(expectedDefault);
+  });
+
+  test("reports a problem when ask.agents is empty and falls back to the default list", () => {
+    const { problem } = parseConfig({ ask: { agents: [] } });
+    expect(problem).toContain("ask.agents");
   });
 });
 

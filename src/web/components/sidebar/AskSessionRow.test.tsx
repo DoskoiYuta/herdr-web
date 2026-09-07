@@ -21,7 +21,7 @@ function ask(overrides: Partial<Ask> = {}): Ask {
     anchor: { side: "new", lines: ["x"], before: [], after: [], lineHint: 42, hash: "deadbeef" },
     createdAtHead: "abc123",
     status: "open",
-    session: { kind: "herdr", label: "ask:abc12345" },
+    session: { kind: "herdr", label: "ask:abc12345", agent: "claude" },
     thread: [
       { seq: 0, author: "user", body: "why?", at: "2026-09-05T00:00:00.000Z", agentSession: null },
     ],
@@ -81,12 +81,29 @@ function openMenu() {
 }
 
 describe("AskSessionRow", () => {
-  test("shows the workspace label, and clicking selects its first pane", () => {
+  // 無いと壊れる: エージェント名が出ないと、どのエージェントが答えている質問
+  // セッションかがサイドバー上で見分けられない。
+  test("shows 質問 · <agent> · <path 末尾>, and clicking selects its first pane", () => {
     const onSelectPane = vi.fn();
     render(<AskSessionRow {...defaultProps()} onSelectPane={onSelectPane} />);
-    expect(screen.getByText("ask:abc12345")).toBeInTheDocument();
+    expect(screen.getByText("質問 · claude · a.ts")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("ask-session-row-w-ask"));
     expect(onSelectPane).toHaveBeenCalledWith("p1");
+  });
+
+  test("falls back to 不明 when the session has no agent recorded", () => {
+    render(
+      <AskSessionRow
+        {...defaultProps()}
+        ask={ask({ session: { kind: "herdr", label: "ask:abc12345", agent: null } })}
+      />,
+    );
+    expect(screen.getByText("質問 · 不明 · a.ts")).toBeInTheDocument();
+  });
+
+  test("falls back to the workspace label when there's no matching ask", () => {
+    render(<AskSessionRow {...defaultProps()} ask={undefined} />);
+    expect(screen.getByText("ask:abc12345")).toBeInTheDocument();
   });
 
   test("aria-current follows focusedPaneId matching the row's pane, not pane.focused", () => {

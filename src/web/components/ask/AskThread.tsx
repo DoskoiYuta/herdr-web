@@ -88,6 +88,7 @@ export function AskThread({ match, range, onReply, onResolve, onResend, onFocus 
       extra={
         current.session ? (
           <span className="text-[10px] text-muted-foreground" data-testid="ask-session-status">
+            {current.session.kind === "herdr" ? (current.session.agent ?? "不明") : "不明"} ·{" "}
             {SESSION_STATUS_LABEL[current.sessionStatus]}
           </span>
         ) : undefined
