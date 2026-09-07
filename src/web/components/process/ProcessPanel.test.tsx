@@ -11,7 +11,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   procApi: { list: (...args: [string]) => listMock(...args) },
 }));
 
-const { CommandUnavailableError } = await import("@/lib/api");
+const { CommandUnavailableError, CommandTimeoutError } = await import("@/lib/api");
 const { ProcessPanel } = await import("./ProcessPanel");
 
 function renderPanel(root = "/repo"): ReactElement {
@@ -83,4 +83,30 @@ test("an empty root does not call the API and shows a placeholder instead", () =
 
   expect(screen.getByText("worktree を選択してください")).toBeInTheDocument();
   expect(listMock).not.toHaveBeenCalled();
+});
+
+// 無いと壊れる: タイムアウト時に前回値まで消えると、動いているプロセスが
+// 一時的に「無い」ように見えてしまう。
+test("a later poll timeout keeps the previous process list visible while showing a warning", async () => {
+  listMock
+    .mockResolvedValueOnce({ processes: [proc({ pid: 10, command: "zsh" })] })
+    .mockRejectedValueOnce(new CommandTimeoutError("プロセス一覧の取得がタイムアウトしました"));
+
+  const client = new QueryClient();
+  const { rerender } = render(
+    <QueryClientProvider client={client}>
+      <ProcessPanel root="/repo" />
+    </QueryClientProvider>,
+  );
+  await screen.findByText("zsh");
+
+  await client.refetchQueries({ queryKey: ["proc-list", "/repo"] }).catch(() => {});
+  rerender(
+    <QueryClientProvider client={client}>
+      <ProcessPanel root="/repo" />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText(/プロセス一覧の取得がタイムアウトしました/)).toBeInTheDocument();
+  expect(screen.getByText("zsh")).toBeInTheDocument();
 });
