@@ -24,6 +24,7 @@ import { createDockerLogsWss } from "./docker/logsWs";
 import { spawnDockerLogs } from "./docker/logsSpawn";
 import { createDockerRunner } from "./docker/runner";
 import { ensureHwShim } from "./hw-shim";
+import { createInboxService } from "./inbox/service";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
 import { spawnHerdr } from "./terminal/pty";
 import { createTermWss } from "./terminal/ws";
@@ -116,6 +117,14 @@ const decision = createDecisionRuntime({
 // F13-9: pick back up any decision whose delivery was mid-backoff when the process last exited.
 await decision.delivery.drainPending();
 
+const inbox = createInboxService({
+  reviewRepository: review.repository,
+  askRepository: ask.repository,
+  decisionRepository: decision.repository,
+  state: runtime.state,
+  resolver: runtime.resolver,
+});
+
 const fetchRunner = createFetchRunner();
 
 // Shared with `/ws/docker-logs` (main.ts's upgradeRouter.add below) so both
@@ -142,6 +151,7 @@ const api = createApp({
   },
   docker: { allowedRoots: config.allowedRoots, cache: dockerCache },
   proc: { allowedRoots: config.allowedRoots },
+  inbox: { service: inbox },
 });
 
 const app = new Hono().route("/", api);

@@ -18,6 +18,9 @@ const ToolSearchSchema = v.object({
   /** decisions タブ専用: 選択中の判断依頼 id。無ければ一覧を描く。`path`/`line`
    * と同様、タブ切替で落とす。 */
   id: v.optional(v.pipe(v.string(), v.minLength(1))),
+  /** Inbox ダイアログの開閉（docs/ui-redesign.md §5.4）。タブと違い落とさない —
+   * リロードで復元、閉じる操作で消す。 */
+  inbox: v.optional(v.literal("1")),
 });
 
 export type ToolSearch = v.InferOutput<typeof ToolSearchSchema>;

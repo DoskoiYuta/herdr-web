@@ -19,6 +19,7 @@ import {
   UploadResponseSchema,
 } from "../../contract/fs";
 import { DockerContainersResponseSchema } from "../../contract/docker";
+import { InboxResponseSchema } from "../../contract/inbox";
 import { ProcListResponseSchema } from "../../contract/proc";
 import {
   type CreateReviewRequest,
@@ -52,6 +53,7 @@ import {
 export type { ForDiffMatch } from "../../contract/review";
 export type { Ask, AskWithSession, ForFileMatch } from "../../contract/ask";
 export type { Decision } from "../../contract/decision";
+export type { InboxItem, InboxResponse, InboxSection } from "../../contract/inbox";
 
 /**
  * Hono RPC クライアント。`AppType` は type-only import のみ許可されている
@@ -655,6 +657,16 @@ export const decisionApi = {
     const res = await client.api.decision[":id"].resend.$post({ param: { id } });
     if (!res.ok) throw await decisionApiError(res, "POST /api/decision/:id/resend failed");
     return v.parse(DecisionSchema, await res.json());
+  },
+};
+
+export const inboxApi = {
+  async get(params: { worktree?: string } = {}) {
+    const res = await client.api.inbox.$get({
+      query: params.worktree !== undefined ? { worktree: params.worktree } : {},
+    });
+    if (!res.ok) throw new Error(`GET /api/inbox failed: ${res.status}`);
+    return v.parse(InboxResponseSchema, await res.json());
   },
 };
 

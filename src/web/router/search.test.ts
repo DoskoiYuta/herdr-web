@@ -32,4 +32,16 @@ describe("parseToolSearch", () => {
     expect(parseToolSearch({ id: "abc123" })).toEqual({ id: "abc123" });
     expect(parseToolSearch({ id: "" })).toEqual({});
   });
+
+  // 無いと壊れる: `?inbox=1` をリロードしても Inbox ダイアログが復元されない。
+  // 数値化された `1`（TanStack Router の既定 search parser の挙動）と不正値の
+  // 両方を確かめる。
+  test.each([
+    [1, { inbox: "1" }],
+    ["1", { inbox: "1" }],
+    ["0", {}],
+    [undefined, {}],
+  ] as const)("parseToolSearch({ inbox: %s }) -> %s", (raw, expected) => {
+    expect(parseToolSearch({ inbox: raw })).toEqual(expected);
+  });
 });

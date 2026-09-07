@@ -15,10 +15,13 @@ import {
   Outlet,
   redirect,
   useNavigate,
+  useParams,
+  useSearch,
   type RouterHistory,
 } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen, TerminalIcon } from "lucide-react";
+import { InboxDialog } from "@/components/inbox/InboxDialog";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
@@ -28,7 +31,7 @@ import { ToolPane } from "@/components/tool/ToolPane";
 import { useHerdrState, useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
 import type { AskFileLocation } from "@/components/sidebar/AskSessionRow";
-import { isMaximizeToggleKey } from "@/lib/termKeys";
+import { isInboxToggleKey, isMaximizeToggleKey } from "@/lib/termKeys";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_LAYOUT,
@@ -85,6 +88,26 @@ function RootLayout() {
   const { send } = useHerdrStoreActions();
   const navigate = useNavigate();
   const { openLocation } = useOpenWorktreeLocation();
+  // Inbox の開閉は search `inbox`（`/focus/$tab` の一部）が正 — リロードで復元、
+  // 戻るで閉じる（ui-redesign.md §5.4）。
+  const inboxSearch = useSearch({ strict: false, select: (s) => s.inbox });
+  const inboxOpen = inboxSearch === "1";
+  const currentTab = useParams({ strict: false, select: (p) => p.tab }) ?? "diff";
+  const setInboxOpen = useCallback(
+    (nextOpen: boolean) => {
+      void navigate({
+        to: "/focus/$tab",
+        params: { tab: currentTab },
+        search: (prev) => ({ ...prev, inbox: nextOpen ? "1" : undefined }),
+      });
+    },
+    [navigate, currentTab],
+  );
+  const toggleInbox = useCallback(() => setInboxOpen(!inboxOpen), [inboxOpen, setInboxOpen]);
+  const toggleInboxRef = useRef(toggleInbox);
+  useEffect(() => {
+    toggleInboxRef.current = toggleInbox;
+  }, [toggleInbox]);
 
   const persist = useCallback((next: Layout) => {
     setLayout(next);
@@ -130,9 +153,15 @@ function RootLayout() {
   useEffect(() => {
     function onKeydown(event: KeyboardEvent) {
       if (isTypingTarget(document.activeElement)) return;
-      if (!isMaximizeToggleKey(event)) return;
-      event.preventDefault();
-      toggleLastMaximizedRef.current();
+      if (isMaximizeToggleKey(event)) {
+        event.preventDefault();
+        toggleLastMaximizedRef.current();
+        return;
+      }
+      if (isInboxToggleKey(event)) {
+        event.preventDefault();
+        toggleInboxRef.current();
+      }
     }
     document.addEventListener("keydown", onKeydown);
     return () => document.removeEventListener("keydown", onKeydown);
@@ -166,8 +195,7 @@ function RootLayout() {
     [handleSelectPane, navigate],
   );
 
-  // Inbox ダイアログ本体は未実装（docs/ui-redesign.md §5.1/§9）。
-  const handleOpenInbox = useCallback(() => {}, []);
+  const handleOpenInbox = useCallback(() => setInboxOpen(true), [setInboxOpen]);
 
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
   const handleSidebarLayoutChange = useCallback(
@@ -276,6 +304,7 @@ function RootLayout() {
               fontSize={clientConfig?.terminal.fontSize}
               lineHeight={clientConfig?.terminal.lineHeight}
               onToggleMaximize={toggleLastMaximized}
+              onToggleInbox={toggleInbox}
             />
           </div>
         </div>
@@ -337,6 +366,8 @@ function RootLayout() {
           <Outlet />
         </div>
       </aside>
+
+      <InboxDialog open={inboxOpen} onOpenChange={setInboxOpen} />
     </div>
   );
 }
