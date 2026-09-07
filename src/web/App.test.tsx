@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { createMemoryHistory } from "@tanstack/react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ServerEventMessage } from "@contract/events";
+import type { InboxResponse } from "@contract/inbox";
 import { App } from "./App";
 import { createAppRouter } from "./router";
 
@@ -67,6 +68,9 @@ vi.mock("@/lib/api", () => ({
   askApi: {
     counts: vi.fn(async () => ({ unresolved: 0, byPath: {}, replied: 0 })),
   },
+  inboxApi: {
+    get: (params: { worktree?: string }) => inboxGetMock(params),
+  },
   decisionApi: {
     counts: vi.fn(async () => ({ total: 2 })),
     list: vi.fn(async () => [
@@ -121,6 +125,10 @@ type EventsHandlers = {
 const sendMock = vi.fn();
 const closeMock = vi.fn();
 const handlersLog: EventsHandlers[] = [];
+const inboxGetMock = vi.fn<(params: { worktree?: string }) => Promise<InboxResponse>>(async () => ({
+  items: [],
+  counts: { total: 0, bySection: {} } as never,
+}));
 
 vi.mock("@/lib/eventsSocket", () => ({
   connectEvents: vi.fn((_loc: unknown, opts: EventsHandlers) => {
@@ -183,6 +191,8 @@ describe("App", () => {
     sendMock.mockClear();
     closeMock.mockClear();
     handlersLog.length = 0;
+    inboxGetMock.mockClear();
+    inboxGetMock.mockResolvedValue({ items: [], counts: { total: 0, bySection: {} } as never });
   });
 
   test("renders the three-column layout skeleton", async () => {
@@ -505,5 +515,168 @@ describe("App", () => {
       ),
     );
     expect(router.state.location.search).not.toHaveProperty("root");
+  });
+
+  // 実走で見つかった不具合: InboxDialog の行クリックが navigate した直後に
+  // onOpenChange(false) も呼ぶと、router.tsx の setInboxOpen がその場でまた
+  // navigate してしまい、search はそのまま tab だけ元に戻る。
+  describe("Inbox row clicks", () => {
+    function emitOtherWorktreeTree() {
+      emit({
+        type: "tree",
+        repos: [
+          {
+            key: "/Users/dev/other/.git",
+            name: "other",
+            counts: { blocked: 0, done: 0 },
+            worktrees: [
+              {
+                root: "/Users/dev/other",
+                branch: "main",
+                isMain: true,
+                panes: [
+                  {
+                    paneId: "p-other",
+                    workspaceId: "w-other",
+                    workspaceLabel: "w-other",
+                    tabId: "t-other",
+                    tabLabel: null,
+                    label: "session",
+                    agent: "claude",
+                    agentStatus: "working",
+                    terminalTitleStripped: null,
+                    focused: true,
+                    cwd: "/Users/dev/other",
+                    foregroundCwd: "/Users/dev/other",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    // 無いと壊れる: この検証がないと、送信待ちの行を押しても Graph タブに
+    // 留まったまま `root` だけ付き、レビュー下書きを送るための Diff に着地しない。
+    test("clicking an unsent drafts row switches the tab to Diff and clears inbox from the URL", async () => {
+      inboxGetMock.mockResolvedValue({
+        items: [
+          {
+            section: "unsent",
+            kind: "review",
+            worktreeRoot: "/Users/dev/other",
+            repoKey: "/Users/dev/other/.git",
+            count: 2,
+            at: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        counts: { total: 1, bySection: { unsent: 1 } } as never,
+      });
+      const { router } = await renderApp("/focus/graph?inbox=1");
+      emit(focusMessage());
+      emitOtherWorktreeTree();
+
+      fireEvent.click(await screen.findByText("送信待ち (2)"));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
+      expect(router.state.location.search).toMatchObject({ root: "/Users/dev/other" });
+      expect(router.state.location.search).not.toHaveProperty("inbox");
+    });
+
+    // 無いと壊れる: 返信が届いたレビュー行を押しても Graph タブのまま
+    // `root` だけ付き、返信を読むための Diff の該当行に着地しない。
+    test("clicking a replied review row switches the tab to Diff with the location and clears inbox", async () => {
+      inboxGetMock.mockResolvedValue({
+        items: [
+          {
+            section: "replied",
+            kind: "review",
+            id: "r1",
+            title: "a.ts:L10",
+            excerpt: "because x",
+            worktreeRoot: "/Users/dev/other",
+            repoKey: "/Users/dev/other/.git",
+            agent: "claude",
+            at: "2026-01-01T00:00:00.000Z",
+            location: { path: "a.ts", line: 10 },
+          },
+        ],
+        counts: { total: 1, bySection: { replied: 1 } } as never,
+      });
+      const { router } = await renderApp("/focus/graph?inbox=1");
+      emit(focusMessage());
+      emitOtherWorktreeTree();
+
+      fireEvent.click(await screen.findByText("a.ts:L10"));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
+      expect(router.state.location.search).toMatchObject({
+        path: "a.ts",
+        line: 10,
+        root: "/Users/dev/other",
+      });
+      expect(router.state.location.search).not.toHaveProperty("inbox");
+    });
+
+    // 無いと壊れる: 判断依頼の未配達行を押しても Graph タブのまま `id` だけ付き、
+    // 判断依頼ビューが Decisions タブとして開かない。
+    test("clicking an undelivered decision row switches the tab to Decisions with its id and clears inbox", async () => {
+      inboxGetMock.mockResolvedValue({
+        items: [
+          {
+            section: "undelivered",
+            kind: "decision",
+            id: "d9",
+            title: "どちらにする?",
+            detail: "A or B?",
+            worktreeRoot: "/Users/dev/project",
+            repoKey: "/Users/dev/project/.git",
+            agent: "claude",
+            at: "2026-01-01T00:00:00.000Z",
+            delivery: { state: "agent_blocked", canResend: true },
+          },
+        ],
+        counts: { total: 1, bySection: { undelivered: 1 } } as never,
+      });
+      const { router } = await renderApp("/focus/graph?inbox=1");
+      emit(focusMessage());
+
+      fireEvent.click(await screen.findByText("どちらにする?"));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/focus/decisions"));
+      expect(router.state.location.search).toMatchObject({ id: "d9" });
+      expect(router.state.location.search).not.toHaveProperty("inbox");
+    });
+
+    // 無いと壊れる: blocked 行はフォーカス移動だけなので、ここまで直しても
+    // 巻き込みで tab が変わってしまうと Graph を見ていた最中に画面ごと切り替わる。
+    test("clicking a blocked agent row sends focus-pane and closes the dialog without changing the tab", async () => {
+      inboxGetMock.mockResolvedValue({
+        items: [
+          {
+            section: "blocked",
+            kind: "agent",
+            paneId: "p-other",
+            agent: "claude",
+            label: null,
+            workspaceLabel: "other",
+            tabLabel: "tab",
+            worktreeRoot: "/Users/dev/other",
+            at: null,
+          },
+        ],
+        counts: { total: 1, bySection: { blocked: 1 } } as never,
+      });
+      const { router } = await renderApp("/focus/graph?inbox=1");
+      emit(focusMessage());
+      emitOtherWorktreeTree();
+
+      fireEvent.click(await screen.findByText("claude"));
+
+      expect(sendMock).toHaveBeenCalledWith({ type: "focus-pane", pane: "p-other" });
+      await waitFor(() => expect(router.state.location.search).not.toHaveProperty("inbox"));
+      expect(router.state.location.pathname).toBe("/focus/graph");
+    });
   });
 });

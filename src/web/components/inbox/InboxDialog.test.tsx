@@ -187,7 +187,12 @@ describe("sections", () => {
 });
 
 describe("row clicks", () => {
-  test("clicking a replied review row focuses the pane and closes the dialog", async () => {
+  // 無いと壊れる: replied/unsent/undelivered-decision の行がここで
+  // onOpenChange(false) も呼んでしまうと、router.tsx の setInboxOpen が
+  // navigate の直後にもう一度 navigate し、行クリックの navigate が付けた
+  // タブ・search を後勝ちで打ち消す（App.test.tsx の Inbox row clicks 参照）。
+  // Inbox はこの navigate 自体が search から `inbox` を落とすことで閉じる。
+  test("clicking a replied review row focuses the pane without calling onOpenChange", async () => {
     inboxGetMock.mockResolvedValue({
       items: [
         {
@@ -212,7 +217,7 @@ describe("row clicks", () => {
     fireEvent.click(screen.getByTestId("inbox-row"));
 
     expect(store.send).toHaveBeenCalledWith({ type: "focus-pane", pane: "p1" });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   // 無いと壊れる: old 側にアンカーされた review の location が side を運ばないと、
@@ -275,7 +280,7 @@ describe("row clicks", () => {
     );
   });
 
-  test("clicking an unsent row focuses the pane and closes the dialog", async () => {
+  test("clicking an unsent row focuses the pane without calling onOpenChange", async () => {
     inboxGetMock.mockResolvedValue({
       items: [
         {
@@ -296,7 +301,7 @@ describe("row clicks", () => {
     fireEvent.click(screen.getByTestId("inbox-row"));
 
     expect(store.send).toHaveBeenCalledWith({ type: "focus-pane", pane: "p1" });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   test("clicking a blocked row focuses the pane and closes the dialog", async () => {
@@ -326,7 +331,7 @@ describe("row clicks", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  test("clicking an undelivered decision row navigates to the decisions tab and closes", async () => {
+  test("clicking an undelivered decision row navigates to the decisions tab without calling onOpenChange", async () => {
     inboxGetMock.mockResolvedValue({
       items: [
         {
@@ -349,9 +354,9 @@ describe("row clicks", () => {
 
     fireEvent.click(screen.getByTestId("inbox-row"));
 
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-    expect(router.state.location.pathname).toBe("/focus/decisions");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/focus/decisions"));
     expect(router.state.location.search).toMatchObject({ id: "d1" });
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   // 無いと壊れる: review/ask の undelivered 行がクリックで何かに遷移してしまうと、

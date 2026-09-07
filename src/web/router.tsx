@@ -15,7 +15,6 @@ import {
   Outlet,
   redirect,
   useNavigate,
-  useParams,
   useSearch,
   type RouterHistory,
 } from "@tanstack/react-router";
@@ -92,16 +91,17 @@ function RootLayout() {
   // 戻るで閉じる（ui-redesign.md §5.4）。
   const inboxSearch = useSearch({ strict: false, select: (s) => s.inbox });
   const inboxOpen = inboxSearch === 1;
-  const currentTab = useParams({ strict: false, select: (p) => p.tab }) ?? "diff";
   const setInboxOpen = useCallback(
     (nextOpen: boolean) => {
+      // `to`/`params` を指定しない — 現在のルートに留まる。タブをクロージャで
+      // 捕まえて明示指定すると、Inbox の行クリックで先に別タブへ navigate
+      // した直後にこれが呼ばれたとき、古いタブへ後勝ちで戻ってしまう。
       void navigate({
-        to: "/focus/$tab",
-        params: { tab: currentTab },
+        to: ".",
         search: (prev) => ({ ...prev, inbox: nextOpen ? 1 : undefined }),
       });
     },
-    [navigate, currentTab],
+    [navigate],
   );
   const toggleInbox = useCallback(() => setInboxOpen(!inboxOpen), [inboxOpen, setInboxOpen]);
   const toggleInboxRef = useRef(toggleInbox);

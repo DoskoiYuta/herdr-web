@@ -124,6 +124,17 @@ describe("RepoWorkspaceRow focus accent", () => {
     );
     expect(screen.getByTestId("pane-row-p1")).toHaveAttribute("aria-current", "true");
   });
+
+  // 無いと壊れる: フォーカスの視覚的な手がかりが aria-current だけになり、
+  // 画面を見ているユーザーがどの workspace にフォーカスがあるか分からなくなる。
+  test.each([
+    ["shows the focus dot when it is the focused workspace", "w1", true],
+    ["hides the focus dot otherwise", null, false],
+  ])("%s", (_label, focusedWorkspaceId, expectDot) => {
+    render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId={focusedWorkspaceId} />);
+    const row = screen.getByTestId("workspace-row-w1");
+    expect(within(row).queryByTestId("focus-dot") !== null).toBe(expectDot);
+  });
 });
 
 describe("RepoWorkspaceRow row content", () => {

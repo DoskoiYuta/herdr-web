@@ -96,9 +96,8 @@ export function AskSessionRow({
             aria-current={focused ? "true" : undefined}
             title="フォーカスを移す（ターミナルも切り替わります）"
             data-testid={`ask-session-row-${workspace.workspaceId}`}
-            style={{ borderLeftColor: focused ? "var(--focus)" : "transparent" }}
             className={cn(
-              "flex w-full items-center gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-left text-xs hover:bg-muted",
+              "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted",
               focused && "bg-sidebar-accent font-medium",
             )}
           >
@@ -107,6 +106,13 @@ export function AskSessionRow({
               {askRowLabel(ask) ?? workspace.workspaceLabel}
             </span>
             {pane && <AgentStatusDot status={pane.agentStatus} />}
+            {focused && (
+              <span
+                data-testid="focus-dot"
+                aria-hidden="true"
+                className="size-1.5 shrink-0 rounded-full bg-focus"
+              />
+            )}
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>

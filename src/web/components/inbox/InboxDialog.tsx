@@ -160,15 +160,20 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
     }
   }
 
+  // 遷移する行は onOpenChange(false) を別途呼ばない — navigate 自体が search を
+  // 丸ごと置き換えて `inbox` を落とすので、Inbox はその URL 変化で閉じる
+  // （router.tsx の inboxOpen は search 由来）。ここで両方呼ぶと、router.tsx の
+  // setInboxOpen が同じタブ操作の中でもう一度 navigate してしまい、後勝ちで
+  // タブが元に戻る。フォーカス移動だけの blocked 行は navigate しないので、
+  // ここで明示的に閉じる。
   function handleRowClick(item: InboxItem) {
     if (item.section === "undelivered") {
       if (item.kind !== "decision") return;
       void navigate({
         to: "/focus/$tab",
         params: { tab: "decisions" },
-        search: (prev) => ({ ...prev, id: item.id }),
+        search: { id: item.id },
       });
-      close();
       return;
     }
     if (item.section === "replied") {
@@ -181,12 +186,10 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
         from: item.location.from,
         to: item.location.to,
       });
-      close();
       return;
     }
     if (item.section === "unsent") {
       openLocation({ worktreeRoot: item.worktreeRoot, tab: "diff" });
-      close();
       return;
     }
     send({ type: "focus-pane", pane: item.paneId });
