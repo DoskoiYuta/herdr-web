@@ -279,9 +279,21 @@ describe("ToolPane", () => {
     expect(diffPanelMountCount).toBe(2);
   });
 
-  test("shows only the herdr 未接続 message when no worktree is selected (F2-3)", async () => {
+  // レビュー指摘（High 1）: worktree 未選択でも Decisions は worktree 横断で
+  // 動くはずなので、タブ列自体は常に描画し、観察タブの中身だけ空状態にする。
+  // 無いと壊れる: 起動直後や全 pane クローズ後、Decisions タブへ到達できない。
+  test("shows the tab list and an empty-worktree notice in observation tabs when no worktree is selected (F2-3)", async () => {
     await renderFocused({ worktreeRoot: null });
-    expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
+    expect(screen.getAllByText("herdr 未接続 / worktree 未選択").length).toBeGreaterThan(0);
+    const tabs = screen.getAllByRole("tab").map((el) => el.textContent);
+    expect(tabs).toEqual(["Files", "Graph", "Diff", "Decisions", "Process", "Compose"]);
+    expect(screen.queryByTestId("diff-panel-stub")).not.toBeInTheDocument();
+  });
+
+  test("Decisions tab works with no worktree selected", async () => {
+    await renderFocused({ worktreeRoot: null });
+    await selectTab("Decisions");
+    expect(screen.getByTestId("decision-list-stub")).toBeInTheDocument();
   });
 
   // ui-redesign.md §5.4: タブは Files/Graph/Diff/Decisions/Process/Compose の
@@ -523,6 +535,38 @@ describe("ToolPane", () => {
       expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
         "graph:/Users/dev/project/vendor/lib",
       );
+    });
+
+    // レビュー指摘（Medium 3）: FilesPanel は ask の作成/for-file に
+    // `{ repo: repoKey, worktreeRoot: repo(=subRepoRoot) }` を使う。useAskCounts
+    // にも同じ組を渡さないと、サブリポジトリ選択中は常に 0 になる。
+    test("Files badge follows the selected sub-repo's root, not the worktree root", async () => {
+      subreposMock.mockResolvedValueOnce({
+        repos: [
+          { id: "", name: "project", root: "/Users/dev/project", kind: "root" as const },
+          {
+            id: "vendor/lib",
+            name: "lib",
+            root: "/Users/dev/project/vendor/lib",
+            kind: "submodule" as const,
+          },
+        ],
+      });
+      askCountsMock.mockImplementation(async (...args: unknown[]) => {
+        const params = args[0] as { repo: string; worktree: string };
+        return params.worktree === "/Users/dev/project/vendor/lib"
+          ? askCounts({ replied: 4 })
+          : askCounts();
+      });
+      await renderFocused({ repoKey: "/Users/dev/project/.git" });
+
+      const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
+      fireEvent.click(trigger);
+      const option = await screen.findByRole("option", { name: /lib/ });
+      fireEvent.click(option);
+
+      const filesTab = await screen.findByRole("tab", { name: /^Files/ });
+      await waitFor(() => expect(filesTab).toHaveTextContent("4"));
     });
 
     test("resets the sub-repo selection back to the worktree root when worktreeRoot changes", async () => {

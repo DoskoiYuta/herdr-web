@@ -3,7 +3,7 @@
 // 送信先候補が複数のときのピッカーダイアログ、候補カードのプレビュー取得
 // （usePanePreview）もここに閉じる。
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaneRow } from "@contract/events";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -103,6 +103,16 @@ export function SendDraftsButton({
   const [sendError, setSendError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // DiffPanel の remount（比較範囲変更・タブ切替）でこのコンポーネントごと
+  // unmount されうる — 送信中にそれが起きても、戻ってきた await の続きで
+  // setState や `onSent`（親の tick 更新）を呼ばない。
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const sendTo = useCallback(
     async (pane?: string) => {
       if (!repoKey || sendBusy) return;
@@ -110,16 +120,18 @@ export function SendDraftsButton({
       setSendError(null);
       try {
         await reviewApi.send({ repo: repoKey, worktreeRoot, pane });
+        if (!mountedRef.current) return;
         onSent();
         setPickerOpen(false);
       } catch (err) {
+        if (!mountedRef.current) return;
         setSendError(
           err instanceof SendTargetError
             ? SEND_TARGET_ERROR_MESSAGE[err.type]
             : "送信に失敗しました",
         );
       } finally {
-        setSendBusy(false);
+        if (mountedRef.current) setSendBusy(false);
       }
     },
     [repoKey, worktreeRoot, sendBusy, onSent],

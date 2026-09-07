@@ -188,7 +188,8 @@ describe("App", () => {
     await renderApp();
     expect(screen.getByLabelText("サイドバー")).toBeInTheDocument();
     expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
-    expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
+    // ヘッダーと Diff タブの空状態の 2 箇所に出る（ToolPane.test.tsx で検証済み）。
+    expect(screen.getAllByText("herdr 未接続 / worktree 未選択").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("separator").length).toBeGreaterThan(0);
   });
 
@@ -196,7 +197,9 @@ describe("App", () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
     // ツールルートは `hidden` で隠すだけでアンマウントしない。
-    expect(screen.getByText("herdr 未接続 / worktree 未選択")).not.toBeVisible();
+    for (const el of screen.getAllByText("herdr 未接続 / worktree 未選択")) {
+      expect(el).not.toBeVisible();
+    }
     expect(screen.getByRole("button", { name: "ツール領域を開く" })).toBeInTheDocument();
   });
 
@@ -205,6 +208,21 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
     const stored = JSON.parse(localStorage.getItem("herdr-web:layout") ?? "{}");
     expect(stored.toolCollapsed).toBe(true);
+  });
+
+  // レビュー指摘（High 2）: ⌘⇧M でツールを最大化しても Terminal は PTY 接続を
+  // 保つため常にマウントされたままのはず。無いと壊れる: レールを JSX 分岐で
+  // 描くと `<Terminal>` 自体が消え、最大化のたびに PTY 接続がやり直しになる。
+  test("maximizing the tool area with ⌘⇧M does not unmount the terminal", async () => {
+    await renderApp();
+    expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "m", metaKey: true, shiftKey: true });
+    expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ターミナルに戻す" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "m", metaKey: true, shiftKey: true });
+    expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
   });
 
   test("a focus message switches the displayed worktree in the tool pane", async () => {
@@ -271,6 +289,17 @@ describe("App", () => {
     expect(await screen.findByText("依頼A")).toBeInTheDocument();
     expect(await screen.findByText("依頼B")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute("data-state", "active");
+  });
+
+  // レビュー指摘（High 1）: Decisions は worktree 横断なので、herdr の focus
+  // が無い（起動直後・全 pane クローズ後）状態でも動くはず。無いと壊れる:
+  // ToolPane が worktree 未選択で早期 return すると、このバッジ自体は出ても
+  // 押した先の一覧が表示されない。
+  test("the decision badge works with no herdr focus at all", async () => {
+    await renderApp();
+    fireEvent.click(await screen.findByTestId("decision-count-badge"));
+    expect(await screen.findByText("依頼A")).toBeInTheDocument();
+    expect(await screen.findByText("依頼B")).toBeInTheDocument();
   });
 
   // F14-7 の振る舞いテスト（URL が画面状態の正であることの確認）。

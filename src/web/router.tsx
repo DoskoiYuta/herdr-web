@@ -118,16 +118,25 @@ function RootLayout() {
     setMaximized(layout.maximized !== null ? null : lastMaximizedRef.current);
   }, [layout.maximized, setMaximized]);
 
+  // グローバルの keydown リスナーは 1 回だけ登録する（Terminal.tsx の
+  // `onToggleMaximizeRef` と同じやり方）— `toggleLastMaximized` は `layout`
+  // が変わるたびに新しい関数になるので、依存配列に積むとリスナーが
+  // 張り直され続ける。
+  const toggleLastMaximizedRef = useRef(toggleLastMaximized);
+  useEffect(() => {
+    toggleLastMaximizedRef.current = toggleLastMaximized;
+  }, [toggleLastMaximized]);
+
   useEffect(() => {
     function onKeydown(event: KeyboardEvent) {
       if (isTypingTarget(document.activeElement)) return;
       if (!isMaximizeToggleKey(event)) return;
       event.preventDefault();
-      toggleLastMaximized();
+      toggleLastMaximizedRef.current();
     }
     document.addEventListener("keydown", onKeydown);
     return () => document.removeEventListener("keydown", onKeydown);
-  }, [toggleLastMaximized]);
+  }, []);
 
   const handleSelectPane = useCallback(
     (pane: string) => {
@@ -166,7 +175,6 @@ function RootLayout() {
     [layout, persist],
   );
 
-  const terminalMaximized = layout.maximized === "tool";
   const toolMaximized = layout.maximized === "tool";
   // aside の幅: tool 最大化中は flex-1（style で幅を指定しない）、terminal
   // 最大化中は 0（toolCollapsed と同じ扱いだが独立した状態）、それ以外は
@@ -203,12 +211,9 @@ function RootLayout() {
       />
 
       <main
-        className={cn(
-          "flex min-h-0 flex-col",
-          terminalMaximized ? "w-9 shrink-0" : "min-w-0 flex-1",
-        )}
+        className={cn("flex min-h-0 flex-col", toolMaximized ? "w-9 shrink-0" : "min-w-0 flex-1")}
       >
-        {terminalMaximized ? (
+        {toolMaximized && (
           <div className="flex h-full flex-col items-center gap-2 py-2">
             <button
               type="button"
@@ -233,43 +238,46 @@ function RootLayout() {
               })()}
             <TerminalIcon className="size-4 text-muted-foreground" />
           </div>
-        ) : (
-          <>
-            <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border px-2 text-xs text-muted-foreground">
-              <TerminalIcon className="size-3.5 shrink-0" />
-              <span className="truncate">herdr · {terminalHeaderLabel}</span>
-              <span className="flex-1" />
-              {layout.maximized === "terminal" ? (
-                <button
-                  type="button"
-                  onClick={() => toggleMaximized("terminal")}
-                  aria-label="元に戻す"
-                  className="rounded-md p-1 hover:bg-muted"
-                >
-                  <Minimize2 className="size-3.5" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => toggleMaximized("terminal")}
-                  aria-label="ターミナルを最大化"
-                  className="rounded-md p-1 hover:bg-muted"
-                >
-                  <Maximize2 className="size-3.5" />
-                </button>
-              )}
-            </div>
-            <div className="min-h-0 flex-1">
-              <Terminal
-                className="h-full w-full"
-                fontFamily={clientConfig?.terminal.fontFamily}
-                fontSize={clientConfig?.terminal.fontSize}
-                lineHeight={clientConfig?.terminal.lineHeight}
-                onToggleMaximize={toggleLastMaximized}
-              />
-            </div>
-          </>
         )}
+        {/* `hidden`（display:none）で隠すだけで Terminal はアンマウントしない —
+         * PTY 接続を切らないため（D7）。復帰時、コンテナのボックスサイズが
+         * 変わる（0 → 実寸）ことで xterm の ResizeObserver が発火し、fit() が
+         * 再計算される。 */}
+        <div hidden={toolMaximized} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border px-2 text-xs text-muted-foreground">
+            <TerminalIcon className="size-3.5 shrink-0" />
+            <span className="truncate">herdr · {terminalHeaderLabel}</span>
+            <span className="flex-1" />
+            {layout.maximized === "terminal" ? (
+              <button
+                type="button"
+                onClick={() => toggleMaximized("terminal")}
+                aria-label="元に戻す"
+                className="rounded-md p-1 hover:bg-muted"
+              >
+                <Minimize2 className="size-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => toggleMaximized("terminal")}
+                aria-label="ターミナルを最大化"
+                className="rounded-md p-1 hover:bg-muted"
+              >
+                <Maximize2 className="size-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="min-h-0 flex-1">
+            <Terminal
+              className="h-full w-full"
+              fontFamily={clientConfig?.terminal.fontFamily}
+              fontSize={clientConfig?.terminal.fontSize}
+              lineHeight={clientConfig?.terminal.lineHeight}
+              onToggleMaximize={toggleLastMaximized}
+            />
+          </div>
+        </div>
       </main>
 
       {!layout.toolCollapsed && layout.maximized === null && (

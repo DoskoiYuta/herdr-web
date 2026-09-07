@@ -119,6 +119,16 @@ function basename(path: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
+/** 観察タブ（Files/Graph/Diff/Process/Compose）の worktree 未選択時の空状態。
+ * Decisions は worktree 横断なので、この空状態を経由しない（常に動く）。 */
+function EmptyWorktreeNotice() {
+  return (
+    <div className="flex h-full w-full items-center justify-center p-4 text-center">
+      <p className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</p>
+    </div>
+  );
+}
+
 /** `/focus/$tab` の唯一の下で描画される — URL がタブ・比較範囲・選択サブ
  * リポジトリ・ジャンプ先・選択中の判断依頼の唯一の正になる（plan.md F2-4:
  * ピン留めは持たない）。このコンポーネント自身はローカル state を持たない
@@ -317,9 +327,11 @@ export function ToolPane() {
 
   // ui-redesign.md §5.3: worktree 見出し行のブランチ表示（既存の
   // `RootResponse.branch` を使う）。サブリポジトリ選択の有無に関わらず、常に
-  // worktreeRoot 自身のブランチを表示する。
+  // worktreeRoot 自身のブランチを表示する。他の tick 駆動クエリと同じ規約で
+  // repoChangedTick をキーに含める — 同じ worktree で checkout してもブランチ
+  // 名が古いまま固定されないようにする。
   const worktreeRootInfoQuery = useQuery({
-    queryKey: ["git-root", worktreeRoot],
+    queryKey: ["git-root", worktreeRoot, repoChangedTick],
     queryFn: () => gitApi.root(worktreeRoot as string),
     enabled: worktreeRoot !== null,
     staleTime: Infinity,
@@ -366,9 +378,12 @@ export function ToolPane() {
   );
 
   // Files タブの通知バッジ（ui-redesign.md §5.4: replied な質問の件数）。
+  // FilesPanel が ask 作成/for-file に使う組（`repoKey` + `subRepoRoot` —
+  // FilesPanel の `worktreeRoot: repo` prop）と揃える。worktreeRoot をそのまま
+  // 渡すとサブリポジトリ選択中はサーバー側の完全一致で絞られ、常に 0 になる。
   const [askTick, setAskTick] = useState(0);
   const askCountsQuery = useAskCounts(
-    resolvedRepoKey && worktreeRoot ? { repo: resolvedRepoKey, worktree: worktreeRoot } : null,
+    resolvedRepoKey && subRepoRoot ? { repo: resolvedRepoKey, worktree: subRepoRoot } : null,
     askTick + repoChangedTick,
   );
   const askReplied = askCountsQuery.data?.replied ?? 0;
@@ -395,14 +410,6 @@ export function ToolPane() {
 
   const handleDraftsSent = useCallback(() => setReviewTick((t) => t + 1), []);
 
-  if (!worktreeRoot) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-4 text-center">
-        <p className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full w-full flex-col">
       {openLocationMessage && (
@@ -412,27 +419,33 @@ export function ToolPane() {
       )}
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
         <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span className="truncate text-sm font-semibold">{basename(worktreeRoot)}</span>
-            {worktreeBranch && (
-              <span className="shrink-0 text-xs text-muted-foreground">{worktreeBranch}</span>
-            )}
-          </div>
-          <div
-            className="truncate text-xs text-muted-foreground/70"
-            title={
-              selectedSubRepo && selectedSubRepo.id !== ""
-                ? `${worktreeRoot}/${selectedSubRepo.id}`
-                : worktreeRoot
-            }
-          >
-            {selectedSubRepo && selectedSubRepo.id !== ""
-              ? `${worktreeRoot}/${selectedSubRepo.id}`
-              : worktreeRoot}
-          </div>
+          {worktreeRoot ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="truncate text-sm font-semibold">{basename(worktreeRoot)}</span>
+                {worktreeBranch && (
+                  <span className="shrink-0 text-xs text-muted-foreground">{worktreeBranch}</span>
+                )}
+              </div>
+              <div
+                className="truncate text-xs text-muted-foreground/70"
+                title={
+                  selectedSubRepo && selectedSubRepo.id !== ""
+                    ? `${worktreeRoot}/${selectedSubRepo.id}`
+                    : worktreeRoot
+                }
+              >
+                {selectedSubRepo && selectedSubRepo.id !== ""
+                  ? `${worktreeRoot}/${selectedSubRepo.id}`
+                  : worktreeRoot}
+              </div>
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {subRepos.length > 1 && (
+          {worktreeRoot && subRepos.length > 1 && (
             <Select
               value={toSelectValue(subRepoId)}
               onValueChange={(v) => handleSubRepoChange(fromSelectValue(v))}
@@ -479,82 +492,98 @@ export function ToolPane() {
         </TabsList>
 
         <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
-          <FilesPanel
-            key={subRepoRoot}
-            repo={subRepoRoot}
-            repoChangedTick={repoChangedTick}
-            pollMs={subRepoPollMs}
-            repoKey={resolvedRepoKey}
-            worktreeRoot={worktreeRoot}
-            repos={repos}
-            selectedPath={filesSelectedPath}
-            onSelectedPathChange={handleFilesSelectedPathChange}
-            mdMode={filesMdMode}
-            onMdModeChange={handleFilesMdModeChange}
-            initialLocation={filesInitialLocation}
-            onInitialLocationConsumed={handleFilesInitialLocationConsumed}
-          />
-        </TabsContent>
-
-        <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {comparison && (
-            <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-              <span>
-                選択中: {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => handleTabChange("diff")}
-              >
-                Diff で見る
-              </Button>
-            </div>
-          )}
-          <div className="min-h-0 flex-1">
-            <GraphPanel
+          {worktreeRoot ? (
+            <FilesPanel
+              key={subRepoRoot}
               repo={subRepoRoot}
               repoChangedTick={repoChangedTick}
               pollMs={subRepoPollMs}
-              onSelectCommit={handleSelectCommit}
-              onOpenDiff={openDiffFor}
-              reviewCounts={reviewCounts}
+              repoKey={resolvedRepoKey}
+              worktreeRoot={worktreeRoot}
+              repos={repos}
+              selectedPath={filesSelectedPath}
+              onSelectedPathChange={handleFilesSelectedPathChange}
+              mdMode={filesMdMode}
+              onMdModeChange={handleFilesMdModeChange}
+              initialLocation={filesInitialLocation}
+              onInitialLocationConsumed={handleFilesInitialLocationConsumed}
             />
-          </div>
+          ) : (
+            <EmptyWorktreeNotice />
+          )}
+        </TabsContent>
+
+        <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {worktreeRoot ? (
+            <>
+              {comparison && (
+                <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+                  <span>
+                    選択中: {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleTabChange("diff")}
+                  >
+                    Diff で見る
+                  </Button>
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <GraphPanel
+                  repo={subRepoRoot}
+                  repoChangedTick={repoChangedTick}
+                  pollMs={subRepoPollMs}
+                  onSelectCommit={handleSelectCommit}
+                  onOpenDiff={openDiffFor}
+                  reviewCounts={reviewCounts}
+                />
+              </div>
+            </>
+          ) : (
+            <EmptyWorktreeNotice />
+          )}
         </TabsContent>
 
         <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
-          {comparison && (
-            <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-              <span>
-                {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
-              </span>
-              <Button type="button" size="sm" variant="ghost" onClick={resetToWorktree}>
-                作業ツリーに戻る
-              </Button>
-            </div>
-          )}
-          <DiffPanel
-            key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
-            repo={subRepoRoot}
-            repoKey={resolvedRepoKey}
-            from={comparison?.from}
-            to={comparison?.to}
-            repoChangedTick={repoChangedTick}
-            pollMs={subRepoPollMs}
-            initialLocation={initialLocation}
-            onInitialLocationConsumed={handleInitialLocationConsumed}
-            sendButton={
-              <SendDraftsButton
+          {worktreeRoot ? (
+            <>
+              {comparison && (
+                <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+                  <span>
+                    {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
+                  </span>
+                  <Button type="button" size="sm" variant="ghost" onClick={resetToWorktree}>
+                    作業ツリーに戻る
+                  </Button>
+                </div>
+              )}
+              <DiffPanel
+                key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
+                repo={subRepoRoot}
                 repoKey={resolvedRepoKey}
-                worktreeRoot={subRepoRoot}
-                pendingDrafts={pendingDrafts}
-                agentPanes={agentPanes}
-                onSent={handleDraftsSent}
+                from={comparison?.from}
+                to={comparison?.to}
+                repoChangedTick={repoChangedTick}
+                pollMs={subRepoPollMs}
+                initialLocation={initialLocation}
+                onInitialLocationConsumed={handleInitialLocationConsumed}
+                sendButton={
+                  <SendDraftsButton
+                    repoKey={resolvedRepoKey}
+                    worktreeRoot={subRepoRoot}
+                    pendingDrafts={pendingDrafts}
+                    agentPanes={agentPanes}
+                    onSent={handleDraftsSent}
+                  />
+                }
               />
-            }
-          />
+            </>
+          ) : (
+            <EmptyWorktreeNotice />
+          )}
         </TabsContent>
 
         <TabsContent value="decisions" className="min-h-0 flex-1 overflow-hidden">
@@ -571,11 +600,19 @@ export function ToolPane() {
         </TabsContent>
 
         <TabsContent value="process" className="min-h-0 flex-1 overflow-hidden">
-          <ProcessPanel key={subRepoRoot} root={subRepoRoot} />
+          {worktreeRoot ? (
+            <ProcessPanel key={subRepoRoot} root={subRepoRoot} />
+          ) : (
+            <EmptyWorktreeNotice />
+          )}
         </TabsContent>
 
         <TabsContent value="compose" className="min-h-0 flex-1 overflow-hidden">
-          <DockerPanel key={subRepoRoot} root={subRepoRoot} />
+          {worktreeRoot ? (
+            <DockerPanel key={subRepoRoot} root={subRepoRoot} />
+          ) : (
+            <EmptyWorktreeNotice />
+          )}
         </TabsContent>
       </Tabs>
     </div>

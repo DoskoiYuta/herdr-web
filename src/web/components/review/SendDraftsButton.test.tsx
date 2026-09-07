@@ -148,4 +148,31 @@ describe("SendDraftsButton", () => {
 
     expect(await screen.findByText("この worktree にエージェントがいません")).toBeInTheDocument();
   });
+
+  // レビュー指摘（Low 4）: DiffPanel の remount（比較範囲変更・タブ切替）で
+  // このボタンごと unmount されうる。無いと壊れる: unmount 後に送信が完了
+  // すると、消えたコンポーネントの `onSent`（親の tick 更新）が呼ばれる。
+  test("does not call onSent after the component unmounts before the request resolves", async () => {
+    let resolveSend: (value: { reviews: [] }) => void = () => {};
+    sendMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+    const onSent = vi.fn();
+    const { unmount } = renderButton({
+      pendingDrafts: 1,
+      agentPanes: [pane({ paneId: "claude-1" })],
+      onSent,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信 (1)" }));
+    await waitFor(() => expect(sendMock).toHaveBeenCalled());
+
+    unmount();
+    resolveSend({ reviews: [] });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onSent).not.toHaveBeenCalled();
+  });
 });
