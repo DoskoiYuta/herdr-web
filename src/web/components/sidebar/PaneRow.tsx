@@ -27,7 +27,7 @@ export type PaneRowProps = {
  * Bot）、状態ドット、label/terminal title、tab label を出す 1 行。 */
 export function PaneRow({ pane, focused, sessionId, onSelect }: PaneRowProps) {
   const [copied, setCopied] = useState(false);
-  const title = pane.label ?? pane.terminalTitleStripped;
+  const title = pane.label ?? pane.terminalTitleStripped ?? pane.paneId;
   const KindIcon = pane.agent === "shell" ? Terminal : Bot;
 
   async function copySessionId() {

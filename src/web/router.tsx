@@ -166,7 +166,7 @@ function RootLayout() {
     [handleSelectPane, navigate],
   );
 
-  // M13 まで Inbox ダイアログ本体は無いので no-op（docs/ui-redesign.md §5.1/§9）。
+  // Inbox ダイアログ本体は未実装（docs/ui-redesign.md §5.1/§9）。
   const handleOpenInbox = useCallback(() => {}, []);
 
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;

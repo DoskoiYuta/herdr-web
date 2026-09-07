@@ -80,6 +80,26 @@ describe("RepoWorkspaceRow expand/collapse", () => {
     fireEvent.click(screen.getByLabelText("折りたたむ"));
     expect(screen.queryByTestId("pane-row-p1")).not.toBeInTheDocument();
   });
+
+  // 無いと壊れる: フォーカスがこの workspace に移っても畳まれたままになり、
+  // 「フォーカス中 workspace は展開されている」という前提が破れる。
+  test("expands automatically the moment focus moves onto it (not just on mount)", () => {
+    const { rerender } = render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId={null} />);
+    expect(screen.queryByTestId("pane-row-p1")).not.toBeInTheDocument();
+    rerender(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId="w1" />);
+    expect(screen.getByTestId("pane-row-p1")).toBeInTheDocument();
+  });
+
+  // 無いと壊れる: 手で畳んだ行が、フォーカスが他所へ移った拍子に勝手に開き
+  // 直してしまう（ユーザー操作より自動展開が優先されてしまう）。
+  test("stays collapsed after the user manually collapses it, even once focus moves elsewhere", () => {
+    const { rerender } = render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId="w1" />);
+    expect(screen.getByTestId("pane-row-p1")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("折りたたむ"));
+    expect(screen.queryByTestId("pane-row-p1")).not.toBeInTheDocument();
+    rerender(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId="w2" />);
+    expect(screen.queryByTestId("pane-row-p1")).not.toBeInTheDocument();
+  });
 });
 
 describe("RepoWorkspaceRow focus accent", () => {

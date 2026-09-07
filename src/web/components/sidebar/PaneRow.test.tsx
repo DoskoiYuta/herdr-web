@@ -56,6 +56,18 @@ describe("PaneRow", () => {
     expect(screen.queryByText("editor")).not.toBeInTheDocument();
   });
 
+  // 無いと壊れる: label/terminalTitleStripped/agent が全部無い素の shell 行が、
+  // 識別子ゼロの空欄ボタンになりクリック対象が何なのか分からなくなる。
+  test("falls back to the pane id when label, terminal title and agent are all null", () => {
+    render(
+      <PaneRow
+        {...defaultProps()}
+        pane={pane({ label: null, terminalTitleStripped: null, agent: null })}
+      />,
+    );
+    expect(screen.getByTestId("pane-row-p1")).toHaveTextContent("p1");
+  });
+
   test("aria-current follows the focused prop, not pane.focused", () => {
     render(<PaneRow {...defaultProps()} pane={pane({ focused: true })} focused={false} />);
     expect(screen.getByTestId("pane-row-p1")).not.toHaveAttribute("aria-current");

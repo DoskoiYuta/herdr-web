@@ -59,7 +59,18 @@ export function RepoWorkspaceRow({
   onOpenDiff,
 }: RepoWorkspaceRowProps) {
   const isFocusedWorkspace = workspace.workspaceId === focusedWorkspaceId;
-  const [expanded, setExpanded] = useState(isFocusedWorkspace);
+  // null は「ユーザーが未操作」— その間は展開状態がフォーカスに追従する。
+  // 手で開閉すると true/false に固定され、以後フォーカスが動いても変わらない
+  // — ただし、この workspace に *新たに* フォーカスが移った瞬間だけは、
+  // ユーザー操作を忘れて自動展開に戻す（レンダー中の派生 state 更新。
+  // `wasFocused` との比較でフォーカスが変わった回だけ発火する）。
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const [wasFocused, setWasFocused] = useState(isFocusedWorkspace);
+  if (isFocusedWorkspace !== wasFocused) {
+    setWasFocused(isFocusedWorkspace);
+    if (isFocusedWorkspace) setUserToggled(null);
+  }
+  const expanded = userToggled ?? isFocusedWorkspace;
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameLabel, setRenameLabel] = useState(workspace.workspaceLabel);
@@ -160,7 +171,7 @@ export function RepoWorkspaceRow({
           >
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={() => setUserToggled(!expanded)}
               aria-expanded={expanded}
               aria-label={expanded ? "折りたたむ" : "展開する"}
               className="shrink-0 rounded-md p-0.5 text-muted-foreground hover:bg-muted"

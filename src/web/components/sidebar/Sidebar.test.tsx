@@ -174,26 +174,66 @@ describe("Sidebar", () => {
     expect(props.onOpenInbox).toHaveBeenCalled();
   });
 
-  test("shows an empty state (not the tree) when herdr is not connected", () => {
+  // `connection`（ブラウザ⇔サーバー WS）と `herdrConnected`（herdr 本体）は
+  // 独立した状態 — 無いと壊れる: WS が繋がっているだけで herdr が未接続の
+  // ケースが「herdr 未接続（接続済み）」のような矛盾した文言になる。
+  test.each([
+    ["WS connecting", "connecting", false, "サーバーに接続中…"],
+    ["WS reconnecting", "reconnecting", false, "再接続中…"],
+    ["WS closed", "closed", false, "切断"],
+    ["WS open, herdr not connected", "open", false, "herdr 未接続（socket を待っています）"],
+  ] as const)(
+    "shows an empty state (not the tree) with a state-specific message (%s)",
+    (_label, connection, herdrConnected, expected) => {
+      const props = defaultProps();
+      props.connection = connection;
+      props.herdrConnected = herdrConnected;
+      renderWithStore(<Sidebar {...props} />);
+      expect(
+        within(screen.getByTestId("sidebar-empty-state")).getByText(expected),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("workspace-row-w1")).not.toBeInTheDocument();
+    },
+  );
+
+  test("shows the tree (not the empty state) once both the WS and herdr are connected", () => {
     const props = defaultProps();
-    props.herdrConnected = false;
-    props.connection = "reconnecting";
+    props.connection = "open";
+    props.herdrConnected = true;
     renderWithStore(<Sidebar {...props} />);
-    expect(screen.getByText("herdr 未接続（再接続中…）")).toBeInTheDocument();
-    expect(screen.queryByTestId("workspace-row-w1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workspace-row-w1")).toBeInTheDocument();
   });
 
   test.each([
-    ["connected", true, 20, "herdr 接続済み · protocol 20"],
-    ["disconnected", false, null, "herdr 未接続 · 再接続中…"],
-  ])("footer shows connection state (%s)", (_label, connected, protocol, expected) => {
-    const props = defaultProps();
-    props.herdrConnected = connected;
-    props.connection = connected ? "open" : "reconnecting";
-    props.protocol = protocol;
-    renderWithStore(<Sidebar {...props} />);
-    expect(screen.getByText(expected)).toBeInTheDocument();
-  });
+    ["fully connected", "open", true, 20, "herdr 接続済み · protocol 20"],
+    ["WS reconnecting (herdr state irrelevant)", "reconnecting", true, 20, "再接続中…"],
+    ["WS open, herdr not connected", "open", false, null, "herdr 未接続（socket を待っています）"],
+  ] as const)(
+    "footer shows a state-specific message, not a mix of both axes (%s)",
+    (_label, connection, herdrConnected, protocol, expected) => {
+      const props = defaultProps();
+      props.connection = connection;
+      props.herdrConnected = herdrConnected;
+      props.protocol = protocol;
+      renderWithStore(<Sidebar {...props} />);
+      expect(within(screen.getByRole("contentinfo")).getByText(expected)).toBeInTheDocument();
+    },
+  );
+
+  test.each([
+    ["fully connected", "open", true, "herdr 接続済み"],
+    ["WS reconnecting", "reconnecting", false, "再接続中…"],
+    ["WS open, herdr not connected", "open", false, "herdr 未接続（socket を待っています）"],
+  ] as const)(
+    "the footer dot's aria-label matches the same state as the message (%s)",
+    (_label, connection, herdrConnected, expectedLabel) => {
+      const props = defaultProps();
+      props.connection = connection;
+      props.herdrConnected = herdrConnected;
+      renderWithStore(<Sidebar {...props} />);
+      expect(screen.getByLabelText(expectedLabel)).toBeInTheDocument();
+    },
+  );
 
   test("collapsing a repo group hides its workspace rows", () => {
     renderWithStore(<Sidebar {...defaultProps()} />);

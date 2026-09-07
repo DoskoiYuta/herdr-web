@@ -31,16 +31,32 @@ export type SidebarProps = {
   onOpenAskFile: (location: AskFileLocation) => void;
   /** Workspace 行の右クリック「Diff を開く」。 */
   onOpenDiff: (paneId: string) => void;
-  /** 上部の Inbox 項目クリック（M13 までは no-op でよい、docs/ui-redesign.md §5.1）。 */
+  /** 上部の Inbox 項目クリック（Inbox ダイアログ本体は未実装、docs/ui-redesign.md §5.1）。 */
   onOpenInbox: () => void;
 };
 
-const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
-  connecting: "接続中…",
-  open: "接続済み",
-  reconnecting: "再接続中…",
-  closed: "切断",
-};
+/**
+ * `connection`（ブラウザ⇔サーバー WS）と `herdrConnected`（herdr 本体）は
+ * 独立した状態 — 片方のラベルにもう片方の値を差し込むと「herdr
+ * 未接続（接続済み）」のような矛盾した文言になる。WS が `open` でなければ
+ * それを優先し、`open` なら herdr 側の状態で決める。
+ */
+function connectionStatus(
+  connection: SidebarProps["connection"],
+  herdrConnected: boolean,
+): { ok: boolean; label: string } {
+  if (connection !== "open") {
+    const label =
+      connection === "connecting"
+        ? "サーバーに接続中…"
+        : connection === "reconnecting"
+          ? "再接続中…"
+          : "切断";
+    return { ok: false, label };
+  }
+  if (!herdrConnected) return { ok: false, label: "herdr 未接続（socket を待っています）" };
+  return { ok: true, label: "herdr 接続済み" };
+}
 
 /** ui-redesign.md §4.2 D4/D5, §5.2: `Repository > Workspace > Pane` の 1 モード
  * サイドバー。上部に Inbox 項目、下部に herdr 接続状態のフッター。折りたたむと
@@ -63,6 +79,7 @@ export function Sidebar({
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
   const [liveWidth, setLiveWidth] = useState(layout.width);
   const inboxCounts = useInboxCounts();
+  const status = connectionStatus(connection, herdrConnected);
 
   const displayNames = useMemo(() => repoDisplayNames(repos), [repos]);
   const totals = useMemo(
@@ -106,8 +123,8 @@ export function Sidebar({
         {totals.blocked > 0 && <AgentStatusDot status="blocked" label={String(totals.blocked)} />}
         {totals.done > 0 && <AgentStatusDot status="done" label={String(totals.done)} />}
         <span
-          className={cn("size-2 rounded-full", herdrConnected ? "bg-green-500" : "bg-destructive")}
-          aria-label={herdrConnected ? "herdr 接続済み" : "herdr 未接続"}
+          className={cn("size-2 rounded-full", status.ok ? "bg-green-500" : "bg-destructive")}
+          aria-label={status.label}
         />
       </aside>
     );
@@ -144,18 +161,21 @@ export function Sidebar({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {!herdrConnected && (
-            <div className="flex flex-col items-center gap-1 p-4 text-center text-xs text-muted-foreground">
+          {!status.ok && (
+            <div
+              data-testid="sidebar-empty-state"
+              className="flex flex-col items-center gap-1 p-4 text-center text-xs text-muted-foreground"
+            >
               <PlugZap className="size-5" aria-hidden="true" />
-              <p>herdr 未接続（{CONNECTION_LABEL[connection]}）</p>
+              <p>{status.label}</p>
             </div>
           )}
 
-          {herdrConnected && repos.length === 0 && (
+          {status.ok && repos.length === 0 && (
             <p className="p-2 text-xs text-muted-foreground">pane がありません</p>
           )}
 
-          {herdrConnected &&
+          {status.ok &&
             repos.map((repo) => (
               <RepoGroup
                 key={repo.key}
@@ -177,14 +197,12 @@ export function Sidebar({
           <span
             className={cn(
               "size-2 shrink-0 rounded-full",
-              herdrConnected ? "bg-green-500" : "bg-destructive",
+              status.ok ? "bg-green-500" : "bg-destructive",
             )}
-            aria-hidden="true"
+            aria-label={status.label}
           />
           <span className="min-w-0 flex-1 truncate">
-            {herdrConnected
-              ? `herdr 接続済み · protocol ${protocol ?? "?"}`
-              : `herdr 未接続 · ${CONNECTION_LABEL[connection]}`}
+            {status.ok ? `herdr 接続済み · protocol ${protocol ?? "?"}` : status.label}
           </span>
         </footer>
       </aside>
