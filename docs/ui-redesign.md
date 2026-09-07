@@ -362,4 +362,6 @@ design.pen には shadcn の部品ライブラリ（`x:` プレフィックス�
 | M15 質問の送信先ダイアログとエージェント非依存 | 質問コンポーザーを本文のみに、送信先ダイアログ（新規セッション + エージェント種別 / 既存 pane）、`resume` 表示の汎用化                                                                                                      | `web/components/ask`, `web/components/files`                                     | `POST /api/ask` に `agent` を追加、`AskSessionLauncher` が `agent.start` の agent 名を受ける。herdr 対応エージェントの列挙 API |
 | M16 各タブの仕上げ                             | Graph のファイル行 → Diff 遷移とスクロール、ブランチ切替の文言、Compose のプロジェクト別カードと展開行、Files のビューア種別、失敗・空状態の共通部品、設定ダイアログ（テーマ切替を含む）                                    | `web/components/{graph,docker,files,process}`, `web/components/settings`（新規） | なし                                                                                                                           |
 
-順序は M10 → M11 → M12 → M13 → M14 → M15 → M16。M13 と M14、M15 と M16 はそれぞれ並行できる。
+順序は M10 → M11 → M12 → M13 → M14 → M15 → M16。
+
+2026-09-07 時点で M10〜M16 はすべて main にマージ済み。各マイルストーンは「実装（TDD）→ 指摘リスト無しの敵対的レビュー → 修正 → 別ポート・別 DB での実走 → マージ」で進めた。設計との既知の差分: ルートコミットのファイル行は Diff へ遷移しない（サーバーが空ツリーとの比較を受けないため）、Files の DnD はドロップ先ディレクトリの行単位ではなくツリー全体の強調、herdr socket のパスは API に無いため設定ダイアログに出さない。
