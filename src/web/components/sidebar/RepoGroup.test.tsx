@@ -53,9 +53,12 @@ function defaultProps() {
     repo: repo(),
     displayName: "repo",
     focusedWorkspaceId: null,
+    focusedPaneId: null,
+    focusedAgentSessionId: null,
     collapsed: false,
     onToggleCollapse: vi.fn(),
     onSelectPane: vi.fn(),
+    onOpenDiff: vi.fn(),
     onOpenAskFile: vi.fn(),
   };
 }
@@ -117,8 +120,8 @@ describe("RepoGroup create-workspace flow", () => {
   });
 });
 
-describe("RepoGroup ask-session grouping", () => {
-  test("keeps an ask: workspace out of the normal workspace rows and lists it under 質問セッション instead", () => {
+describe("RepoGroup ask-session rows", () => {
+  test("keeps an ask: workspace out of the normal workspace rows and lists it as an ask-session row at the same level", () => {
     const withAsk = repo({
       worktrees: [
         {
@@ -142,12 +145,12 @@ describe("RepoGroup ask-session grouping", () => {
 
     expect(screen.getByTestId("workspace-row-w1")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-row-w-ask")).not.toBeInTheDocument();
-    expect(screen.getByTestId("ask-session-group-header")).toBeInTheDocument();
+    expect(screen.getByTestId("ask-session-row-w-ask")).toBeInTheDocument();
     expect(screen.getByText("ask:abc12345")).toBeInTheDocument();
   });
 
-  test("shows no ask-session group when the repo has no ask workspaces", () => {
+  test("shows no ask-session row when the repo has no ask workspaces", () => {
     renderWithStore(<RepoGroup {...defaultProps()} />);
-    expect(screen.queryByTestId("ask-session-group-header")).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^ask-session-row-/)).not.toBeInTheDocument();
   });
 });

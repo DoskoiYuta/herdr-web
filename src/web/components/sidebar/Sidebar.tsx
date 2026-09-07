@@ -1,18 +1,15 @@
 import { useMemo, useState } from "react";
-import { CircleCheck, MessageSquareWarning, OctagonAlert, PanelLeft } from "lucide-react";
+import { Inbox as InboxIcon, PanelLeft, PlugZap } from "lucide-react";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Badge } from "@/components/ui/badge";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useDecisionCounts } from "@/components/decision/hooks/useDecisionCounts";
+import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
+import { useInboxCounts } from "@/components/inbox/hooks/useInboxCounts";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/layout";
 import { repoDisplayNames } from "@/lib/repoDisplay";
-import { buildWorkspaceView } from "@/lib/workspaceView";
+import { cn } from "@/lib/utils";
 import { RepoGroup } from "./RepoGroup";
-import type { AskFileLocation } from "./AskSessionGroup";
-import { WorkspaceGroup } from "./WorkspaceGroup";
-
-export type SidebarMode = "repository" | "workspace";
+import type { AskFileLocation } from "./AskSessionRow";
 
 export type SidebarLayout = { width: number; collapsed: boolean };
 
@@ -20,14 +17,22 @@ export type SidebarProps = {
   repos: Repo[];
   herdrConnected: boolean;
   connection: "connecting" | "open" | "reconnecting" | "closed";
+  /** `state.herdr.protocol` — herdr のプロトコルバージョン、未接続なら null。 */
+  protocol: number | null;
   focusedWorkspaceId: string | null;
+  /** herdr で現在フォーカスされている pane（`state.focus.pane`）。 */
+  focusedPaneId: string | null;
+  /** フォーカス中 pane の `agentSession.value`。 */
+  focusedAgentSessionId: string | null;
   onSelectPane: (paneId: string) => void;
   layout: SidebarLayout;
   onLayoutChange: (next: SidebarLayout) => void;
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
-  /** サイドバー上部の判断依頼バッジクリック (F13-8)。全 worktree 横断の一覧を開く。 */
-  onSelectDecisions?: () => void;
+  /** Workspace 行の右クリック「Diff を開く」。 */
+  onOpenDiff: (paneId: string) => void;
+  /** 上部の Inbox 項目クリック（M13 までは no-op でよい、docs/ui-redesign.md §5.1）。 */
+  onOpenInbox: () => void;
 };
 
 const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
@@ -37,29 +42,29 @@ const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
   closed: "切断",
 };
 
-/** plan.md F8: `repository > workspace`（既定。workspace が leaf 行）/
- * `workspace > tab > pane` の 2 モードを持つサイドバー。折りたたみ可能でアイコン
- * レールになり、幅はドラッグで変更できる。 */
+/** ui-redesign.md §4.2 D4/D5, §5.2: `Repository > Workspace > Pane` の 1 モード
+ * サイドバー。上部に Inbox 項目、下部に herdr 接続状態のフッター。折りたたむと
+ * アイコンレールになり、幅はドラッグで変更できる。 */
 export function Sidebar({
   repos,
   herdrConnected,
   connection,
+  protocol,
   focusedWorkspaceId,
+  focusedPaneId,
+  focusedAgentSessionId,
   onSelectPane,
   layout,
   onLayoutChange,
   onOpenAskFile,
-  onSelectDecisions,
+  onOpenDiff,
+  onOpenInbox,
 }: SidebarProps) {
-  const [mode, setMode] = useState<SidebarMode>("repository");
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
-  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string>>(new Set());
   const [liveWidth, setLiveWidth] = useState(layout.width);
-  const decisionCountsQuery = useDecisionCounts();
-  const decisionCounts = decisionCountsQuery.data;
+  const inboxCounts = useInboxCounts();
 
   const displayNames = useMemo(() => repoDisplayNames(repos), [repos]);
-  const workspaceView = useMemo(() => buildWorkspaceView(repos), [repos]);
   const totals = useMemo(
     () =>
       repos.reduce(
@@ -70,7 +75,6 @@ export function Sidebar({
   );
 
   const toggleRepo = (key: string) => setCollapsedRepos((prev) => toggleInSet(prev, key));
-  const toggleWorkspace = (id: string) => setCollapsedWorkspaces((prev) => toggleInSet(prev, id));
 
   if (layout.collapsed) {
     return (
@@ -86,34 +90,25 @@ export function Sidebar({
         >
           <PanelLeft className="size-4" />
         </button>
-        {!herdrConnected && (
-          <span className="size-2 rounded-full bg-destructive" aria-label="herdr 未接続" />
-        )}
-        {totals.blocked > 0 && (
-          <Badge variant="destructive" className="gap-0.5 px-1">
-            <OctagonAlert className="size-3" aria-hidden="true" />
-            {totals.blocked}
-          </Badge>
-        )}
-        {totals.done > 0 && (
-          <Badge variant="secondary" className="gap-0.5 px-1 text-green-600 dark:text-green-400">
-            <CircleCheck className="size-3" aria-hidden="true" />
-            {totals.done}
-          </Badge>
-        )}
-        {decisionCounts && decisionCounts.total > 0 && (
-          <button
-            type="button"
-            onClick={onSelectDecisions}
-            aria-label={`判断依頼 ${decisionCounts.total} 件`}
-            className="rounded-md"
-          >
-            <Badge variant="outline" className="gap-0.5 px-1 text-amber-700 dark:text-amber-400">
-              <MessageSquareWarning className="size-3" aria-hidden="true" />
-              {decisionCounts.total}
+        <button
+          type="button"
+          onClick={onOpenInbox}
+          aria-label={inboxCounts.data ? `Inbox ${inboxCounts.data} 件` : "Inbox"}
+          className="rounded-md p-1"
+        >
+          <InboxIcon className="size-4" />
+          {inboxCounts.data !== null && inboxCounts.data > 0 && (
+            <Badge variant="outline" className="gap-0.5 px-1">
+              {inboxCounts.data}
             </Badge>
-          </button>
-        )}
+          )}
+        </button>
+        {totals.blocked > 0 && <AgentStatusDot status="blocked" label={String(totals.blocked)} />}
+        {totals.done > 0 && <AgentStatusDot status="done" label={String(totals.done)} />}
+        <span
+          className={cn("size-2 rounded-full", herdrConnected ? "bg-green-500" : "bg-destructive")}
+          aria-label={herdrConnected ? "herdr 接続済み" : "herdr 未接続"}
+        />
       </aside>
     );
   }
@@ -126,32 +121,18 @@ export function Sidebar({
         aria-label="サイドバー"
       >
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5">
-          <ToggleGroup
-            type="single"
-            value={mode}
-            onValueChange={(v) => v && setMode(v as SidebarMode)}
-            size="sm"
+          <button
+            type="button"
+            onClick={onOpenInbox}
+            data-testid="inbox-item"
+            className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm font-semibold hover:bg-muted"
           >
-            <ToggleGroupItem value="repository" aria-label="リポジトリ表示">
-              リポジトリ
-            </ToggleGroupItem>
-            <ToggleGroupItem value="workspace" aria-label="ワークスペース表示">
-              ワークスペース
-            </ToggleGroupItem>
-          </ToggleGroup>
-          {decisionCounts && decisionCounts.total > 0 && (
-            <button
-              type="button"
-              onClick={onSelectDecisions}
-              data-testid="decision-count-badge"
-              className="rounded-md"
-            >
-              <Badge variant="outline" className="gap-0.5 text-amber-700 dark:text-amber-400">
-                <MessageSquareWarning className="size-3" aria-hidden="true" />
-                {decisionCounts.total}
-              </Badge>
-            </button>
-          )}
+            <InboxIcon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">Inbox</span>
+            {inboxCounts.data !== null && inboxCounts.data > 0 && (
+              <Badge variant="outline">{inboxCounts.data}</Badge>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => onLayoutChange({ ...layout, collapsed: true })}
@@ -162,44 +143,50 @@ export function Sidebar({
           </button>
         </header>
 
-        {!herdrConnected && (
-          <div className="shrink-0 border-b border-border bg-destructive/10 px-2 py-1 text-xs text-destructive">
-            herdr 未接続（{CONNECTION_LABEL[connection]}）
-          </div>
-        )}
-
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {repos.length === 0 && (
-            <p className="p-2 text-xs text-muted-foreground">
-              {herdrConnected ? "pane がありません" : "herdr 未接続"}
-            </p>
+          {!herdrConnected && (
+            <div className="flex flex-col items-center gap-1 p-4 text-center text-xs text-muted-foreground">
+              <PlugZap className="size-5" aria-hidden="true" />
+              <p>herdr 未接続（{CONNECTION_LABEL[connection]}）</p>
+            </div>
           )}
 
-          {mode === "repository" &&
+          {herdrConnected && repos.length === 0 && (
+            <p className="p-2 text-xs text-muted-foreground">pane がありません</p>
+          )}
+
+          {herdrConnected &&
             repos.map((repo) => (
               <RepoGroup
                 key={repo.key}
                 repo={repo}
                 displayName={displayNames.get(repo.key) ?? repo.name}
                 focusedWorkspaceId={focusedWorkspaceId}
+                focusedPaneId={focusedPaneId}
+                focusedAgentSessionId={focusedAgentSessionId}
                 collapsed={collapsedRepos.has(repo.key)}
                 onToggleCollapse={() => toggleRepo(repo.key)}
                 onSelectPane={onSelectPane}
+                onOpenDiff={onOpenDiff}
                 onOpenAskFile={onOpenAskFile}
               />
             ))}
-
-          {mode === "workspace" &&
-            workspaceView.map((workspace) => (
-              <WorkspaceGroup
-                key={workspace.workspaceId}
-                workspace={workspace}
-                collapsed={collapsedWorkspaces.has(workspace.workspaceId)}
-                onToggleCollapse={() => toggleWorkspace(workspace.workspaceId)}
-                onSelectPane={onSelectPane}
-              />
-            ))}
         </div>
+
+        <footer className="flex shrink-0 items-center gap-1.5 border-t border-border px-2 py-1.5 text-xs text-muted-foreground">
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              herdrConnected ? "bg-green-500" : "bg-destructive",
+            )}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1 truncate">
+            {herdrConnected
+              ? `herdr 接続済み · protocol ${protocol ?? "?"}`
+              : `herdr 未接続 · ${CONNECTION_LABEL[connection]}`}
+          </span>
+        </footer>
       </aside>
 
       <ResizeHandle

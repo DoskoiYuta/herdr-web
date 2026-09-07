@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { WorkspaceGroup } from "@/lib/repoWorkspaces";
 import { RepoWorkspaceRow } from "./RepoWorkspaceRow";
@@ -43,8 +43,11 @@ function workspace(overrides: Partial<WorkspaceGroup> = {}): WorkspaceGroup {
 function defaultProps() {
   return {
     workspace: workspace(),
-    focusedWorkspaceId: null,
+    focusedWorkspaceId: null as string | null,
+    focusedPaneId: null as string | null,
+    focusedAgentSessionId: null as string | null,
     onSelectPane: vi.fn(),
+    onOpenDiff: vi.fn(),
   };
 }
 
@@ -59,12 +62,110 @@ function openMenu() {
   fireEvent.contextMenu(screen.getByTestId("workspace-row-w1"));
 }
 
+describe("RepoWorkspaceRow expand/collapse", () => {
+  test("is expanded by default when it is the focused workspace, showing its pane rows", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId="w1" />);
+    expect(screen.getByTestId("pane-row-p1")).toBeInTheDocument();
+  });
+
+  test("is collapsed by default when it is not the focused workspace", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId={null} />);
+    expect(screen.queryByTestId("pane-row-p1")).not.toBeInTheDocument();
+  });
+
+  test("clicking the chevron toggles the pane list independently of the row's focus click", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId={null} />);
+    fireEvent.click(screen.getByLabelText("展開する"));
+    expect(screen.getByTestId("pane-row-p1")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("折りたたむ"));
+    expect(screen.queryByTestId("pane-row-p1")).not.toBeInTheDocument();
+  });
+});
+
+describe("RepoWorkspaceRow focus accent", () => {
+  test("marks the row aria-current when it is the focused workspace", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId="w1" />);
+    expect(screen.getByTestId("workspace-row-w1")).toHaveAttribute("aria-current", "true");
+  });
+
+  test("does not mark the row aria-current otherwise", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} focusedWorkspaceId={null} />);
+    expect(screen.getByTestId("workspace-row-w1")).not.toHaveAttribute("aria-current");
+  });
+
+  test("passes focusedPaneId down so the matching pane row (not workspace.panes[].focused) is accented", () => {
+    render(
+      <RepoWorkspaceRow
+        {...defaultProps()}
+        focusedWorkspaceId="w1"
+        focusedPaneId="p1"
+        focusedAgentSessionId="sess-1"
+      />,
+    );
+    expect(screen.getByTestId("pane-row-p1")).toHaveAttribute("aria-current", "true");
+  });
+});
+
+describe("RepoWorkspaceRow row content", () => {
+  test("shows a branch badge for a non-main branch among its panes", () => {
+    render(
+      <RepoWorkspaceRow
+        {...defaultProps()}
+        workspace={workspace({
+          panes: [
+            {
+              ...workspace().panes[0]!,
+              branch: "feature",
+              isMain: false,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(within(screen.getByTestId("workspace-row-w1")).getByText("feature")).toBeInTheDocument();
+  });
+
+  test("omits the branch badge for the main branch", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} />);
+    expect(
+      within(screen.getByTestId("workspace-row-w1")).queryByText("main"),
+    ).not.toBeInTheDocument();
+  });
+
+  test("shows an aggregated status count and agent count, omitting zero counts", () => {
+    render(<RepoWorkspaceRow {...defaultProps()} />);
+    const row = screen.getByTestId("workspace-row-w1");
+    expect(within(row).queryByLabelText("状態: blocked")).not.toBeInTheDocument();
+    expect(within(row).queryByLabelText("状態: done")).not.toBeInTheDocument();
+    expect(within(row).getByLabelText("状態: working").closest("span")).toHaveTextContent("1");
+    expect(within(row).getByLabelText("agent 数").closest("span")).toHaveTextContent("1");
+  });
+});
+
 describe("RepoWorkspaceRow context menu", () => {
-  test("right-click opens a menu with 名前を変更 and 削除", () => {
+  test("right-click opens a menu with フォーカスを移す, 名前を変更, Diff を開く and 削除", () => {
     render(<RepoWorkspaceRow {...defaultProps()} />);
     openMenu();
+    expect(screen.getByText("フォーカスを移す")).toBeInTheDocument();
     expect(screen.getByText("名前を変更")).toBeInTheDocument();
+    expect(screen.getByText("Diff を開く")).toBeInTheDocument();
     expect(screen.getByText("削除")).toBeInTheDocument();
+  });
+
+  test("Diff を開く focuses the target pane and calls onOpenDiff with it", () => {
+    const props = defaultProps();
+    render(<RepoWorkspaceRow {...props} />);
+    openMenu();
+    fireEvent.click(screen.getByText("Diff を開く"));
+    expect(props.onOpenDiff).toHaveBeenCalledWith("p1");
+  });
+
+  test("フォーカスを移す in the menu calls onSelectPane with the focused pane, else the first", () => {
+    const props = defaultProps();
+    render(<RepoWorkspaceRow {...props} />);
+    openMenu();
+    fireEvent.click(screen.getByText("フォーカスを移す"));
+    expect(props.onSelectPane).toHaveBeenCalledWith("p1");
   });
 
   test("名前を変更 opens a dialog prefilled with the current label; submitting calls renameWorkspace", async () => {

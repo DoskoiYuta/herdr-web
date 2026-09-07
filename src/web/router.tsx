@@ -27,7 +27,7 @@ import { configApi } from "@/lib/api";
 import { ToolPane } from "@/components/tool/ToolPane";
 import { useHerdrState, useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
-import type { AskFileLocation } from "@/components/sidebar/AskSessionGroup";
+import type { AskFileLocation } from "@/components/sidebar/AskSessionRow";
 import { isMaximizeToggleKey } from "@/lib/termKeys";
 import { cn } from "@/lib/utils";
 import {
@@ -151,21 +151,23 @@ function RootLayout() {
     [openLocation],
   );
 
-  const handleSelectDecisions = useCallback(() => {
-    // 通常のタブ切替（ToolPane.handleTabChange）と同じく、タブ専用の
-    // search（path/line/root/id）だけ落として比較範囲などは残す。
-    void navigate({
-      to: "/focus/$tab",
-      params: { tab: "decisions" },
-      search: (prev) => ({
-        ...prev,
-        path: undefined,
-        line: undefined,
-        root: undefined,
-        id: undefined,
-      }),
-    });
-  }, [navigate]);
+  // Workspace 行の右クリック「Diff を開く」(ui-redesign.md §5.2): まず
+  // フォーカスを移し、通常のタブ切替と同じくタブ専用の search（sub/from/to）
+  // だけ落として `/focus/diff` へ遷移する。
+  const handleOpenDiff = useCallback(
+    (pane: string) => {
+      handleSelectPane(pane);
+      void navigate({
+        to: "/focus/$tab",
+        params: { tab: "diff" },
+        search: (prev) => ({ ...prev, sub: undefined, from: undefined, to: undefined }),
+      });
+    },
+    [handleSelectPane, navigate],
+  );
+
+  // M13 まで Inbox ダイアログ本体は無いので no-op（docs/ui-redesign.md §5.1/§9）。
+  const handleOpenInbox = useCallback(() => {}, []);
 
   const sidebarLayout = layout.sidebar ?? DEFAULT_LAYOUT.sidebar!;
   const handleSidebarLayoutChange = useCallback(
@@ -197,12 +199,16 @@ function RootLayout() {
         repos={state.repos}
         herdrConnected={state.herdr.connected}
         connection={state.connection}
+        protocol={state.herdr.protocol}
         focusedWorkspaceId={state.focus?.workspace ?? null}
+        focusedPaneId={state.focus?.pane ?? null}
+        focusedAgentSessionId={state.focus?.agentSession?.value ?? null}
         onSelectPane={handleSelectPane}
         layout={sidebarLayout}
         onLayoutChange={handleSidebarLayoutChange}
         onOpenAskFile={handleOpenAskFile}
-        onSelectDecisions={handleSelectDecisions}
+        onOpenDiff={handleOpenDiff}
+        onOpenInbox={handleOpenInbox}
       />
 
       <main

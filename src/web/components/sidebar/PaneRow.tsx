@@ -1,46 +1,83 @@
-import { Bot } from "lucide-react";
+import { Bot, Terminal } from "lucide-react";
+import { useState } from "react";
 import type { PaneRow as PaneRowType } from "@contract/events";
-import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
 import { cn } from "@/lib/utils";
 
 export type PaneRowProps = {
   pane: PaneRowType;
+  /** herdr の現在フォーカス（`state.focus.pane`）と一致するか。`pane.focused` は
+   * workspace 内のアクティブ pane を指すだけで herdr 全体のフォーカスとは
+   * 別物なので使わない。 */
+  focused: boolean;
+  /** フォーカス中の pane の `agentSession.value`。この pane がフォーカス中で
+   * なければ null — 「session id をコピー」はフォーカス中の pane にしか出せる
+   * API が無い（右クリックした pane 自身の session を herdr から引けない）。 */
+  sessionId: string | null;
   onSelect: (paneId: string) => void;
 };
 
-/** plan.md F8-2: agent 名/アイコン、状態（色+アイコン）、label/terminal_title_stripped、
- * 所属 workspace / tab（PaneRow に label は無いので id を薄字で表示する）を出す 1 行。 */
-export function PaneRow({ pane, onSelect }: PaneRowProps) {
-  const meta = STATUS_META[pane.agentStatus]!;
-  const StatusIcon = meta.icon;
-  const title = pane.label ?? pane.terminalTitleStripped ?? pane.paneId;
+/** ui-redesign.md §5.2: エージェント種別アイコン（shell は Terminal、それ以外は
+ * Bot）、状態ドット、label/terminal title、tab label を出す 1 行。 */
+export function PaneRow({ pane, focused, sessionId, onSelect }: PaneRowProps) {
+  const [copied, setCopied] = useState(false);
+  const title = pane.label ?? pane.terminalTitleStripped;
+  const KindIcon = pane.agent === "shell" ? Terminal : Bot;
+
+  async function copySessionId() {
+    if (!sessionId) return;
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // クリップボード API が使えない環境では何もしない
+    }
+  }
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(pane.paneId)}
-      aria-current={pane.focused ? "true" : undefined}
-      data-testid={`pane-row-${pane.paneId}`}
-      className={cn(
-        "flex w-full items-start gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted",
-        pane.focused && "bg-muted font-medium",
-      )}
-    >
-      <StatusIcon
-        className={cn("mt-0.5 size-3.5 shrink-0", meta.className, meta.spin && "animate-spin")}
-        aria-label={`状態: ${meta.label}`}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1">
-          {pane.agent && (
-            <Bot className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={() => onSelect(pane.paneId)}
+          aria-current={focused ? "true" : undefined}
+          title="フォーカスを移す（ターミナルも切り替わります）"
+          data-testid={`pane-row-${pane.paneId}`}
+          style={{ borderLeftColor: focused ? "var(--focus)" : "transparent" }}
+          className={cn(
+            "flex w-full items-start gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-left text-xs hover:bg-muted",
+            focused && "bg-sidebar-accent font-medium",
           )}
-          <span className="truncate">{pane.agent ? `${pane.agent}: ${title}` : title}</span>
-        </span>
-        <span className="block truncate text-[10px] text-muted-foreground">
-          {pane.workspaceId} / {pane.tabId}
-        </span>
-      </span>
-    </button>
+        >
+          <AgentStatusDot status={pane.agentStatus} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1">
+              {pane.agent && (
+                <KindIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+              )}
+              <span className="truncate">{pane.agent ? `${pane.agent}: ${title}` : title}</span>
+            </span>
+            {pane.tabLabel && (
+              <span className="block truncate text-[10px] text-muted-foreground">
+                {pane.tabLabel}
+              </span>
+            )}
+          </span>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={() => onSelect(pane.paneId)}>フォーカスを移す</ContextMenuItem>
+        <ContextMenuItem disabled={!sessionId} onSelect={copySessionId}>
+          {copied ? "コピーしました" : "session id をコピー"}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

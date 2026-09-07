@@ -43,6 +43,7 @@
   --color-kind-ask: var(--kind-ask);
   --color-kind-decision: var(--kind-decision);
   --color-kind-agent: var(--kind-agent);
+  --color-focus: var(--focus);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -91,6 +92,8 @@
   --kind-ask: #22d3ee;
   --kind-decision: #f59e0b;
   --kind-agent: #3b82f6;
+  /* Navigator のフォーカス行 ↔ Tool header を結ぶアクセント色（ui-redesign.md D5 / §5.2）。 */
+  --focus: #8b5cf6;
 }
 
 .dark {
@@ -129,6 +132,7 @@
   --kind-ask: #22d3ee;
   --kind-decision: #f59e0b;
   --kind-agent: #3b82f6;
+  --focus: #8b5cf6;
 }
 
 @layer base {
