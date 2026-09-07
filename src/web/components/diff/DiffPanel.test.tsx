@@ -12,12 +12,14 @@ import { comparisonLabel } from "./DiffPanel.tsx";
 // `items` prop order DiffPanel hands it) so tests can assert on per-file
 // collapse and right-pane ordering without the real virtualized renderer.
 export const scrollToItemMock = vi.fn();
+export const scrollToLineMock = vi.fn();
 vi.mock("@pierre/diffs/react", () => {
   // biome-ignore lint: test double
   const CodeView = forwardRef((props: any, ref: any) => {
     useImperativeHandle(ref, () => ({
       scrollTo: (target: any) => {
         if (target?.type === "item") scrollToItemMock(target.id);
+        if (target?.type === "line") scrollToLineMock(target.id, target.lineNumber, target.side);
       },
     }));
     const { containerRef, items = [] } = props;
@@ -109,6 +111,7 @@ beforeEach(() => {
   );
   vi.stubGlobal("fetch", fetchMock);
   scrollToItemMock.mockClear();
+  scrollToLineMock.mockClear();
 });
 
 afterEach(() => {
@@ -220,6 +223,19 @@ test("calls onInitialLocationConsumed once after jumping, and doesn't re-jump on
     />,
   );
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
+  expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1);
+});
+
+test("a path-only initialLocation (Graph file-row jump) scrolls to the file heading, not a line", async () => {
+  const onInitialLocationConsumed = vi.fn();
+  renderPanel({
+    repo: "/repo",
+    repoChangedTick: 0,
+    initialLocation: { path: "a.txt" },
+    onInitialLocationConsumed,
+  });
+  await waitFor(() => expect(scrollToItemMock).toHaveBeenCalled());
+  expect(scrollToLineMock).not.toHaveBeenCalled();
   expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1);
 });
 

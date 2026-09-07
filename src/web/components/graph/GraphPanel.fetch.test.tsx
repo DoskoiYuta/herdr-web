@@ -166,6 +166,22 @@ describe("GraphPanel fetch", () => {
     await screen.findByText("タイムアウト");
   });
 
+  test("success shows the last-fetch relative time in the toolbar", async () => {
+    vi.mocked(gitApi.fetch).mockResolvedValue({
+      code: 0,
+      stdout: "",
+      stderr: "",
+      durationMs: 100,
+      timedOut: false,
+    });
+    renderPanel();
+    expect(screen.queryByText(/^fetch .*前$/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "origin を fetch" }));
+
+    await screen.findByText("fetch たった今");
+  });
+
   test("pressing 'f' while the graph container has focus triggers fetch", async () => {
     vi.mocked(gitApi.fetch).mockResolvedValue({
       code: 0,

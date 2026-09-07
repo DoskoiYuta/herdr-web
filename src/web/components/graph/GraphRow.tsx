@@ -47,8 +47,10 @@ export interface GraphRowProps {
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
-  /** 「diff を見る」/ 行のダブルクリック。未指定なら出さない。 */
+  /** 行のダブルクリック（親の diff を選択）。未指定なら出さない。 */
   onOpenDiff?(hash: string): void;
+  /** 展開中の詳細でファイル行をクリック（Graph → Diff 遷移）。未指定なら出さない。 */
+  onOpenFile?(hash: string, path: string): void;
 }
 
 function ReviewCountBadge({ count, onOpenDiff }: { count: ReviewCount; onOpenDiff?(): void }) {
@@ -102,6 +104,7 @@ export default function GraphRow({
   reviewCount,
   onSelect,
   onOpenDiff,
+  onOpenFile,
 }: GraphRowProps) {
   const isUncommitted = row.hash === UNCOMMITTED_HASH;
   const isMerge = commit.parents.length > 1;
@@ -203,8 +206,8 @@ export default function GraphRow({
             <CommitDetail
               repo={repo}
               hash={row.hash}
-              onOpenDiff={
-                onOpenDiff && commit.parents.length > 0 ? () => onOpenDiff(row.hash) : undefined
+              onOpenFile={
+                onOpenFile && !isUncommitted ? (path) => onOpenFile(row.hash, path) : undefined
               }
               note={detailNote}
             />

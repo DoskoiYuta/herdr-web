@@ -108,11 +108,13 @@ export function comparisonLabel(from: string | undefined, to: string | undefined
   return `${shorten(toLabel)} vs ${shorten(fromLabel)}`;
 }
 
-/** Where the Review タブ asked DiffPanel to jump (plan.md F5-8). */
+/** Where the Review タブ / Graph のファイル行が DiffPanel に飛ばす先（plan.md
+ * F5-8、ui-redesign.md §5.4）。`line` 無しはファイル見出しへのスクロールだけ
+ * （Graph のファイル行クリック）。 */
 export interface DiffInitialLocation {
   path: string;
-  line: number;
-  side: Side;
+  line?: number;
+  side?: Side;
 }
 
 export interface DiffPanelProps {
@@ -762,11 +764,13 @@ export function DiffPanel({
     const item = items.find((i) => i.fileDiff.name === initialLocation.path);
     if (!item) return;
     diffViewRef.current?.scrollToItem(item.id);
-    diffViewRef.current?.scrollToLine(
-      item.id,
-      initialLocation.line,
-      initialLocation.side === "old" ? "deletions" : "additions",
-    );
+    if (initialLocation.line !== undefined) {
+      diffViewRef.current?.scrollToLine(
+        item.id,
+        initialLocation.line,
+        initialLocation.side === "old" ? "deletions" : "additions",
+      );
+    }
     onInitialLocationConsumed?.();
   }, [initialLocation, items, onInitialLocationConsumed]);
 

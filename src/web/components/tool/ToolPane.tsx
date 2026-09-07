@@ -199,8 +199,9 @@ export function ToolPane() {
     tab === "diff" && !rootPending && effectiveSearch.path
       ? {
           path: effectiveSearch.path,
-          line: effectiveSearch.line ?? 1,
-          side: effectiveSearch.side ?? "new",
+          ...(effectiveSearch.line !== undefined
+            ? { line: effectiveSearch.line, side: effectiveSearch.side ?? "new" }
+            : {}),
         }
       : null;
   const filesSelectedPath = tab === "files" && !rootPending ? (effectiveSearch.path ?? null) : null;
@@ -240,6 +241,16 @@ export function ToolPane() {
       void navigate({
         params: (prev) => ({ ...prev, tab: "diff" }),
         search: (prev) => ({ ...prev, from: range.from, to: range.to }),
+      });
+    },
+    [navigate],
+  );
+
+  const openFileInDiff = useCallback(
+    (range: { from?: string; to: string }, path: string) => {
+      void navigate({
+        params: (prev) => ({ ...prev, tab: "diff" }),
+        search: (prev) => ({ ...prev, from: range.from, to: range.to, path, line: undefined }),
       });
     },
     [navigate],
@@ -547,6 +558,7 @@ export function ToolPane() {
                   pollMs={subRepoPollMs}
                   onSelectCommit={handleSelectCommit}
                   onOpenDiff={openDiffFor}
+                  onOpenFile={openFileInDiff}
                   reviewCounts={reviewCounts}
                 />
               </div>

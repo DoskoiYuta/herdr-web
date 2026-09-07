@@ -174,19 +174,37 @@ vi.mock("@/components/graph/GraphPanel", () => ({
   GraphPanel: ({
     repo,
     onSelectCommit,
+    onOpenFile,
     reviewCounts,
   }: {
     repo: string;
     onSelectCommit: (range: { from: string; to: string } | null) => void;
+    onOpenFile?: (range: { from?: string; to: string }, path: string) => void;
     reviewCounts?: ReviewCountsResponse | null;
   }) => (
-    <button
-      type="button"
-      data-testid="graph-panel-stub"
-      onClick={() => onSelectCommit({ from: "aaa111", to: "bbb222" })}
-    >
-      graph:{repo}:{reviewCounts ? reviewCounts.pendingDrafts : "null"}
-    </button>
+    <>
+      <button
+        type="button"
+        data-testid="graph-panel-stub"
+        onClick={() => onSelectCommit({ from: "aaa111", to: "bbb222" })}
+      >
+        graph:{repo}:{reviewCounts ? reviewCounts.pendingDrafts : "null"}
+      </button>
+      <button
+        type="button"
+        data-testid="graph-panel-open-file-root"
+        onClick={() => onOpenFile?.({ to: "ccc333" }, "src/root.ts")}
+      >
+        open file (root commit)
+      </button>
+      <button
+        type="button"
+        data-testid="graph-panel-open-file"
+        onClick={() => onOpenFile?.({ from: "aaa111", to: "bbb222" }, "src/a.ts")}
+      >
+        open file
+      </button>
+    </>
   ),
 }));
 
@@ -420,6 +438,34 @@ describe("ToolPane", () => {
       expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
         "/Users/dev/project:WORKTREE:HEAD",
       ),
+    );
+  });
+
+  // ui-redesign.md §5.4: Graph のファイル行クリックは Diff タブへ遷移し、
+  // そのファイルまでスクロールする（initialLocation は path だけ、line 無し）。
+  test("clicking a file row under a commit jumps to the diff tab at that file", async () => {
+    await renderFocused();
+    await selectTab("Graph");
+    fireEvent.click(screen.getByTestId("graph-panel-open-file"));
+
+    expect(await screen.findByTestId("diff-panel-stub")).toHaveTextContent(
+      "/Users/dev/project:aaa111:bbb222",
+    );
+    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent(
+      "src/a.ts::",
+    );
+  });
+
+  // 無いと壊れる: ルートコミット（parent 無し）のファイル行クリックが
+  // "from" を要求すると、範囲が組めず遷移そのものが失われる。
+  test("clicking a file row under a root commit (no parent) still jumps, with no comparison base", async () => {
+    await renderFocused();
+    await selectTab("Graph");
+    fireEvent.click(screen.getByTestId("graph-panel-open-file-root"));
+
+    await screen.findByTestId("diff-panel-stub");
+    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent(
+      "src/root.ts::",
     );
   });
 
