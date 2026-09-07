@@ -2,6 +2,7 @@ import { hc } from "hono/client";
 import * as v from "valibot";
 import type { AppType } from "../../server/app";
 import { ClientConfigSchema, type ClientConfig } from "../../contract/config";
+import { HealthSchema, type Health } from "../../contract/health";
 import {
   CommitDetailSchema,
   FetchResultSchema,
@@ -690,5 +691,14 @@ export const configApi = {
     const res = await client.api.config.$get();
     if (!res.ok) throw new Error(`GET /api/config failed: ${res.status}`);
     return v.parse(ClientConfigSchema, await res.json());
+  },
+};
+
+export const healthApi = {
+  /** 設定ダイアログの接続情報（ui-redesign.md §5.5 D8）用。 */
+  async get(): Promise<Health> {
+    const res = await client.api.health.$get();
+    if (!res.ok) throw new Error(`GET /api/health failed: ${res.status}`);
+    return v.parse(HealthSchema, await res.json());
   },
 };

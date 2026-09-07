@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import type { VirtualizerOptions } from "@tanstack/react-virtual";
-import { RefreshCw } from "lucide-react";
+import { GitBranch, RefreshCw } from "lucide-react";
 import type { Ref } from "@contract/git";
 import type { ReviewCountsResponse } from "@contract/review";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import { FetchBusyError, gitApi } from "@/lib/api";
+import { formatFetchAgo } from "./fetchAgo";
 import { useGraph } from "./hooks/useGraph";
 import { initialState, reduce } from "./state";
 import GraphView from "./GraphView";
@@ -17,8 +19,12 @@ export interface GraphPanelProps {
    * sub-repo/submodule selection). */
   pollMs?: number;
   onSelectCommit(range: { from: string; to: string } | null): void;
-  /** 「diff を見る」/ ダブルクリック: 親との diff を選択して Diff タブへ遷移させる */
+  /** 行のダブルクリック: 親との diff を選択して Diff タブへ遷移させる */
   onOpenDiff?(range: { from: string; to: string }): void;
+  /** 展開中の詳細のファイル行クリック: そのファイルを Diff タブで開く
+   * （ui-redesign.md §5.4）。ルートコミット（parent 無し）は `from` を持たない
+   * range になる — Diff 側は from 無し = 既定比較（WORKTREE vs HEAD）として扱う。 */
+  onOpenFile?(range: { from?: string; to: string }, path: string): void;
   /** F5-10: git-graph の review 件数バッジ用集計。 */
   reviewCounts?: ReviewCountsResponse | null;
   /**
@@ -56,6 +62,7 @@ export function GraphPanel({
   pollMs,
   onSelectCommit,
   onOpenDiff,
+  onOpenFile,
   reviewCounts,
   virtualizerOptions,
 }: GraphPanelProps) {
@@ -63,13 +70,21 @@ export function GraphPanel({
   // Anchor commit for a pending shift-click range (the most recent plain click).
   const [anchorHash, setAnchorHash] = useState<string | null>(null);
 
-  const graphQuery = useGraph(repo, true, 500, repoChangedTick, pollMs);
+  const graphQuery = useGraph(repo, state.all, 500, repoChangedTick, pollMs);
 
   // -----------------------------------------------------------------------
   // fetch (git fetch --prune) — plan.md §4: read-only writes to
   // refs/remotes/* only, no pull/merge/checkout. Never mutates the worktree.
   // -----------------------------------------------------------------------
   const [fetchBusy, setFetchBusy] = useState(false);
+  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
+  // Re-render periodically so the "N 分前" label advances without a fetch.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (lastFetchAt === null) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [lastFetchAt]);
   const toast = useToast();
 
   const handleFetch = useCallback(async () => {
@@ -86,6 +101,7 @@ export function GraphPanel({
           kind: "success",
           message: summary ? `fetch 完了 (${seconds}s) — ${summary}` : `fetch 完了 (${seconds}s)`,
         });
+        setLastFetchAt(Date.now());
         void graphQuery.refetch();
       } else {
         const firstLine = result.stderr.trim().split("\n")[0];
@@ -199,17 +215,40 @@ export function GraphPanel({
       tabIndex={-1}
       onKeyDown={handleGraphKeyDown}
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-2 py-1 text-xs">
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="origin を fetch"
-          disabled={fetchBusy}
-          onClick={() => void handleFetch()}
-        >
-          <RefreshCw className={`size-3.5 ${fetchBusy ? "animate-spin" : ""}`} aria-hidden="true" />
-          fetch
-        </button>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/50 px-2 py-1 text-xs">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <GitBranch className="size-3.5" aria-hidden="true" />
+          <span>表示するブランチ</span>
+          <Tabs
+            value={state.all ? "all" : "current"}
+            onValueChange={(v) => dispatch({ type: "setAll", all: v === "all" })}
+          >
+            <TabsList>
+              <TabsTrigger value="all">すべてのブランチ</TabsTrigger>
+              <TabsTrigger value="current">現在のブランチのみ</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="flex items-center gap-2">
+          {lastFetchAt !== null && (
+            <span className="text-muted-foreground">
+              fetch {formatFetchAgo(Date.now() - lastFetchAt)}
+            </span>
+          )}
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="origin を fetch"
+            disabled={fetchBusy}
+            onClick={() => void handleFetch()}
+          >
+            <RefreshCw
+              className={`size-3.5 ${fetchBusy ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
+            fetch <kbd className="rounded border border-border px-1 text-[10px]">f</kbd>
+          </button>
+        </div>
       </div>
       {graphQuery.isError ? (
         <div className="p-2 text-sm text-destructive" role="alert">
@@ -232,6 +271,11 @@ export function GraphPanel({
           onOpenDiff={(hash) => {
             const c = commits.find((x) => x.hash === hash);
             if (c && c.parents[0]) onOpenDiff?.({ from: c.parents[0], to: c.hash });
+          }}
+          onOpenFile={(hash, path) => {
+            const c = commits.find((x) => x.hash === hash);
+            if (!c) return;
+            onOpenFile?.({ from: c.parents[0], to: c.hash }, path);
           }}
           virtualizerOptions={virtualizerOptions}
         />

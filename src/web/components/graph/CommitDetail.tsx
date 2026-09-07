@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { PathTree } from "@/components/tree/PathTree";
+import { PathTree, type PathTreeDecoration } from "@/components/tree/PathTree";
 import { useViewerSettings } from "@/lib/viewerSettings";
 import { useCommit, UNCOMMITTED_HASH } from "./hooks/useCommit";
 import { buildDecorations, buildGitStatus } from "./fileDecorations";
@@ -7,8 +7,9 @@ import { buildDecorations, buildGitStatus } from "./fileDecorations";
 export interface CommitDetailProps {
   repo: string;
   hash: string;
-  /** 「diff を見る」ボタン。未指定なら出さない（ルートコミット等）。 */
-  onOpenDiff?(): void;
+  /** ファイル行のクリック（Graph → Diff 遷移、ui-redesign.md §5.4）。未指定なら
+   * ツリーの行クリックは何もしない。 */
+  onOpenFile?(path: string): void;
   /**
    * Inline note shown above the metadata, e.g. for a root commit ("no
    * parent to diff against").
@@ -21,31 +22,34 @@ function formatDate(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleString();
 }
 
-export default function CommitDetail({ repo, hash, onOpenDiff, note }: CommitDetailProps) {
+export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDetailProps) {
   const isUncommitted = hash === UNCOMMITTED_HASH;
   const query = useCommit(repo, hash);
   const [viewerSettings] = useViewerSettings();
   const files = useMemo(() => query.data?.files ?? [], [query.data]);
   const paths = useMemo(() => files.map((f) => f.path), [files]);
   const gitStatus = useMemo(() => buildGitStatus(files), [files]);
-  const decorations = useMemo(() => buildDecorations(files), [files]);
+  const baseDecorations = useMemo(() => buildDecorations(files), [files]);
+  // Trailing "→" only when a click actually goes somewhere (Diff jump).
+  const decorations = useMemo(() => {
+    if (!onOpenFile) return baseDecorations;
+    const merged = new Map<string, PathTreeDecoration>();
+    for (const path of paths) {
+      const base = baseDecorations.get(path);
+      merged.set(path, {
+        text: base ? `${base.text} →` : "→",
+        parts: base?.parts,
+        title: base?.title,
+      });
+    }
+    return merged;
+  }, [baseDecorations, onOpenFile, paths]);
 
   return (
     <div className="px-2 py-1 text-sm" role="region" aria-label="commit detail">
       <div className="mb-2 flex items-center justify-between">
         <span className="font-mono text-xs text-muted-foreground">
           {hash === UNCOMMITTED_HASH ? hash : hash.slice(0, 12)}
-        </span>
-        <span className="flex items-center gap-1">
-          {onOpenDiff && !isUncommitted && (
-            <button
-              type="button"
-              className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-muted"
-              onClick={onOpenDiff}
-            >
-              diff を見る
-            </button>
-          )}
         </span>
       </div>
 
@@ -89,6 +93,9 @@ export default function CommitDetail({ repo, hash, onOpenDiff, note }: CommitDet
             // rows are mostly flattened away) and capped — the tree scrolls
             // internally beyond that.
             style={{ height: Math.min(320, 24 * paths.length + 32) }}
+            // ルートコミットなど onOpenFile が渡らないケースは、行をクリック
+            // しても Diff へは飛べない（GraphRow 参照）。
+            aria-disabled={!onOpenFile}
           >
             <PathTree
               paths={paths}
@@ -98,6 +105,7 @@ export default function CommitDetail({ repo, hash, onOpenDiff, note }: CommitDet
               fontSize={viewerSettings.fontSize}
               selectedPath={null}
               search={false}
+              onSelectFile={onOpenFile}
             />
           </div>
         </div>

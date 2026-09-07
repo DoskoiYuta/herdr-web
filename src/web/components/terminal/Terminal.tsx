@@ -7,6 +7,8 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
+import { Unplug } from "lucide-react";
+import { PanelState } from "@/components/ui/status/PanelState";
 import { encodeModifiedEnter, isInboxToggleKey, isMaximizeToggleKey } from "@/lib/termKeys";
 import { connectTermSocket, sendInput, sendResize } from "@/lib/termSocket";
 import { cn } from "@/lib/utils";
@@ -199,22 +201,14 @@ function TerminalSession({
     <div className={cn("relative h-full w-full", className)}>
       <div ref={containerRef} className="h-full w-full" />
       {disconnected && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/80">
-          {exitCode !== null && (
-            <div className="flex flex-col items-center gap-1 text-center text-sm">
-              <p>終了しました (code {exitCode})</p>
-              {exitCode === 127 && (
-                <p className="text-muted-foreground">herdr が見つかりません（PATH を確認）</p>
-              )}
-            </div>
-          )}
-          <button
-            type="button"
-            className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-            onClick={onReconnect}
-          >
-            再接続
-          </button>
+        <div className="absolute inset-0 bg-background/80">
+          <PanelState
+            icon={Unplug}
+            title={exitCode !== null ? `終了しました (code ${exitCode})` : "接続が切断されました"}
+            description={exitCode === 127 ? "herdr が見つかりません（PATH を確認）" : undefined}
+            tone="warning"
+            action={{ label: "再接続", onClick: onReconnect }}
+          />
         </div>
       )}
     </div>

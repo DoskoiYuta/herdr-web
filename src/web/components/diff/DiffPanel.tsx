@@ -41,40 +41,20 @@ import {
 import { orderItemsByTree } from "./order.ts";
 import { lineNumberToIndex, sideLines } from "./sideLines.ts";
 import {
-  DEFAULT_SETTINGS,
   initialBannerState,
   reduceBanner,
   updateBanner as deriveUpdateBanner,
-  validateSettings,
+  useSettings,
 } from "./state.ts";
-import type { BannerState, Settings } from "./state.ts";
+import type { BannerState } from "./state.ts";
 import StatusLine from "./StatusLine.tsx";
 import { buildTree, fileStats, fileStatus, statsDecoration, toGitStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
 
 const FOR_DIFF_DEBOUNCE_MS = 200;
 
-const SETTINGS_KEY = "herdr-web:diff-settings";
 /** A scrollTop at or below this is "at the top" for auto-apply purposes. */
 const NEAR_TOP_PX = 4;
-
-function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    return validateSettings(JSON.parse(raw));
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-function saveSettings(settings: Settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore — settings just won't persist across reloads
-  }
-}
 
 function buildHashMap(files: PatchResponse["files"] | undefined): Map<string, string> {
   const map = new Map<string, string>();
@@ -108,11 +88,13 @@ export function comparisonLabel(from: string | undefined, to: string | undefined
   return `${shorten(toLabel)} vs ${shorten(fromLabel)}`;
 }
 
-/** Where the Review タブ asked DiffPanel to jump (plan.md F5-8). */
+/** Where the Review タブ / Graph のファイル行が DiffPanel に飛ばす先（plan.md
+ * F5-8、ui-redesign.md §5.4）。`line` 無しはファイル見出しへのスクロールだけ
+ * （Graph のファイル行クリック）。 */
 export interface DiffInitialLocation {
   path: string;
-  line: number;
-  side: Side;
+  line?: number;
+  side?: Side;
 }
 
 export interface DiffPanelProps {
@@ -150,8 +132,7 @@ export function DiffPanel({
   sendButton,
   onOpenGraph = () => {},
 }: DiffPanelProps) {
-  const [settings, setSettings] = useState<Settings>(() => loadSettings());
-  useEffect(() => saveSettings(settings), [settings]);
+  const [settings, setDiffSettings] = useSettings();
 
   const [viewerSettings, updateViewerSettings] = useViewerSettings();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -762,11 +743,13 @@ export function DiffPanel({
     const item = items.find((i) => i.fileDiff.name === initialLocation.path);
     if (!item) return;
     diffViewRef.current?.scrollToItem(item.id);
-    diffViewRef.current?.scrollToLine(
-      item.id,
-      initialLocation.line,
-      initialLocation.side === "old" ? "deletions" : "additions",
-    );
+    if (initialLocation.line !== undefined) {
+      diffViewRef.current?.scrollToLine(
+        item.id,
+        initialLocation.line,
+        initialLocation.side === "old" ? "deletions" : "additions",
+      );
+    }
     onInitialLocationConsumed?.();
   }, [initialLocation, items, onInitialLocationConsumed]);
 
@@ -777,10 +760,10 @@ export function DiffPanel({
         showTree={viewerSettings.showTree}
         onToggleTree={() => updateViewerSettings({ showTree: !viewerSettings.showTree })}
         onToggleDiffStyle={() =>
-          setSettings((s) => ({ ...s, diffStyle: s.diffStyle === "split" ? "unified" : "split" }))
+          setDiffSettings({ diffStyle: settings.diffStyle === "split" ? "unified" : "split" })
         }
         onToggleOverflow={() =>
-          setSettings((s) => ({ ...s, overflow: s.overflow === "wrap" ? "scroll" : "wrap" }))
+          setDiffSettings({ overflow: settings.overflow === "wrap" ? "scroll" : "wrap" })
         }
         onFontDec={() =>
           updateViewerSettings({ fontSize: Math.max(MIN_FONT_SIZE, viewerSettings.fontSize - 1) })

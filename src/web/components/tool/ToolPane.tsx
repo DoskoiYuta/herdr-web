@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Unplug } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubRepo } from "@contract/git";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
-import { DockerPanel } from "@/components/docker/DockerPanel";
+import { ComposePanel } from "@/components/docker/ComposePanel";
 import { FilesPanel } from "@/components/files/FilesPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
 import { ProcessPanel } from "@/components/process/ProcessPanel";
@@ -17,6 +17,7 @@ import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { SendDraftsButton } from "@/components/review/SendDraftsButton";
 import { TabBadge } from "@/components/tool/TabBadge";
 import { Button } from "@/components/ui/button";
+import { PanelState } from "@/components/ui/status/PanelState";
 import {
   Select,
   SelectContent,
@@ -122,11 +123,7 @@ function basename(path: string): string {
 /** 観察タブ（Files/Graph/Diff/Process/Compose）の worktree 未選択時の空状態。
  * Decisions は worktree 横断なので、この空状態を経由しない（常に動く）。 */
 function EmptyWorktreeNotice() {
-  return (
-    <div className="flex h-full w-full items-center justify-center p-4 text-center">
-      <p className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</p>
-    </div>
-  );
+  return <PanelState icon={Unplug} title="herdr 未接続 / worktree 未選択" />;
 }
 
 /** `/focus/$tab` の唯一の下で描画される — URL がタブ・比較範囲・選択サブ
@@ -199,8 +196,9 @@ export function ToolPane() {
     tab === "diff" && !rootPending && effectiveSearch.path
       ? {
           path: effectiveSearch.path,
-          line: effectiveSearch.line ?? 1,
-          side: effectiveSearch.side ?? "new",
+          ...(effectiveSearch.line !== undefined
+            ? { line: effectiveSearch.line, side: effectiveSearch.side ?? "new" }
+            : {}),
         }
       : null;
   const filesSelectedPath = tab === "files" && !rootPending ? (effectiveSearch.path ?? null) : null;
@@ -240,6 +238,21 @@ export function ToolPane() {
       void navigate({
         params: (prev) => ({ ...prev, tab: "diff" }),
         search: (prev) => ({ ...prev, from: range.from, to: range.to }),
+      });
+    },
+    [navigate],
+  );
+
+  const openFileInDiff = useCallback(
+    (range: { from?: string; to: string }, path: string) => {
+      // `from` 無し（ルートコミットの file 行）は、サーバーが空木を commit
+      // として受け付けないため意味のある比較を組めない — GraphRow 側で
+      // クリック自体を止めているが、ここでも二重に弾く（M16 レビュー指摘:
+      // 弾かないと Diff が黙って WORKTREE vs HEAD にすり替わる）。
+      if (range.from === undefined) return;
+      void navigate({
+        params: (prev) => ({ ...prev, tab: "diff" }),
+        search: (prev) => ({ ...prev, from: range.from, to: range.to, path, line: undefined }),
       });
     },
     [navigate],
@@ -547,6 +560,7 @@ export function ToolPane() {
                   pollMs={subRepoPollMs}
                   onSelectCommit={handleSelectCommit}
                   onOpenDiff={openDiffFor}
+                  onOpenFile={openFileInDiff}
                   reviewCounts={reviewCounts}
                 />
               </div>
@@ -619,7 +633,7 @@ export function ToolPane() {
 
         <TabsContent value="compose" className="min-h-0 flex-1 overflow-hidden">
           {worktreeRoot ? (
-            <DockerPanel key={subRepoRoot} root={subRepoRoot} />
+            <ComposePanel key={subRepoRoot} root={subRepoRoot} />
           ) : (
             <EmptyWorktreeNotice />
           )}

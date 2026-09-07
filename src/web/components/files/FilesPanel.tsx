@@ -8,6 +8,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileQuestion, FileWarning, FolderTree } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { CodeViewLineSelection } from "@pierre/diffs";
 import type { Anchor } from "@contract/review";
 import type { Repo } from "@contract/events";
@@ -23,6 +25,8 @@ import {
 } from "@/components/ui/dialog";
 import { PathTree } from "@/components/tree/PathTree";
 import { ViewerControls } from "@/components/tool/ViewerControls";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PanelState } from "@/components/ui/status/PanelState";
 import { previewKindForPath } from "@contract/preview";
 import {
   askApi,
@@ -165,6 +169,8 @@ export function FilesPanel({
   ]);
 
   const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
+  /** 実寸 / フィットの切替（ui-redesign.md §5.4）。クリックでトグル。 */
+  const [imageZoomed, setImageZoomed] = useState(false);
   const [previewError, setPreviewError] = useState(false);
   // Reset preview state for the new selection during render (rather than in
   // an effect) so the previous file's dimensions/error never flash for the
@@ -181,6 +187,7 @@ export function FilesPanel({
   if (selectedPath !== previewedPath) {
     setPreviewedPath(selectedPath);
     if (imageDims !== null) setImageDims(null);
+    if (imageZoomed) setImageZoomed(false);
     if (previewError) setPreviewError(false);
     if (selection !== null) setSelection(null);
   }
@@ -447,6 +454,8 @@ export function FilesPanel({
     [toast],
   );
 
+  const [dragOverDir, setDragOverDir] = useState<string | null>(null);
+
   const [trashTarget, setTrashTarget] = useState<{
     path: string;
     kind: "file" | "directory";
@@ -573,18 +582,26 @@ export function FilesPanel({
       <div className="flex min-h-0 flex-1">
         {settings.showTree && (
           <>
-            <div style={{ width: treeWidth }} className="min-h-0 shrink-0">
-              <PathTree
-                paths={paths}
-                gitStatus={status}
-                initialExpansion="closed"
-                fontSize={settings.fontSize}
-                selectedPath={selectedPath}
-                onSelectFile={onSelectedPathChange}
-                onExpandedDirsChange={handleExpandedDirsChange}
-                contextMenuItems={contextMenuItems}
-                onExternalDrop={handleExternalDrop}
-              />
+            <div style={{ width: treeWidth }} className="flex min-h-0 shrink-0 flex-col">
+              <div className="min-h-0 flex-1">
+                <PathTree
+                  paths={paths}
+                  gitStatus={status}
+                  initialExpansion="closed"
+                  fontSize={settings.fontSize}
+                  selectedPath={selectedPath}
+                  onSelectFile={onSelectedPathChange}
+                  onExpandedDirsChange={handleExpandedDirsChange}
+                  contextMenuItems={contextMenuItems}
+                  onExternalDrop={handleExternalDrop}
+                  onExternalDragOver={setDragOverDir}
+                />
+              </div>
+              {dragOverDir !== null && (
+                <div className="shrink-0 border-t border-border bg-[color-mix(in_srgb,var(--focus)_10%,transparent)] px-2 py-1 text-xs text-muted-foreground">
+                  {dragOverDir === "" ? "/" : `${dragOverDir}/`} にドロップして取り込む
+                </div>
+              )}
             </div>
             <ResizeHandle
               width={treeWidth}
@@ -607,22 +624,12 @@ export function FilesPanel({
               <span className="truncate">{selectedPath}</span>
               <div className="flex shrink-0 items-center gap-2">
                 {previewKind === null && isMarkdownPath(selectedPath) && (
-                  <div className="flex gap-1" role="group" aria-label="表示モード">
-                    <button
-                      type="button"
-                      className={mdMode === "preview" ? "font-semibold text-foreground" : ""}
-                      onClick={() => onMdModeChange("preview")}
-                    >
-                      プレビュー
-                    </button>
-                    <button
-                      type="button"
-                      className={mdMode === "source" ? "font-semibold text-foreground" : ""}
-                      onClick={() => onMdModeChange("source")}
-                    >
-                      ソース
-                    </button>
-                  </div>
+                  <Tabs value={mdMode} onValueChange={(v) => onMdModeChange(v as typeof mdMode)}>
+                    <TabsList>
+                      <TabsTrigger value="preview">プレビュー</TabsTrigger>
+                      <TabsTrigger value="source">ソース</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
                 )}
                 {previewKind === "image" && imageDims && (
                   <span>
@@ -650,6 +657,9 @@ export function FilesPanel({
               rawUrl={rawUrl}
               previewError={previewError}
               onImageLoad={(width, height) => setImageDims({ width, height })}
+              imageZoomed={imageZoomed}
+              onImageZoomedChange={setImageZoomed}
+              onCopyAbsolutePath={() => void copyToClipboard(`${repo}/${selectedPath}`)}
               onPreviewError={() => setPreviewError(true)}
               fileQuery={fileQuery}
               fontSize={settings.fontSize}
@@ -683,6 +693,9 @@ function FileViewerBody({
   previewError,
   onImageLoad,
   onPreviewError,
+  imageZoomed,
+  onImageZoomedChange,
+  onCopyAbsolutePath,
   fileQuery,
   fontSize,
   mdMode,
@@ -707,6 +720,9 @@ function FileViewerBody({
   previewError: boolean;
   onImageLoad: (width: number, height: number) => void;
   onPreviewError: () => void;
+  imageZoomed: boolean;
+  onImageZoomedChange: (zoomed: boolean) => void;
+  onCopyAbsolutePath: () => void;
   fileQuery: ReturnType<typeof useFile>;
   fontSize: number;
   mdMode: "source" | "preview";
@@ -725,30 +741,30 @@ function FileViewerBody({
   onAskFocus: (id: string) => void | Promise<void>;
 }) {
   if (selectedPath === null) {
-    return (
-      <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">
-        ファイルを選択してください
-      </div>
-    );
+    return <PanelState icon={FolderTree} title="ファイルを選択してください" />;
   }
 
   if (previewKind === "image" && rawUrl !== null) {
     if (previewError) {
       return (
-        <div className="flex h-full items-center justify-center p-4 text-sm text-destructive">
-          プレビューを読み込めませんでした
-        </div>
+        <PanelState icon={FileWarning} title="プレビューを読み込めませんでした" tone="error" />
       );
     }
     return (
-      <div className="flex h-full items-center justify-center overflow-auto bg-muted p-4">
+      <div className="flex h-full flex-col items-center justify-center gap-2 overflow-auto bg-muted p-4">
         <img
           src={rawUrl}
           alt={selectedPath}
-          className="max-h-full max-w-full object-contain"
+          data-zoomed={imageZoomed}
+          className={cn(
+            "cursor-zoom-in rounded-sm border border-border bg-background",
+            imageZoomed ? "cursor-zoom-out max-w-none" : "max-h-full max-w-full object-contain",
+          )}
+          onClick={() => onImageZoomedChange(!imageZoomed)}
           onLoad={(e) => onImageLoad(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
           onError={onPreviewError}
         />
+        <p className="text-xs text-muted-foreground">{selectedPath}</p>
       </div>
     );
   }
@@ -786,17 +802,23 @@ function FileViewerBody({
 
   if (data.kind === "binary") {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">
-        バイナリファイル ({data.size} bytes)
-      </div>
+      <PanelState
+        icon={FileQuestion}
+        title="バイナリファイル"
+        description={`${data.size} bytes`}
+        action={{ label: "絶対パスをコピー", onClick: onCopyAbsolutePath }}
+      />
     );
   }
 
   if (data.kind === "too-large") {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">
-        大きすぎるため表示しません ({data.size} bytes、上限 {MAX_FILE_BYTES / (1024 * 1024)} MiB)
-      </div>
+      <PanelState
+        icon={FileWarning}
+        title={`${MAX_FILE_BYTES / (1024 * 1024)} MiB を超えています`}
+        description={`${data.size} bytes`}
+        action={{ label: "絶対パスをコピー", onClick: onCopyAbsolutePath }}
+      />
     );
   }
 

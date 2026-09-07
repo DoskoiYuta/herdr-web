@@ -12,19 +12,19 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 
 // DockerLogsView opens a real WebSocket on mount (F11-9) — irrelevant to
-// DockerPanel's own job of toggling which row is expanded.
+// ComposePanel's own job of toggling which row is expanded.
 vi.mock("./DockerLogsView", () => ({
   DockerLogsView: ({ id }: { root: string; id: string }) => <div>logs:{id}</div>,
 }));
 
 const { CommandUnavailableError, CommandTimeoutError } = await import("@/lib/api");
-const { DockerPanel } = await import("./DockerPanel");
+const { ComposePanel } = await import("./ComposePanel");
 
 function renderPanel(root = "/repo"): ReactElement {
   const client = new QueryClient();
   return (
     <QueryClientProvider client={client}>
-      <DockerPanel root={root} />
+      <ComposePanel root={root} />
     </QueryClientProvider>
   );
 }
@@ -75,6 +75,100 @@ test("renders a group's containers with service, state, and ports", async () => 
   expect(await screen.findByText("web")).toBeInTheDocument();
   expect(screen.getByText("herdr-web-1")).toBeInTheDocument();
   expect(screen.getByText("8080→80/tcp")).toBeInTheDocument();
+});
+
+test("a container with no published ports shows a placeholder instead of a blank cell", async () => {
+  containersMock.mockResolvedValue({
+    groups: [
+      {
+        kind: "compose",
+        name: "herdr",
+        workingDir: "/repo",
+        containers: [
+          {
+            id: "1",
+            name: "herdr-web-1",
+            service: "web",
+            state: "running",
+            status: "Up",
+            image: "node",
+            ports: [],
+            createdAt: "c",
+          },
+        ],
+      },
+    ],
+  });
+  render(renderPanel());
+
+  expect(await screen.findByText("—")).toBeInTheDocument();
+});
+
+test("groups one project's containers under a card showing running/exited counts", async () => {
+  containersMock.mockResolvedValue({
+    groups: [
+      {
+        kind: "compose",
+        name: "herdr",
+        workingDir: "/repo",
+        containers: [
+          {
+            id: "1",
+            name: "herdr-web-1",
+            service: "web",
+            state: "running",
+            status: "Up",
+            image: "node",
+            ports: [],
+            createdAt: "c",
+          },
+          {
+            id: "2",
+            name: "herdr-db-1",
+            service: "db",
+            state: "exited",
+            status: "Exited (0)",
+            image: "postgres",
+            ports: [],
+            createdAt: "c",
+          },
+        ],
+      },
+    ],
+  });
+  render(renderPanel());
+
+  expect(await screen.findByText("1 running · 1 exited")).toBeInTheDocument();
+});
+
+test.each([
+  ["compose", "docker compose"],
+  ["devcontainer", "devcontainer"],
+] as const)("shows the %s kind chip", async (kind, label) => {
+  containersMock.mockResolvedValue({
+    groups: [
+      {
+        kind,
+        name: "herdr",
+        workingDir: "/repo",
+        containers: [
+          {
+            id: "1",
+            name: "herdr-web-1",
+            service: kind === "compose" ? "web" : null,
+            state: "running",
+            status: "Up",
+            image: "node",
+            ports: [],
+            createdAt: "c",
+          },
+        ],
+      },
+    ],
+  });
+  render(renderPanel());
+
+  expect(await screen.findByText(label)).toBeInTheDocument();
 });
 
 test("clicking a container row opens its log view, and clicking it again closes it", async () => {
@@ -151,7 +245,7 @@ test("a later poll failure keeps the previous container list visible while showi
   const client = new QueryClient();
   const { rerender } = render(
     <QueryClientProvider client={client}>
-      <DockerPanel root="/repo" />
+      <ComposePanel root="/repo" />
     </QueryClientProvider>,
   );
   await screen.findByText("herdr-web-1");
@@ -159,7 +253,7 @@ test("a later poll failure keeps the previous container list visible while showi
   await client.refetchQueries({ queryKey: ["docker-containers", "/repo"] }).catch(() => {});
   rerender(
     <QueryClientProvider client={client}>
-      <DockerPanel root="/repo" />
+      <ComposePanel root="/repo" />
     </QueryClientProvider>,
   );
 

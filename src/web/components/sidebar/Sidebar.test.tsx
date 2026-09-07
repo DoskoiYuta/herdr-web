@@ -263,4 +263,15 @@ describe("Sidebar", () => {
     renderWithStore(<Sidebar {...defaultProps()} />);
     expect(screen.getByRole("separator")).toBeInTheDocument();
   });
+
+  // 無いと壊れる: 設定ダイアログへの唯一の導線がフッターの歯車。ここが開かないと
+  // テーマ・キーボード一覧・接続情報に一切辿り着けない。
+  test("clicking the footer gear icon opens the settings dialog", () => {
+    renderWithStore(<Sidebar {...defaultProps()} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("設定"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });

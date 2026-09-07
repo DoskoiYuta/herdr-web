@@ -2,10 +2,12 @@
 // viewers (Diff and Files, plan.md F3/F9): font size, whether the left tree
 // is shown, and its width. Diff's own per-panel Settings (diffStyle/
 // overflow) stays in diff/state.ts — those are diff-specific, not shared
-// with Files.
+// with Files. Backed by a `createLocalStorageStore` (lib/localStorageStore.ts)
+// so a change from the settings dialog (ui-redesign.md §5.5) reaches an
+// already-open Diff/Files panel without a remount.
 
-import { useCallback, useEffect, useState } from "react";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "./codeFont";
+import { createLocalStorageStore } from "./localStorageStore";
 
 export const MIN_TREE_WIDTH = 140;
 export const MAX_TREE_WIDTH = 600;
@@ -60,32 +62,15 @@ export function validateViewerSettings(
   return out;
 }
 
-function load(): ViewerSettings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_VIEWER_SETTINGS };
-    return validateViewerSettings(JSON.parse(raw));
-  } catch {
-    return { ...DEFAULT_VIEWER_SETTINGS };
-  }
-}
-
-function save(settings: ViewerSettings) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore — settings just won't persist across reloads
-  }
-}
+const store = createLocalStorageStore<ViewerSettings>({
+  key: STORAGE_KEY,
+  defaultValue: DEFAULT_VIEWER_SETTINGS,
+  validate: validateViewerSettings,
+});
 
 export type UpdateViewerSettings = (partial: Partial<ViewerSettings>) => void;
 
-/** Persisted viewer settings, shared by Diff and Files (plan.md F3/F9). */
+/** Persisted viewer settings, shared by Diff, Files, and the settings dialog. */
 export function useViewerSettings(): [ViewerSettings, UpdateViewerSettings] {
-  const [settings, setSettings] = useState<ViewerSettings>(() => load());
-  useEffect(() => save(settings), [settings]);
-  const update = useCallback<UpdateViewerSettings>((partial) => {
-    setSettings((s) => ({ ...s, ...partial }));
-  }, []);
-  return [settings, update];
+  return store.useStore();
 }
