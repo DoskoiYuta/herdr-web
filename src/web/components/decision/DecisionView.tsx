@@ -52,12 +52,15 @@ function useElapsedMinutes(createdAt: string | null): number {
   return Math.max(0, Math.round((nowMs - new Date(createdAt).getTime()) / 60_000));
 }
 
-function findPane(repos: Repo[], paneId: string | null): PaneRow | null {
+/** herdr は pane id を再利用しうるので、paneId が一致しても `agent` が
+ * 一致しなければ別セッションの pane と判断し、見つからなかった扱いにする
+ * （`agent` が null の依頼はレガシーデータなので id 一致だけで信頼する）。 */
+function findPane(repos: Repo[], paneId: string | null, agent: string | null): PaneRow | null {
   if (!paneId) return null;
   for (const repo of repos) {
     for (const worktree of repo.worktrees) {
       const pane = worktree.panes.find((p) => p.paneId === paneId);
-      if (pane) return pane;
+      if (pane) return agent !== null && pane.agent !== agent ? null : pane;
     }
   }
   return null;
@@ -454,7 +457,12 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
   // 操作で終わっているので、配達が滞っていても再送の宛先が無い。
   const canResend = delivery.canResend && decision.status !== "cancelled";
   const hasDeliveryProblem = decision.delivery !== null && delivery.state !== "sent";
-  const pane = findPane(state.repos, decision.paneId);
+  // レビュー指摘: 起動直後（WS 未接続 / tree 未着）に「見つからない」＝
+  // 「pane 消失」と決めつけると、実際には生きているエージェントを死んだと
+  // 誤表示する。tree がまだ 1 件も届いていない、または接続が確立していない
+  // 間は「不明」として扱う。
+  const settling = state.connection !== "open" || state.repos.length === 0;
+  const pane = settling ? null : findPane(state.repos, decision.paneId, decision.agent);
 
   return (
     <div
@@ -486,7 +494,9 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {pane ? (
+          {settling ? (
+            <AgentStatusDot status="unknown" label="状態を取得中" />
+          ) : pane ? (
             <AgentStatusDot status={pane.agentStatus} label={decision.agent ?? undefined} />
           ) : (
             <span>{decision.agent ?? "?"} · pane 消失</span>

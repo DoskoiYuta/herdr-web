@@ -35,10 +35,12 @@ test.each(ASK_TURN_CASES)("turnOf ask: status=%s -> %s", (status, expected) => {
   assert.equal(turnOf("ask", status), expected);
 });
 
+// レビュー指摘: dismissed（人間が却下）は done（緑）ではなく void（灰）—
+// answered だけが「完了」で、却下・取り下げはどちらも「無効」(§6.2)。
 const DECISION_TURN_CASES: [DecisionStatus, string][] = [
   ["open", "action"],
   ["answered", "done"],
-  ["dismissed", "done"],
+  ["dismissed", "void"],
   ["cancelled", "void"],
 ];
 

@@ -453,15 +453,129 @@ describe("DecisionView", () => {
   });
 
   // 無いと壊れる: pane が見つからないのに何も言わないと、エージェントが
-  // まだ生きているのか判断できない。
+  // まだ生きているのか判断できない。tree は既に届いている（repos が空でない）
+  // 状態でテストする — repos 空はまだ tree 未着のケース（後述のテスト）。
   test("shows a 'pane 消失' notice when the pane can't be found in herdr state", async () => {
     const decision = baseDecision({ paneId: "pane-gone" });
     get.mockResolvedValue(decision);
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/other/.git",
+          name: "other",
+          counts: { blocked: 0, done: 0 },
+          worktrees: [{ root: "/other", branch: "main", isMain: true, panes: [] }],
+        },
+      ],
+    });
 
-    renderWithStore(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />, { store });
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
 
     expect(screen.getByText(/pane 消失/)).toBeInTheDocument();
+  });
+
+  // レビュー指摘（Low 5）: herdr は pane id を再利用しうるので、paneId が
+  // 一致するだけでは別のエージェントの pane を「生きている」と誤認しうる。
+  // 無いと壊れる: エージェントが変わった再利用 pane の状態を、依頼のエージェント
+  // のものとして誤表示する。
+  test("treats a pane whose live agent differs from the decision's agent as gone", async () => {
+    const decision = baseDecision({ paneId: "pane-1", agent: "claude" });
+    get.mockResolvedValue(decision);
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/repo/.git",
+          name: "repo",
+          counts: { blocked: 0, done: 0 },
+          worktrees: [
+            {
+              root: "/repo",
+              branch: "main",
+              isMain: true,
+              panes: [
+                {
+                  paneId: "pane-1",
+                  workspaceId: "w1",
+                  workspaceLabel: null,
+                  tabId: "t1",
+                  tabLabel: null,
+                  label: null,
+                  agent: "codex",
+                  agentStatus: "working",
+                  terminalTitleStripped: null,
+                  focused: false,
+                  cwd: null,
+                  foregroundCwd: null,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    renderWithStore(<DecisionView id="decision-1" />, { store });
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    expect(screen.getByText(/pane 消失/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("状態: working")).not.toBeInTheDocument();
+  });
+
+  // レビュー指摘（Low 6）: tree がまだ届いていない／WS 未接続の間に「pane 消失」
+  // と決めつけると、実際には生きているエージェントを死んだと誤表示する。
+  test.each([
+    ["open" as const, [], "settling"],
+    ["connecting" as const, ["repo-with-pane"], "settling"],
+    ["open" as const, ["repo-with-pane"], "live"],
+    ["open" as const, ["repo-without-pane"], "gone"],
+  ])("connection=%s repos=%s -> pane display is %s", async (connection, reposKind, expected) => {
+    const decision = baseDecision({ paneId: "pane-1", agent: "claude" });
+    get.mockResolvedValue(decision);
+    const pane = {
+      paneId: "pane-1",
+      workspaceId: "w1",
+      workspaceLabel: null,
+      tabId: "t1",
+      tabLabel: null,
+      label: null,
+      agent: "claude",
+      agentStatus: "working" as const,
+      terminalTitleStripped: null,
+      focused: false,
+      cwd: null,
+      foregroundCwd: null,
+    };
+    const repos =
+      reposKind.length === 0
+        ? []
+        : [
+            {
+              key: "/repo/.git",
+              name: "repo",
+              counts: { blocked: 0, done: 0 },
+              worktrees: [
+                {
+                  root: "/repo",
+                  branch: "main",
+                  isMain: true,
+                  panes: reposKind[0] === "repo-with-pane" ? [pane] : [],
+                },
+              ],
+            },
+          ];
+    const store = makeFakeStore({ repos, connection });
+
+    renderWithStore(<DecisionView id="decision-1" />, { store });
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    if (expected === "settling") {
+      expect(screen.getByText(/状態を取得中/)).toBeInTheDocument();
+    } else if (expected === "live") {
+      expect(screen.getByLabelText("状態: working")).toBeInTheDocument();
+    } else {
+      expect(screen.getByText(/pane 消失/)).toBeInTheDocument();
+    }
   });
 
   // 無いと壊れる: セッション id を丸ごと出すと表示が長すぎるうえ、識別子として

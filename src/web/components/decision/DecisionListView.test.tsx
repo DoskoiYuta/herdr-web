@@ -118,6 +118,22 @@ describe("DecisionListView", () => {
     expect(onSelect).toHaveBeenCalledWith("d2");
   });
 
+  // レビュー指摘（High 1）: resultLabel は answered 以外で null を返すため、
+  // dismissed/cancelled の行が「回答あり」という answered 用の文言にフォール
+  // バックしてしまっていた。無いと壊れる: 却下・取り下げの行が実際には
+  // 回答していないのに「回答あり」と誤解させる。
+  test.each([
+    ["dismissed" as const, "回答あり"],
+    ["cancelled" as const, "回答あり"],
+  ])("the %s row's secondary line is not the answered fallback text", async (status, forbidden) => {
+    list.mockResolvedValue([decision({ id: "d1", status })]);
+    renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    fireEvent.mouseDown(screen.getByTestId("decision-status-tab-all"));
+
+    const row = await screen.findByTestId("decision-row-d1");
+    expect(within(row).queryByText(forbidden)).not.toBeInTheDocument();
+  });
+
   // 無いと壊れる: 状態ごとに同じ chip ラベルしか出ないと、一覧で
   // answered/dismissed/cancelled が見分けられない。
   test("distinct decision statuses render distinct status-chip labels", async () => {
@@ -177,6 +193,29 @@ describe("DecisionListView", () => {
     await waitFor(() => expect(resend).toHaveBeenCalledWith("d1"));
   });
 
+  // レビュー指摘（Medium 3）: 再送失敗が無通知だと、ユーザーは届いたと誤解
+  // したまま待ち続ける。無いと壊れる: reject しても何も表示されず、busy も
+  // 解除されないまま再試行すらできなくなる。
+  test("shows an error toast and clears busy when resend from the list rejects", async () => {
+    list.mockResolvedValue([
+      decision({
+        id: "d1",
+        status: "answered",
+        delivery: { state: "agent_blocked", attempts: 1, pane: null, at: "t" },
+      }),
+    ]);
+    resend.mockRejectedValue(new Error("network error"));
+    renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    fireEvent.mouseDown(screen.getByTestId("decision-status-tab-answered"));
+
+    const row = await screen.findByTestId("decision-row-d1");
+    const resendButton = within(row).getByRole("button", { name: "再送" });
+    fireEvent.click(resendButton);
+
+    await screen.findByText("再送に失敗しました");
+    await waitFor(() => expect(resendButton).not.toBeDisabled());
+  });
+
   // 無いと壊れる: 行クリックが選択を通知しないと、一覧から詳細を開けない。
   test("clicking a row calls onSelect with its id", async () => {
     list.mockResolvedValue([decision({ id: "d1" })]);
@@ -186,6 +225,43 @@ describe("DecisionListView", () => {
     fireEvent.click(await screen.findByTestId("decision-row-d1"));
 
     expect(onSelect).toHaveBeenCalledWith("d1");
+  });
+
+  // レビュー指摘（Medium 2）: worktree で絞り込んでも「未回答 N」がグローバル
+  // 件数（useDecisionCounts）のまま動かなかった。無いと壊れる: 特定 worktree
+  // に依頼が無いのに「未回答 3」のような無関係な数が出続ける。
+  test("choosing a worktree updates the 未回答 tab count to the filtered count, not the global one", async () => {
+    counts.mockResolvedValue({ total: 5 });
+    list.mockImplementation((query: { status?: string; worktreeRoot?: string }) => {
+      if (query.status === "open" && query.worktreeRoot === "/repo/b") {
+        return Promise.resolve([decision({ id: "d1" }), decision({ id: "d2" })]);
+      }
+      return Promise.resolve([]);
+    });
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/repo/.git",
+          name: "repo",
+          counts: { blocked: 0, done: 0 },
+          worktrees: [
+            { root: "/repo/a", branch: "main", isMain: true, panes: [] },
+            { root: "/repo/b", branch: "feature", isMain: false, panes: [] },
+          ],
+        },
+      ],
+    });
+    renderWithStore(<DecisionListView onSelect={vi.fn()} />, { store });
+    await waitFor(() =>
+      expect(screen.getByTestId("decision-status-tab-open")).toHaveTextContent("5"),
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "worktree で絞り込み" }));
+    fireEvent.click(await screen.findByRole("option", { name: /\/repo\/b|b/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("decision-status-tab-open")).toHaveTextContent("2"),
+    );
   });
 
   // 無いと壊れる: 一覧の「未回答 N」とタブ側の通知バッジが別々のカウントを

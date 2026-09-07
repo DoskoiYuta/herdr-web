@@ -14,6 +14,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { StatusChip } from "@/components/ui/status/StatusChip";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import { deliveryOf, turnOf } from "@/lib/statusVocab";
 import { isTypingTarget } from "./DecisionView";
 import { DECISION_STATUS_LABEL } from "./decisionLabels";
@@ -44,6 +45,21 @@ function resultLabel(decision: Decision): string | null {
     return selected ?? a.other ?? "";
   });
   return parts.filter(Boolean).join(", ") || null;
+}
+
+/** 非 open な行の補足。answered 以外は resultLabel が常に null を返すため、
+ * ステータスごとに文言を分ける（レビュー指摘: 全部「回答あり」に落ちていた）。 */
+function secondarySummary(decision: Decision): string {
+  switch (decision.status) {
+    case "open":
+      return questionSummary(decision.spec);
+    case "answered":
+      return resultLabel(decision) ?? "回答あり";
+    case "dismissed":
+      return "却下";
+    case "cancelled":
+      return "エージェントが取り下げ";
+  }
 }
 
 function worktreeBasename(root: string | null): string | null {
@@ -89,7 +105,6 @@ function DecisionRow({
   const showDelivery = decision.delivery !== null && delivery.state !== "sent";
   const [busy, setBusy] = useState(false);
   const worktree = worktreeBasename(decision.worktreeRoot);
-  const result = resultLabel(decision);
 
   return (
     <li>
@@ -118,9 +133,7 @@ function DecisionRow({
           <div className="truncate font-medium">
             {decision.spec.title ?? decision.spec.items[0]?.header ?? "(no title)"}
           </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {decision.status === "open" ? questionSummary(decision.spec) : (result ?? "回答あり")}
-          </div>
+          <div className="truncate text-xs text-muted-foreground">{secondarySummary(decision)}</div>
           <div className="truncate text-xs text-muted-foreground">
             {[worktree, decision.agent ?? "?", relativeTime(decision.createdAt, nowMs)]
               .filter(Boolean)
@@ -180,8 +193,21 @@ export function DecisionListView({ onSelect }: DecisionListViewProps) {
   const history = decisions.filter((d) => d.status !== "open");
   const showHistory = statusTab !== "open";
 
+  // レビュー指摘: worktree を絞り込んだら「未回答 N」もその worktree の件数に
+  // 従うべきで、全 worktree 横断の useDecisionCounts に固定したままではいけない
+  // （サーバーに worktree 別カウント API は無いので、絞り込み中はここで
+  // status=open のリストを引いて件数を数える）。この queryKey は statusTab==
+  // "open" のときのメインクエリと一致するため、React Query が 1 回にまとめる。
   const countsQuery = useDecisionCounts();
-  const openTotal = countsQuery.data?.total ?? 0;
+  const openCountForWorktreeQuery = useQuery({
+    queryKey: ["decision-list", "open", worktreeRoot ?? "all"],
+    queryFn: () => decisionApi.list({ status: "open", worktreeRoot }),
+    enabled: worktreeRoot !== undefined,
+  });
+  const openTotal =
+    worktreeRoot !== undefined
+      ? (openCountForWorktreeQuery.data?.length ?? 0)
+      : (countsQuery.data?.total ?? 0);
 
   useDecisionEvents(
     useCallback(() => {
@@ -201,12 +227,19 @@ export function DecisionListView({ onSelect }: DecisionListViewProps) {
     return () => window.removeEventListener("keydown", handleDigit);
   }, [unanswered, onSelect]);
 
+  const toast = useToast();
   const resend = useCallback(
     async (id: string) => {
-      await decisionApi.resend(id);
-      await queryClient.invalidateQueries({ queryKey: ["decision-list"] });
+      try {
+        await decisionApi.resend(id);
+        await queryClient.invalidateQueries({ queryKey: ["decision-list"] });
+      } catch {
+        // サーバーの再送処理には状態ゲートが無い（DeliveryChip busy コメント
+        // 参照）— 失敗を握りつぶすと、届いたと誤解したまま待ち続ける。
+        toast({ kind: "error", message: "再送に失敗しました" });
+      }
     },
-    [queryClient],
+    [queryClient, toast],
   );
 
   return (
