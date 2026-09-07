@@ -18,6 +18,13 @@ const TURN_CLASS: Record<Turn, string> = {
   void: "bg-muted text-muted-foreground",
 };
 
+const TURN_DOT_CLASS: Record<Turn, string> = {
+  action: "bg-amber-500 dark:bg-amber-400",
+  progress: "bg-sky-500 dark:bg-sky-400",
+  done: "bg-emerald-500 dark:bg-emerald-400",
+  void: "bg-muted-foreground",
+};
+
 export function StatusChip({ turn, label }: { turn: Turn; label?: string }) {
   return (
     <Badge
@@ -26,6 +33,7 @@ export function StatusChip({ turn, label }: { turn: Turn; label?: string }) {
       data-turn={turn}
       className={cn("border-transparent", TURN_CLASS[turn])}
     >
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", TURN_DOT_CLASS[turn])} />
       {label ?? TURN_LABEL[turn]}
     </Badge>
   );
