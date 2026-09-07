@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import type { VirtualizerOptions } from "@tanstack/react-virtual";
 import { RefreshCw } from "lucide-react";
 import type { Ref } from "@contract/git";
 import type { ReviewCountsResponse } from "@contract/review";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import { FetchBusyError, gitApi } from "@/lib/api";
 import { useGraph } from "./hooks/useGraph";
 import { initialState, reduce } from "./state";
 import GraphView from "./GraphView";
-
-/** How long the fetch result line stays visible before auto-dismissing. */
-const FETCH_MESSAGE_TIMEOUT_MS = 5000;
 
 export interface GraphPanelProps {
   repo: string;
@@ -72,24 +70,7 @@ export function GraphPanel({
   // refs/remotes/* only, no pull/merge/checkout. Never mutates the worktree.
   // -----------------------------------------------------------------------
   const [fetchBusy, setFetchBusy] = useState(false);
-  const [fetchMessage, setFetchMessage] = useState<string | null>(null);
-  const fetchMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (fetchMessageTimer.current !== null) clearTimeout(fetchMessageTimer.current);
-    },
-    [],
-  );
-
-  const showFetchMessage = useCallback((message: string) => {
-    setFetchMessage(message);
-    if (fetchMessageTimer.current !== null) clearTimeout(fetchMessageTimer.current);
-    fetchMessageTimer.current = setTimeout(() => {
-      setFetchMessage(null);
-      fetchMessageTimer.current = null;
-    }, FETCH_MESSAGE_TIMEOUT_MS);
-  }, []);
+  const toast = useToast();
 
   const handleFetch = useCallback(async () => {
     if (fetchBusy) return;
@@ -97,28 +78,32 @@ export function GraphPanel({
     try {
       const result = await gitApi.fetch(repo);
       if (result.timedOut) {
-        showFetchMessage("タイムアウト");
+        toast({ kind: "warning", message: "タイムアウト" });
       } else if (result.code === 0) {
         const seconds = (result.durationMs / 1000).toFixed(1);
         const summary = result.stderr.trim().split("\n")[0];
-        showFetchMessage(
-          summary ? `fetch 完了 (${seconds}s) — ${summary}` : `fetch 完了 (${seconds}s)`,
-        );
+        toast({
+          kind: "success",
+          message: summary ? `fetch 完了 (${seconds}s) — ${summary}` : `fetch 完了 (${seconds}s)`,
+        });
         void graphQuery.refetch();
       } else {
         const firstLine = result.stderr.trim().split("\n")[0];
-        showFetchMessage(firstLine || `fetch に失敗しました (exit ${result.code})`);
+        toast({
+          kind: "error",
+          message: firstLine || `fetch に失敗しました (exit ${result.code})`,
+        });
       }
     } catch (err) {
       if (err instanceof FetchBusyError) {
-        showFetchMessage("実行中です");
+        toast({ kind: "warning", message: "実行中です" });
       } else {
-        showFetchMessage(err instanceof Error ? err.message : String(err));
+        toast({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       }
     } finally {
       setFetchBusy(false);
     }
-  }, [fetchBusy, repo, graphQuery, showFetchMessage]);
+  }, [fetchBusy, repo, graphQuery, toast]);
 
   function handleGraphKeyDown(event: React.KeyboardEvent) {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -225,11 +210,6 @@ export function GraphPanel({
           <RefreshCw className={`size-3.5 ${fetchBusy ? "animate-spin" : ""}`} aria-hidden="true" />
           fetch
         </button>
-        {fetchMessage && (
-          <span className="truncate text-muted-foreground" role="status">
-            {fetchMessage}
-          </span>
-        )}
       </div>
       {graphQuery.isError ? (
         <div className="p-2 text-sm text-destructive" role="alert">

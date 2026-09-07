@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { STATUS_META } from "./PaneRow";
+import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
 
 const ASK_STATUS_QUERY = "open,replied,outdated";
 const ASK_LIST_REFETCH_MS = 30_000;

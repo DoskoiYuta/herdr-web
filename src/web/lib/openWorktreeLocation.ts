@@ -7,10 +7,11 @@
  * 古い worktree が表示中のことがある。ToolPane はここで付ける search の
  * `root` を見て、その worktree に実際に切り替わるまで `path`/`line` を
  * 適用しない（plan.md F14-4）。対象 worktree に pane が無ければ、navigate
- * せずに一時メッセージを返す。
+ * せずに toast で知らせる（docs/ui-redesign.md §5.6: 一過性メッセージは共通の toast に統一する）。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import { useHerdrState, useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { firstPaneAt } from "@/lib/sendTargets";
 
@@ -18,17 +19,10 @@ export function useOpenWorktreeLocation() {
   const state = useHerdrState();
   const { send } = useHerdrStoreActions();
   const navigate = useNavigate();
-  const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!message) return;
-    const t = setTimeout(() => setMessage(null), 4000);
-    return () => clearTimeout(t);
-  }, [message]);
+  const toast = useToast();
 
   const openLocation = useCallback(
     (location: { worktreeRoot: string; path: string; line: number }) => {
-      setMessage(null);
       if (state.focus?.worktreeRoot === location.worktreeRoot) {
         void navigate({
           to: "/focus/$tab",
@@ -39,7 +33,7 @@ export function useOpenWorktreeLocation() {
       }
       const pane = firstPaneAt(state.repos, location.worktreeRoot);
       if (!pane) {
-        setMessage("この worktree の pane が herdr にありません");
+        toast({ kind: "warning", message: "この worktree の pane が herdr にありません" });
         return;
       }
       send({ type: "focus-pane", pane });
@@ -49,8 +43,8 @@ export function useOpenWorktreeLocation() {
         search: { path: location.path, line: location.line, root: location.worktreeRoot },
       });
     },
-    [state.focus, state.repos, send, navigate],
+    [state.focus, state.repos, send, navigate, toast],
   );
 
-  return { openLocation, message };
+  return { openLocation };
 }

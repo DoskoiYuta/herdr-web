@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { GraphPanel } from "./GraphPanel";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 
 const commit = (hash: string, parents: string[]) => ({
   hash,
@@ -43,12 +44,14 @@ describe("GraphPanel detail toggle", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <GraphPanel
-          repo="/r"
-          repoChangedTick={0}
-          onSelectCommit={() => {}}
-          virtualizerOptions={virtualizerOptions}
-        />
+        <ToastProvider>
+          <GraphPanel
+            repo="/r"
+            repoChangedTick={0}
+            onSelectCommit={() => {}}
+            virtualizerOptions={virtualizerOptions}
+          />
+        </ToastProvider>
       </QueryClientProvider>,
     );
     const row = await screen.findByText("subject bbb");

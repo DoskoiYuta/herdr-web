@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { herdrApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { WorkspaceGroup } from "@/lib/repoWorkspaces";
-import { STATUS_META } from "./PaneRow";
+import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
 
 export type RepoWorkspaceRowProps = {
   workspace: WorkspaceGroup;

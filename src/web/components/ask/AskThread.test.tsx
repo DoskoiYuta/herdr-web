@@ -57,7 +57,7 @@ test("replying calls onReply with the ask id and body", async () => {
   const onReply = vi.fn();
   renderThread({ ask: ask(), startLine: 2, endLine: 2 }, { onReply });
   fireEvent.change(screen.getByPlaceholderText("返信"), { target: { value: "because" } });
-  fireEvent.click(screen.getByText("返信"));
+  fireEvent.click(screen.getByRole("button", { name: "送信" }));
   expect(onReply).toHaveBeenCalledWith("abc123", "because");
 });
 
@@ -71,24 +71,24 @@ test("解決 calls onResolve with the ask id", () => {
 // Without this, a message the agent pane never actually received (blocked or
 // gone) would look identical to one that sent fine — nobody would know to
 // resend it.
-test("shows 未送信 + 再送 when lastPrompt is agent_blocked, and 再送 calls onResend", () => {
+test("shows a resend control when lastPrompt is agent_blocked, and it calls onResend", () => {
   const onResend = vi.fn();
   renderThread(
     { ask: ask({ lastPrompt: { state: "agent_blocked", at: "t" } }), startLine: 2, endLine: 2 },
     { onResend },
   );
-  expect(screen.getByText("未送信")).toBeInTheDocument();
-  fireEvent.click(screen.getByText("再送"));
+  expect(screen.getByTestId("delivery-chip")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "再送" }));
   expect(onResend).toHaveBeenCalledWith("abc123");
 });
 
-test("does not show 未送信 when the prompt was sent", () => {
+test("does not show a resend control when the prompt was sent", () => {
   renderThread({
     ask: ask({ lastPrompt: { state: "sent", at: "t" } }),
     startLine: 2,
     endLine: 2,
   });
-  expect(screen.queryByText("未送信")).not.toBeInTheDocument();
+  expect(screen.queryByText("再送")).not.toBeInTheDocument();
 });
 
 test("解決 is hidden once the ask is resolved", () => {
@@ -97,10 +97,10 @@ test("解決 is hidden once the ask is resolved", () => {
 });
 
 // Without this, a for-file refetch that resolves an ask can still show the
-// old "replied" badge for as long as the GET /api/ask/:id query (which stops
+// old "replied" turn for as long as the GET /api/ask/:id query (which stops
 // polling once it itself observes resolved/outdated) holds stale data.
-test("shows resolved once the for-file prop says so, even with a stale replied query cache", () => {
+test("shows the done status chip once the for-file prop says resolved, even with a stale replied query cache", () => {
   getMock.mockResolvedValue({ ...ask({ status: "replied" }), sessionStatus: "unknown" });
   renderThread({ ask: ask({ status: "resolved" }), startLine: 2, endLine: 2 });
-  expect(screen.getByTestId("ask-status-badge")).toHaveTextContent("resolved");
+  expect(screen.getByTestId("status-chip")).toHaveAttribute("data-turn", "done");
 });

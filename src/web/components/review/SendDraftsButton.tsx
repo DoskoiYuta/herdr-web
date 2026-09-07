@@ -7,9 +7,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaneRow } from "@contract/events";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import { reviewApi, SendTargetError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { STATUS_META } from "@/components/sidebar/PaneRow";
+import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
 import { PaneLayoutMiniMap } from "@/components/tool/PaneLayoutMiniMap";
 import { usePanePreview } from "@/components/tool/hooks/usePanePreview";
 
@@ -100,8 +101,8 @@ export function SendDraftsButton({
   onSent,
 }: SendDraftsButtonProps) {
   const [sendBusy, setSendBusy] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const toast = useToast();
 
   // DiffPanel の remount（比較範囲変更・タブ切替）でこのコンポーネントごと
   // unmount されうる — 送信中にそれが起きても、戻ってきた await の続きで
@@ -117,24 +118,39 @@ export function SendDraftsButton({
     async (pane?: string) => {
       if (!repoKey || sendBusy) return;
       setSendBusy(true);
-      setSendError(null);
       try {
         await reviewApi.send({ repo: repoKey, worktreeRoot, pane });
         if (!mountedRef.current) return;
         onSent();
         setPickerOpen(false);
+        // id 固定: 前回の送信先エラー（sticky）が残っていれば、この成功で
+        // 置き換えて消す。
+        toast({
+          kind: "success",
+          message: `下書き ${pendingDrafts} 件を送信しました`,
+          id: "send-drafts",
+        });
       } catch (err) {
         if (!mountedRef.current) return;
-        setSendError(
-          err instanceof SendTargetError
-            ? SEND_TARGET_ERROR_MESSAGE[err.type]
-            : "送信に失敗しました",
-        );
+        // 送信先エラーは対処してから再送する性質なので自動で消さない
+        // （§5.6: 一過性メッセージに残すのは「その場で判断が要るもの」だけ、
+        // という原則の裏返し — これは判断が要るので消してはいけない）。
+        // ネットワーク等の一過性エラーは従来どおり自動で消える。
+        if (err instanceof SendTargetError) {
+          toast({
+            kind: "error",
+            message: SEND_TARGET_ERROR_MESSAGE[err.type],
+            sticky: true,
+            id: "send-drafts",
+          });
+        } else {
+          toast({ kind: "error", message: "送信に失敗しました", id: "send-drafts" });
+        }
       } finally {
         if (mountedRef.current) setSendBusy(false);
       }
     },
-    [repoKey, worktreeRoot, sendBusy, onSent],
+    [repoKey, worktreeRoot, sendBusy, onSent, pendingDrafts, toast],
   );
 
   const handleSend = useCallback(() => {
@@ -160,7 +176,6 @@ export function SendDraftsButton({
       >
         送信 ({pendingDrafts})
       </Button>
-      {sendError && <span className="text-xs text-destructive">{sendError}</span>}
 
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent>

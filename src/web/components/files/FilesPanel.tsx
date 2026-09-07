@@ -13,6 +13,7 @@ import type { AskTarget } from "@contract/ask";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import {
   Dialog,
   DialogContent,
@@ -93,28 +94,6 @@ export interface FilesPanelProps {
    * これを受けて `initialLocation` を null に戻すこと — さもないとポーラー更新
    * のたびに再度同じ場所へジャンプしてしまう（DiffPanel.tsx と同じ理由）。 */
   onInitialLocationConsumed?: () => void;
-}
-
-/** Transient status/error line shown in the header. `show` with no `ms`
- * persists until the next `show`/`clear`; with `ms` it self-clears. */
-function useTransientMessage(): {
-  message: string | null;
-  show: (text: string, ms?: number) => void;
-  clear: () => void;
-} {
-  const [message, setMessage] = useState<string | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clear = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-    setMessage(null);
-  }, []);
-  const show = useCallback((text: string, ms?: number) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setMessage(text);
-    timeoutRef.current = ms !== undefined ? setTimeout(() => setMessage(null), ms) : null;
-  }, []);
-  return { message, show, clear };
 }
 
 export function FilesPanel({
@@ -211,32 +190,41 @@ export function FilesPanel({
   const rootError = ls.errors.find((e) => e.dir === "")?.error;
 
   const queryClient = useQueryClient();
-  const {
-    message: statusMessage,
-    show: showStatusMessage,
-    clear: clearStatusMessage,
-  } = useTransientMessage();
+  const toast = useToast();
   const [conflict, setConflict] = useState<{ dir: string; files: File[]; paths: string[] } | null>(
     null,
   );
 
   const runUpload = useCallback(
     async (dir: string, files: File[], overwrite: boolean) => {
-      showStatusMessage(`インポート中… (${files.length} 件)`);
+      toast({
+        kind: "info",
+        message: `インポート中… (${files.length} 件)`,
+        sticky: true,
+        id: "upload",
+      });
       try {
         const result = await fsApi.upload({ root: repo, dir, files, overwrite });
         void queryClient.invalidateQueries({ queryKey: ["ls", repo] });
-        showStatusMessage(`${result.written.length} 件をインポートしました`, 3000);
+        toast({
+          kind: "success",
+          message: `${result.written.length} 件をインポートしました`,
+          id: "upload",
+        });
       } catch (err) {
         if (err instanceof UploadConflictError) {
-          clearStatusMessage();
+          toast.dismiss("upload");
           setConflict({ dir, files, paths: err.paths });
           return;
         }
-        showStatusMessage(err instanceof Error ? err.message : String(err), 4000);
+        toast({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+          id: "upload",
+        });
       }
     },
-    [repo, queryClient, showStatusMessage, clearStatusMessage],
+    [repo, queryClient, toast],
   );
 
   // -------------------------------------------------------------------
@@ -336,7 +324,7 @@ export function FilesPanel({
     async (body: string, target: AskTarget) => {
       const data = fileQuery.data;
       if (!selection || !repoKey || !selectedPath || !data || data.kind !== "text") {
-        showStatusMessage("質問を作成できません（リポジトリを解決できていません）", 4000);
+        toast({ kind: "error", message: "質問を作成できません（リポジトリを解決できていません）" });
         return;
       }
       const lines = data.contents.split("\n");
@@ -357,13 +345,13 @@ export function FilesPanel({
         refreshMatches();
       } catch (err) {
         if (err instanceof AskLimitError || err instanceof AskUnavailableError) {
-          showStatusMessage(err.message, 4000);
+          toast({ kind: "error", message: err.message });
         } else {
-          showStatusMessage("質問の送信に失敗しました", 4000);
+          toast({ kind: "error", message: "質問の送信に失敗しました" });
         }
       }
     },
-    [selection, repoKey, selectedPath, repo, fileQuery.data, refreshMatches, showStatusMessage],
+    [selection, repoKey, selectedPath, repo, fileQuery.data, refreshMatches, toast],
   );
 
   const handleAskReply = useCallback(
@@ -372,10 +360,10 @@ export function FilesPanel({
         await askApi.reply(id, { body, author: "user", agentSession: null });
         refreshMatches();
       } catch {
-        showStatusMessage("返信に失敗しました", 4000);
+        toast({ kind: "error", message: "返信に失敗しました" });
       }
     },
-    [refreshMatches, showStatusMessage],
+    [refreshMatches, toast],
   );
 
   const handleAskResolve = useCallback(
@@ -388,10 +376,10 @@ export function FilesPanel({
         void queryClient.invalidateQueries({ queryKey: ["ask", id] });
         refreshMatches();
       } catch {
-        showStatusMessage("解決に失敗しました", 4000);
+        toast({ kind: "error", message: "解決に失敗しました" });
       }
     },
-    [refreshMatches, showStatusMessage, queryClient],
+    [refreshMatches, toast, queryClient],
   );
 
   const handleAskResend = useCallback(
@@ -400,10 +388,10 @@ export function FilesPanel({
         await askApi.resend(id);
         refreshMatches();
       } catch {
-        showStatusMessage("再送に失敗しました", 4000);
+        toast({ kind: "error", message: "再送に失敗しました" });
       }
     },
-    [refreshMatches, showStatusMessage],
+    [refreshMatches, toast],
   );
 
   const handleAskFocus = useCallback(
@@ -411,10 +399,10 @@ export function FilesPanel({
       try {
         await askApi.focus(id);
       } catch {
-        showStatusMessage("herdr で開けませんでした", 4000);
+        toast({ kind: "error", message: "herdr で開けませんでした" });
       }
     },
-    [showStatusMessage],
+    [toast],
   );
 
   const handleExternalDrop = useCallback(
@@ -440,10 +428,10 @@ export function FilesPanel({
       try {
         await navigator.clipboard.writeText(text);
       } catch {
-        showStatusMessage("クリップボードにコピーできませんでした", 2000);
+        toast({ kind: "error", message: "クリップボードにコピーできませんでした" });
       }
     },
-    [showStatusMessage],
+    [toast],
   );
 
   const [trashTarget, setTrashTarget] = useState<{
@@ -468,14 +456,14 @@ export function FilesPanel({
         ) {
           onSelectedPathChange(null);
         }
-        showStatusMessage(`ゴミ箱に移動しました: ${path}`, 3000);
+        toast({ kind: "success", message: `ゴミ箱に移動しました: ${path}` });
       } catch (err) {
         // TrashUnavailableError's own message is already the user-facing
         // 「この環境では...」 text, so no special-casing is needed here.
-        showStatusMessage(err instanceof Error ? err.message : String(err), 4000);
+        toast({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       }
     })();
-  }, [trashTarget, repo, queryClient, showStatusMessage, selectedPath, onSelectedPathChange]);
+  }, [trashTarget, repo, queryClient, toast, selectedPath, onSelectedPathChange]);
 
   const contextMenuItems = useCallback(
     (item: { path: string; kind: "file" | "directory" }) => {
@@ -506,11 +494,6 @@ export function FilesPanel({
           }
         />
       </div>
-      {statusMessage && (
-        <p className="shrink-0 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-          {statusMessage}
-        </p>
-      )}
       <Dialog open={conflict !== null} onOpenChange={(open) => !open && setConflict(null)}>
         <DialogContent>
           <DialogHeader>

@@ -8,13 +8,14 @@ import { DecisionView } from "./DecisionView";
 const get = vi.fn();
 const answer = vi.fn();
 const dismiss = vi.fn();
+const resend = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   decisionApi: {
     get: (...args: unknown[]) => get(...args),
     answer: (...args: unknown[]) => answer(...args),
     dismiss: (...args: unknown[]) => dismiss(...args),
-    resend: vi.fn(),
+    resend: (...args: unknown[]) => resend(...args),
   },
 }));
 
@@ -58,6 +59,7 @@ beforeEach(() => {
   get.mockReset();
   answer.mockReset();
   dismiss.mockReset();
+  resend.mockReset();
   clearDecisionDraft("decision-1");
 });
 
@@ -304,5 +306,75 @@ describe("DecisionView", () => {
 
     renderWithStore(<DecisionView id="decision-1" />);
     await waitFor(() => expect(screen.getByLabelText("メモ")).toHaveValue("書きかけの回答"));
+  });
+
+  // 無いと壊れる: agent_blocked のまま resend ボタンが出ないと、確定した回答が
+  // 相手に届いていないのに気づく手段がなくなる。
+  test("shows a resend control when the delivery is agent_blocked, wired to the resend API", async () => {
+    const decision = baseDecision({
+      status: "answered",
+      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
+      delivery: { state: "agent_blocked", attempts: 2, pane: null, at: "t" },
+    });
+    get.mockResolvedValue(decision);
+    resend.mockResolvedValue({ ...decision, delivery: { ...decision.delivery!, state: "sent" } });
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByTestId("delivery-chip")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "再送" }));
+    await waitFor(() => expect(resend).toHaveBeenCalledWith("decision-1"));
+  });
+
+  // レビュー指摘: 再送 API に状態ゲートが無いので、連打がそのまま複数回の
+  // 通知になる。再送中は DeliveryChip のボタンを無効化する。
+  test("disables the resend control while a resend request is in flight", async () => {
+    let resolveResend: (v: unknown) => void = () => {};
+    resend.mockReturnValue(new Promise((resolve) => (resolveResend = resolve)));
+    const decision = baseDecision({
+      status: "answered",
+      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
+      delivery: { state: "agent_blocked", attempts: 2, pane: null, at: "t" },
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByTestId("delivery-chip")).toBeInTheDocument());
+    const button = screen.getByRole("button", { name: "再送" });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(resend).toHaveBeenCalledTimes(1);
+
+    resolveResend({ ...decision, delivery: { ...decision.delivery!, state: "sent" } });
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  // 無いと壊れる: すでに届いている確定回答にまで再送ボタンを出すと、
+  // ユーザーが不要な再送を叩けてしまう。
+  test("shows no resend control once delivery is sent", async () => {
+    const decision = baseDecision({
+      status: "answered",
+      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
+      delivery: { state: "sent", attempts: 1, pane: null, at: "t" },
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByTestId("delivery-chip")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "再送" })).not.toBeInTheDocument();
+  });
+
+  // 無いと壊れる: cancelled（エージェント側の取り下げ）は宛先が無いので、
+  // 配達が滞って見えても再送すべきではない。
+  test("shows no resend control for a cancelled decision even with a blocked delivery", async () => {
+    const decision = baseDecision({
+      status: "cancelled",
+      delivery: { state: "agent_blocked", attempts: 1, pane: null, at: "t" },
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByTestId("delivery-chip")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "再送" })).not.toBeInTheDocument();
   });
 });

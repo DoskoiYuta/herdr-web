@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { RouterProvider } from "@tanstack/react-router";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
 import { createAppRouter } from "./router";
 
@@ -12,8 +13,10 @@ export type AppProps = {
 export function App({ router }: AppProps = {}) {
   const [ownRouter] = useState(() => router ?? createAppRouter());
   return (
-    <HerdrStoreProvider>
-      <RouterProvider router={ownRouter} />
-    </HerdrStoreProvider>
+    <ToastProvider>
+      <HerdrStoreProvider>
+        <RouterProvider router={ownRouter} />
+      </HerdrStoreProvider>
+    </ToastProvider>
   );
 }

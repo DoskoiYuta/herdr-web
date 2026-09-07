@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PaneRow } from "@contract/events";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { SendDraftsButton, type SendDraftsButtonProps } from "./SendDraftsButton";
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
@@ -56,7 +57,9 @@ function renderButton(overrides: Partial<SendDraftsButtonProps> = {}) {
   };
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <SendDraftsButton {...props} />
+      <ToastProvider>
+        <SendDraftsButton {...props} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return { ...utils, props };
@@ -70,8 +73,8 @@ describe("SendDraftsButton", () => {
   // 無いと壊れる: 0 件でも disabled ボタンが出続けると、Diff の toolbar が常に
   // 送信ボタンで埋まる（ui-redesign.md §5.4: 0 件は非表示）。
   test("renders nothing when pendingDrafts is 0", () => {
-    const { container } = renderButton({ pendingDrafts: 0 });
-    expect(container).toBeEmptyDOMElement();
+    renderButton({ pendingDrafts: 0 });
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   test("shows the count and, with a single agent pane, POSTs /api/review/send with its pane id", async () => {
@@ -147,6 +150,39 @@ describe("SendDraftsButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "送信 (2)" }));
 
     expect(await screen.findByText("この worktree にエージェントがいません")).toBeInTheDocument();
+  });
+
+  // レビュー指摘: 送信先エラー（no_agent/ambiguous_target/invalid_target）は
+  // ユーザーが pane を用意する等の対処をしてから再送する性質のものなので、
+  // 既定の 4 秒で消えてはいけない — 消えると「直したつもりで実は直っていない」
+  // まま気づけない。
+  test("a send-target error toast does not auto-dismiss after the default 4s timeout", async () => {
+    vi.useFakeTimers();
+    sendMock.mockRejectedValueOnce(new SendTargetError("no_agent"));
+    renderButton({ pendingDrafts: 2, agentPanes: [pane({ paneId: "claude-1" })] });
+    fireEvent.click(screen.getByRole("button", { name: "送信 (2)" }));
+
+    await vi.waitFor(() =>
+      expect(screen.getByText("この worktree にエージェントがいません")).toBeInTheDocument(),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(screen.getByText("この worktree にエージェントがいません")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  // 無いと壊れる: 対処して再送し成功しても古いエラーメッセージが画面に残り、
+  // 送信できたのか失敗したままなのか分からなくなる。
+  test("a later successful send replaces the send-target error toast", async () => {
+    sendMock.mockRejectedValueOnce(new SendTargetError("no_agent"));
+    renderButton({ pendingDrafts: 2, agentPanes: [pane({ paneId: "claude-1" })] });
+    fireEvent.click(screen.getByRole("button", { name: "送信 (2)" }));
+    expect(await screen.findByText("この worktree にエージェントがいません")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "送信 (2)" }));
+    await waitFor(() => expect(screen.getByText("下書き 2 件を送信しました")).toBeInTheDocument());
+    expect(screen.queryByText("この worktree にエージェントがいません")).not.toBeInTheDocument();
   });
 
   // レビュー指摘（Low 4）: DiffPanel の remount（比較範囲変更・タブ切替）で

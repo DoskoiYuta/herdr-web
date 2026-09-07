@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { GraphPanel } from "./GraphPanel";
+import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { FetchBusyError, gitApi } from "@/lib/api";
 
 vi.mock("@/lib/api", async () => {
@@ -36,12 +37,14 @@ function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <GraphPanel
-        repo="/r"
-        repoChangedTick={0}
-        onSelectCommit={() => {}}
-        virtualizerOptions={virtualizerOptions}
-      />
+      <ToastProvider>
+        <GraphPanel
+          repo="/r"
+          repoChangedTick={0}
+          onSelectCommit={() => {}}
+          virtualizerOptions={virtualizerOptions}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import type { Review } from "@contract/review";
@@ -63,13 +63,53 @@ test("ComposerAnnotation cancel calls onCancel", () => {
   expect(onCancel).toHaveBeenCalled();
 });
 
-test("ReviewsAnnotation renders the thread, status badge, and notify state", () => {
+// docs/ui-redesign.md §6.2: 要対応はバッジで示さない。open（下書きなし）は
+// 「進行中」なので status chip は出ない。無いと壊れる: chip を出す実装に戻すと
+// 「要対応だけを明滅で示す」設計が崩れて open にも常時バッジが付いてしまう。
+test("ReviewsAnnotation renders the thread body with no status chip for an in-progress (open) review", () => {
   const match: ForDiffMatch = { review: review(), line: 1, span: 1, confidence: "exact" };
   renderAnnotation([match]);
   expect(screen.getByText("please fix")).toBeInTheDocument();
-  expect(screen.getByTestId("review-status-badge")).toHaveTextContent("open");
-  expect(screen.getByText("再送")).toBeInTheDocument();
+  expect(screen.queryByTestId("status-chip")).not.toBeInTheDocument();
   expect(screen.queryByText("位置は推定")).not.toBeInTheDocument();
+});
+
+// §6.3: notify.state=pending は自動再試行中で「操作: なし」— 無いと壊れる:
+// resend を出すと、まだ送信中のものまでユーザーに再送させてしまう。
+test("ReviewsAnnotation shows the delivery chip but no resend control while notify is pending", () => {
+  const match: ForDiffMatch = { review: review(), line: 1, span: 1, confidence: "exact" };
+  renderAnnotation([match]);
+  expect(screen.getByTestId("delivery-chip")).toBeInTheDocument();
+  expect(screen.queryByText("再送")).not.toBeInTheDocument();
+});
+
+// §6.3: agent_blocked は再送可能 — 無いと壊れる: ユーザーがブロックされた
+// 通知を再送する手段が無くなる。
+test("ReviewsAnnotation shows a resend control when notify is agent_blocked, wired to onResend", () => {
+  const onResend = vi.fn();
+  const blocked = review({ notify: { state: "agent_blocked", pane: null, at: null } });
+  const match: ForDiffMatch = { review: blocked, line: 1, span: 1, confidence: "exact" };
+  renderAnnotation([match], { onResend });
+  fireEvent.click(screen.getByRole("button", { name: "再送" }));
+  expect(onResend).toHaveBeenCalledWith("r1");
+});
+
+// レビュー指摘: notifyScheduler.resend() には状態ゲートが無いので、連打が
+// そのまま複数回の通知になる。再送中はボタンを無効化して連打を防ぐ。
+test("ReviewsAnnotation disables resend while a resend request is in flight, so double-click sends only once", async () => {
+  let resolveResend: () => void = () => {};
+  const onResend = vi.fn(() => new Promise<void>((resolve) => (resolveResend = resolve)));
+  const blocked = review({ notify: { state: "agent_blocked", pane: null, at: null } });
+  const match: ForDiffMatch = { review: blocked, line: 1, span: 1, confidence: "exact" };
+  renderAnnotation([match], { onResend });
+
+  const button = screen.getByRole("button", { name: "再送" });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(onResend).toHaveBeenCalledTimes(1);
+
+  resolveResend();
+  await waitFor(() => expect(button).not.toBeDisabled());
 });
 
 test("ReviewsAnnotation dims a line-confidence match and shows the estimate note", () => {
@@ -91,27 +131,19 @@ test("ReviewsAnnotation shows a reanchor button only when outdated, resolve othe
   expect(screen.getByRole("button", { name: "解決" })).toBeInTheDocument();
 });
 
-test("ReviewsAnnotation resolve/reply/resend wire up to the callbacks", async () => {
+test("ReviewsAnnotation resolve/reply wire up to the callbacks", async () => {
   const onResolve = vi.fn(async () => {});
   const onReply = vi.fn(async () => {});
-  const onResend = vi.fn(async () => {});
   const match: ForDiffMatch = { review: review(), line: 1, span: 1, confidence: "exact" };
-  renderAnnotation([match], { onReply, onResolve, onResend });
+  renderAnnotation([match], { onReply, onResolve });
   fireEvent.click(screen.getByRole("button", { name: "解決" }));
   expect(onResolve).toHaveBeenCalledWith("r1");
 
-  fireEvent.change(screen.getByPlaceholderText("返信"), { target: { value: "ok will fix" } });
-  fireEvent.click(screen.getByRole("button", { name: "返信" }));
+  fireEvent.change(screen.getByPlaceholderText("下書きとして追加"), {
+    target: { value: "ok will fix" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "送信" }));
   expect(onReply).toHaveBeenCalledWith("r1", "ok will fix");
-
-  fireEvent.click(screen.getByText("再送"));
-  expect(onResend).toHaveBeenCalledWith("r1");
-});
-
-test("the reply box shows a hint that replies are batched by the send button", () => {
-  const match: ForDiffMatch = { review: review(), line: 1, span: 1, confidence: "exact" };
-  renderAnnotation([match]);
-  expect(screen.getByText("送信ボタンでまとめて送信")).toBeInTheDocument();
 });
 
 test("a draft entry shows a 下書き badge and no notify indicator when the review has no sent entry", () => {
@@ -121,11 +153,12 @@ test("a draft entry shows a 下書き badge and no notify indicator when the rev
   const match: ForDiffMatch = { review: draftOnly, line: 1, span: 1, confidence: "exact" };
   renderAnnotation([match]);
   expect(screen.getByText("下書き")).toBeInTheDocument();
-  expect(screen.queryByText("再送")).not.toBeInTheDocument();
-  expect(screen.queryByText("未通知")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("delivery-chip")).not.toBeInTheDocument();
 });
 
-test("a review with at least one sent entry still shows the notify indicator even with a later draft reply", () => {
+// 無いと壊れる: 下書きだけの review と誤認して配達 chip を消してしまうと、
+// 送信済みメッセージがあるのに再送手段が見えなくなる。
+test("a review with at least one sent entry still shows the delivery chip even with a later draft reply", () => {
   const mixed = review({
     thread: [
       { seq: 0, author: "user", body: "please fix", at: "t", agentSession: null, draft: false },
@@ -134,7 +167,7 @@ test("a review with at least one sent entry still shows the notify indicator eve
   });
   const match: ForDiffMatch = { review: mixed, line: 1, span: 1, confidence: "exact" };
   renderAnnotation([match]);
-  expect(screen.getByText("再送")).toBeInTheDocument();
+  expect(screen.getByTestId("delivery-chip")).toBeInTheDocument();
 });
 
 test("editing a draft entry calls onEditDraft with the review id, seq, and new body", () => {
@@ -164,10 +197,10 @@ test("deleting a draft entry calls onDeleteDraft with the review id and seq", ()
   expect(onDeleteDraft).toHaveBeenCalledWith("r1", 0);
 });
 
-test("shows an L<start>–L<end> range label for a multi-line match, but not a single-line one", () => {
+test("the location label is a single line number for a single-line match, a range for a multi-line one", () => {
   const match: ForDiffMatch = { review: review(), line: 1, span: 1, confidence: "exact" };
   const { rerender } = renderAnnotation([match], { ranges: { r1: { start: 2, end: 2 } } });
-  expect(screen.queryByText("L2–L2")).not.toBeInTheDocument();
+  expect(screen.getByText("a.txt:L2")).toBeInTheDocument();
 
   rerender(
     <ReviewsAnnotation
@@ -181,5 +214,5 @@ test("shows an L<start>–L<end> range label for a multi-line match, but not a s
       onDeleteDraft={vi.fn()}
     />,
   );
-  expect(screen.getByText("L2–L4")).toBeInTheDocument();
+  expect(screen.getByText("a.txt:L2–L4")).toBeInTheDocument();
 });

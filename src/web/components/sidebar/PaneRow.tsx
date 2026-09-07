@@ -1,24 +1,7 @@
-import { Bot, CircleCheck, CircleDashed, CircleHelp, Loader2, OctagonAlert } from "lucide-react";
+import { Bot } from "lucide-react";
 import type { PaneRow as PaneRowType } from "@contract/events";
-import type { AgentStatus } from "@contract/herdr";
+import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
 import { cn } from "@/lib/utils";
-
-export type StatusMeta = {
-  icon: typeof CircleDashed;
-  label: string;
-  className: string;
-  spin?: boolean;
-};
-
-/** Shared with `RepoWorkspaceRow` so the repository view's aggregated status
- * counts use the exact same icons/colors as this per-pane row. */
-export const STATUS_META: Record<AgentStatus, StatusMeta> = {
-  idle: { icon: CircleDashed, label: "idle", className: "text-muted-foreground" },
-  working: { icon: Loader2, label: "working", className: "text-blue-500", spin: true },
-  blocked: { icon: OctagonAlert, label: "blocked", className: "text-red-500" },
-  done: { icon: CircleCheck, label: "done", className: "text-green-500" },
-  unknown: { icon: CircleHelp, label: "unknown", className: "text-yellow-500" },
-};
 
 export type PaneRowProps = {
   pane: PaneRowType;

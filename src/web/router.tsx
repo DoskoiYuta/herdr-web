@@ -20,7 +20,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen, TerminalIcon } from "lucide-react";
 import { Sidebar } from "@/components/sidebar/Sidebar";
-import { STATUS_META } from "@/components/sidebar/PaneRow";
+import { STATUS_META } from "@/components/ui/status/AgentStatusDot";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Terminal } from "@/components/terminal/Terminal";
 import { configApi } from "@/lib/api";
@@ -84,7 +84,7 @@ function RootLayout() {
   const state = useHerdrState();
   const { send } = useHerdrStoreActions();
   const navigate = useNavigate();
-  const { openLocation, message: openLocationMessage } = useOpenWorktreeLocation();
+  const { openLocation } = useOpenWorktreeLocation();
 
   const persist = useCallback((next: Layout) => {
     setLayout(next);
@@ -193,11 +193,6 @@ function RootLayout() {
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden">
-      {openLocationMessage && (
-        <div className="absolute inset-x-0 top-0 z-10 mx-auto w-fit rounded-b-md bg-destructive px-3 py-1 text-xs text-destructive-foreground">
-          {openLocationMessage}
-        </div>
-      )}
       <Sidebar
         repos={state.repos}
         herdrConnected={state.herdr.connected}

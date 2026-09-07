@@ -10,6 +10,7 @@ import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { PathTree } from "@/components/tree/PathTree";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import type { PatchResponse } from "@contract/git";
 import type { ReviewTarget, Side } from "@contract/review";
 import { buildAnchor } from "@/lib/anchor";
@@ -26,6 +27,7 @@ import {
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
 import { annotationSignature, withAnnotationRev, withCollapsedVersion } from "./annotationVersion";
 import Banners from "./Banners.tsx";
+import { DiffEmptyState } from "./DiffEmptyState.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
 import { usePatch } from "./hooks/usePatch.ts";
@@ -132,6 +134,8 @@ export interface DiffPanelProps {
   onInitialLocationConsumed?: () => void;
   /** レビュー下書きの一括送信ボタン（ui-redesign.md §5.4）。Toolbar の右端に渡す。 */
   sendButton?: ReactNode;
+  /** 空状態（ui-redesign.md §5.4 / design.pen P11）の「Graph を開く」。 */
+  onOpenGraph?: () => void;
 }
 
 export function DiffPanel({
@@ -144,6 +148,7 @@ export function DiffPanel({
   initialLocation = null,
   onInitialLocationConsumed,
   sendButton,
+  onOpenGraph = () => {},
 }: DiffPanelProps) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   useEffect(() => saveSettings(settings), [settings]);
@@ -169,8 +174,7 @@ export function DiffPanel({
   const [untrackedCount, setUntrackedCount] = useState(0);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastFn = useToast();
   const diffViewRef = useRef<DiffViewHandle>(null);
 
   // -------------------------------------------------------------------
@@ -208,11 +212,10 @@ export function DiffPanel({
     setCollapsedNames(new Set());
   }, []);
 
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-  }, []);
+  const showToast = useCallback(
+    (message: string) => toastFn({ kind: "error", message }),
+    [toastFn],
+  );
 
   // -------------------------------------------------------------------
   // Update-available banner state (state.ts's trimmed reducer) plus
@@ -434,6 +437,9 @@ export function DiffPanel({
       : null;
   const summary = useMemo(() => summarize(parsedFiles), [parsedFiles]);
   const label = comparisonLabel(from, to);
+  // 「作業ツリーは HEAD と同じです」— 読み込み中 (hasEverApplied === false) とは
+  // 区別し、変更ファイル・untracked がともに 0 件だと確定してから描く。
+  const isEmptyDiff = hasEverApplied && items.length === 0 && untrackedCount === 0;
 
   // -------------------------------------------------------------------
   // F3-6 / F5: line-selection comment composer + inline review annotations.
@@ -451,6 +457,9 @@ export function DiffPanel({
   // send `createdAtHead: ""` while this is still in flight.
   const headRef = useRef<string | null>(null);
   const [headKnown, setHeadKnown] = useState(false);
+  const [rootInfo, setRootInfo] = useState<{ branch: string | null; head: string | null } | null>(
+    null,
+  );
   useEffect(() => {
     headRef.current = null;
     setHeadKnown(false);
@@ -462,6 +471,7 @@ export function DiffPanel({
         if (!cancelled) {
           headRef.current = info.head;
           setHeadKnown(true);
+          setRootInfo({ branch: info.branch, head: info.head });
         }
       })
       .catch(() => {
@@ -823,33 +833,33 @@ export function DiffPanel({
             untrackedErrors={untrackedErrors}
           />
           <div className="min-h-0 flex-1">
-            <DiffView
-              ref={diffViewRef}
-              items={itemsWithAnnotations}
-              settings={settings}
-              fontSize={viewerSettings.fontSize}
-              repo={repo}
-              onToast={showToast}
-              onTopItemChange={handleTopItemChange}
-              onScrollTopChange={handleScrollTopChange}
-              selectedLines={selection}
-              onSelectedLinesChange={setSelection}
-              onLineSelectionStart={handleSelectionStart}
-              onLineSelectionEnd={handleSelectionEnd}
-              onToggleCollapse={toggleCollapse}
-              renderAnnotation={renderAnnotation}
-            />
+            {isEmptyDiff ? (
+              <DiffEmptyState
+                branch={rootInfo?.branch ?? null}
+                head={rootInfo?.head ?? ""}
+                onOpenGraph={onOpenGraph}
+              />
+            ) : (
+              <DiffView
+                ref={diffViewRef}
+                items={itemsWithAnnotations}
+                settings={settings}
+                fontSize={viewerSettings.fontSize}
+                repo={repo}
+                onToast={showToast}
+                onTopItemChange={handleTopItemChange}
+                onScrollTopChange={handleScrollTopChange}
+                selectedLines={selection}
+                onSelectedLinesChange={setSelection}
+                onLineSelectionStart={handleSelectionStart}
+                onLineSelectionEnd={handleSelectionEnd}
+                onToggleCollapse={toggleCollapse}
+                renderAnnotation={renderAnnotation}
+              />
+            )}
           </div>
         </div>
       </div>
-      {toast != null && (
-        <div
-          id="toast"
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-md bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow"
-        >
-          {toast}
-        </div>
-      )}
     </div>
   );
 }
