@@ -24,6 +24,12 @@ export type WorktreeLocation = {
   line?: number;
   /** 既定 "files"（ask / 判断依頼の導線）。Inbox のレビュー行は "diff"。 */
   tab?: Extract<ToolTab, "files" | "diff">;
+  /** Diff だけが使う。省略時 ToolPane の既定 "new"。old 側にアンカーされた
+   * review へのジャンプ専用（Inbox の replied レビュー行）。 */
+  side?: "old" | "new";
+  /** Diff だけが使う。commit ターゲットの review の比較範囲（`hash~1`..`hash`）。 */
+  from?: string;
+  to?: string;
 };
 
 export function useOpenWorktreeLocation() {
@@ -36,7 +42,15 @@ export function useOpenWorktreeLocation() {
     (location: WorktreeLocation) => {
       const tab = location.tab ?? "files";
       const locationSearch =
-        location.path !== undefined ? { path: location.path, line: location.line } : {};
+        location.path !== undefined
+          ? {
+              path: location.path,
+              line: location.line,
+              side: location.side,
+              from: location.from,
+              to: location.to,
+            }
+          : {};
 
       if (state.focus?.worktreeRoot === location.worktreeRoot) {
         void navigate({ to: "/focus/$tab", params: { tab }, search: locationSearch });

@@ -168,21 +168,35 @@ function service(state: HerdrState = emptyState(), resolver: WorktreeResolver = 
 
 describe("undelivered section", () => {
   test.each([
-    ["agent_blocked", true],
-    ["no_target", true],
-    ["unknown", true],
-    ["sent", false],
-    ["pending", false],
-    ["none", false],
+    ["open", "agent_blocked", true],
+    ["open", "no_target", true],
+    ["open", "unknown", true],
+    ["open", "sent", false],
+    ["open", "pending", false],
+    ["open", "none", false],
+    // 無いと壊れる: replied（エージェントが返信済み）を undelivered にも含めると、
+    // 通知に失敗しただけで実際は返信済みのレビューが「届いていない通知」と
+    // 「返信が届いた」に二重表示され、既に不要な「再送」が出てしまう。
+    ["replied", "agent_blocked", false],
   ] as const)(
     // 無いと壊れる: notify.state の分類を間違えると、再送が必要なレビューが Inbox に
     // 出なかったり、届いているレビューまで再送候補として出てしまう。
-    "review with notify.state=%s is included=%s",
-    async (notifyState, included) => {
+    "review with status=%s notify.state=%s is included=%s",
+    async (status, notifyState, included) => {
+      const repliedThread: Partial<Review> =
+        status === "replied"
+          ? {
+              thread: [
+                { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
+                { seq: 1, author: "agent", body: "y", at: "t", agentSession: null, draft: false },
+              ],
+            }
+          : {};
       await reviewRepository.save(
         makeReview({
-          status: "open",
+          status,
           notify: { state: notifyState, pane: "p1", at: "2026-01-02T00:00:00.000Z" },
+          ...repliedThread,
         }),
       );
       const result = await service().getInbox();
@@ -191,7 +205,7 @@ describe("undelivered section", () => {
     },
   );
 
-  test("undelivered review is excluded once resolved (status not open/replied)", async () => {
+  test("undelivered review is excluded once resolved (status not open)", async () => {
     await reviewRepository.save(
       makeReview({
         status: "resolved",
@@ -203,18 +217,36 @@ describe("undelivered section", () => {
   });
 
   test.each([
-    ["agent_blocked", true],
-    ["gone", true],
-    ["failed", true],
-    ["sent", false],
-  ] as const)("ask with lastPrompt.state=%s is included=%s", async (state, included) => {
-    await askRepository.save(
-      makeAsk({ status: "open", lastPrompt: { state, at: "2026-01-02T00:00:00.000Z" } }),
-    );
-    const result = await service().getInbox();
-    const ids = result.items.filter((i) => i.section === "undelivered").map((i) => i.id);
-    expect(ids.includes("ask-1")).toBe(included);
-  });
+    ["open", "agent_blocked", true],
+    ["open", "gone", true],
+    ["open", "failed", true],
+    ["open", "sent", false],
+    // 無いと壊れる: ask も review と同じ二重表示バグを持ちうる。
+    ["replied", "agent_blocked", false],
+  ] as const)(
+    "ask with status=%s lastPrompt.state=%s is included=%s",
+    async (status, state, included) => {
+      const repliedThread: Partial<Ask> =
+        status === "replied"
+          ? {
+              thread: [
+                { seq: 0, author: "user", body: "x", at: "t", agentSession: null },
+                { seq: 1, author: "agent", body: "y", at: "t", agentSession: null },
+              ],
+            }
+          : {};
+      await askRepository.save(
+        makeAsk({
+          status,
+          lastPrompt: { state, at: "2026-01-02T00:00:00.000Z" },
+          ...repliedThread,
+        }),
+      );
+      const result = await service().getInbox();
+      const ids = result.items.filter((i) => i.section === "undelivered").map((i) => i.id);
+      expect(ids.includes("ask-1")).toBe(included);
+    },
+  );
 
   test.each([
     ["answered", "agent_blocked", true],
@@ -273,7 +305,7 @@ describe("replied section", () => {
     const item = result.items.find((i) => i.section === "replied");
     expect(item?.kind).toBe("review");
     if (item?.section === "replied") {
-      expect(item.location).toEqual({ path: "a.ts", line: 10 });
+      expect(item.location).toEqual({ path: "a.ts", line: 10, side: "new" });
     }
   });
 
@@ -287,6 +319,91 @@ describe("replied section", () => {
     await askRepository.save(makeAsk({ status: "replied" }));
     const result = await service().getInbox();
     expect(result.items.some((i) => i.section === "replied" && i.kind === "ask")).toBe(true);
+  });
+
+  // 無いと壊れる: replied + 通知失敗の review/ask が undelivered にも漏れて出ると、
+  // 同じレビューが Inbox に 2 回現れ、返信済みなのに「再送」ボタンまで出てしまう。
+  test.each(["review", "ask"] as const)(
+    "a replied %s with a failed notify appears exactly once, in replied only",
+    async (kind) => {
+      if (kind === "review") {
+        await reviewRepository.save(
+          makeReview({
+            status: "replied",
+            notify: { state: "agent_blocked", pane: "p1", at: "t" },
+            thread: [
+              { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
+              { seq: 1, author: "agent", body: "y", at: "t", agentSession: null, draft: false },
+            ],
+          }),
+        );
+      } else {
+        await askRepository.save(
+          makeAsk({
+            status: "replied",
+            lastPrompt: { state: "agent_blocked", at: "t" },
+            thread: [
+              { seq: 0, author: "user", body: "x", at: "t", agentSession: null },
+              { seq: 1, author: "agent", body: "y", at: "t", agentSession: null },
+            ],
+          }),
+        );
+      }
+      const result = await service().getInbox();
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.section).toBe("replied");
+      expect(result.counts.total).toBe(1);
+      expect(result.counts.bySection.replied).toBe(1);
+      expect(result.counts.bySection.undelivered).toBe(0);
+    },
+  );
+});
+
+describe("replied review location", () => {
+  // 無いと壊れる: old 側にコメントした review の location が side を落とすと、
+  // ToolPane 側の既定 "new" にフォールバックして無関係な行を開いてしまう。
+  test("carries anchor.side so an old-side comment opens the old side", async () => {
+    await reviewRepository.save(
+      makeReview({
+        status: "replied",
+        anchor: { ...ANCHOR, side: "old" },
+        thread: [
+          { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
+          { seq: 1, author: "agent", body: "y", at: "t", agentSession: null, draft: false },
+        ],
+      }),
+    );
+    const result = await service().getInbox();
+    const item = result.items.find((i) => i.section === "replied");
+    expect(item?.section === "replied" && item.location).toEqual({
+      path: "a.ts",
+      line: 10,
+      side: "old",
+    });
+  });
+
+  // 無いと壊れる: commit ターゲットの review は from/to が無いと Diff が
+  // WORKTREE/INDEX の比較のまま開き、コメントの付いたコミット間 diff を表示できない。
+  test("carries from/to (hash~1..hash) for a commit-targeted review", async () => {
+    await reviewRepository.save(
+      makeReview({
+        status: "replied",
+        target: { kind: "commit", hash: "abc123" },
+        thread: [
+          { seq: 0, author: "user", body: "x", at: "t", agentSession: null, draft: false },
+          { seq: 1, author: "agent", body: "y", at: "t", agentSession: null, draft: false },
+        ],
+      }),
+    );
+    const result = await service().getInbox();
+    const item = result.items.find((i) => i.section === "replied");
+    expect(item?.section === "replied" && item.location).toEqual({
+      path: "a.ts",
+      line: 10,
+      side: "new",
+      from: "abc123~1",
+      to: "abc123",
+    });
   });
 });
 

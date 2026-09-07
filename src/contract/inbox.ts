@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { SideSchema } from "./review";
 
 /**
  * `GET /api/inbox?worktree=` — worktree 横断で人間の注意が必要なものを 1 か所に
@@ -27,6 +28,13 @@ export type InboxDeliveryState = v.InferOutput<typeof InboxDeliveryStateSchema>;
 export const InboxLocationSchema = v.object({
   path: v.string(),
   line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  /** 差分のどちら側の行か。省略時は "new"（ToolPane の Diff 既定と揃える）。
+   * review だけが old 側を持ちうる — ask のアンカーは常に "new"。 */
+  side: v.optional(SideSchema),
+  /** review が commit ターゲットのとき、その diff 範囲（`hash~1`..`hash`）。
+   * 省略時は現在の WORKTREE/INDEX 比較のまま開く。 */
+  from: v.optional(v.string()),
+  to: v.optional(v.string()),
 });
 export type InboxLocation = v.InferOutput<typeof InboxLocationSchema>;
 

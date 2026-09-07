@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { KindIcon } from "@/components/ui/status/KindIcon";
+import { useToast } from "@/components/ui/toast/ToastProvider";
 import { deliveryOf, type DeliveryResult } from "@/lib/statusVocab";
 import { useHerdrState, useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
@@ -113,6 +114,7 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
   const state = useHerdrState();
   const { send } = useHerdrStoreActions();
   const navigate = useNavigate();
+  const toast = useToast();
   const { openLocation } = useOpenWorktreeLocation();
   const queryClient = useQueryClient();
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
@@ -145,6 +147,10 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
       else if (item.kind === "ask") await askApi.resend(item.id);
       else await decisionApi.resend(item.id);
       void queryClient.invalidateQueries({ queryKey: ["inbox"] });
+    } catch {
+      // サーバーの再送処理には状態ゲートが無い（DeliveryChip busy コメント参照）
+      // — 失敗を握りつぶすと連打で無言のまま同じ失敗を繰り返すだけになる。
+      toast({ kind: "error", message: "再送に失敗しました" });
     } finally {
       setBusyIds((prev) => {
         const next = new Set(prev);
@@ -171,6 +177,9 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
         path: item.location.path,
         line: item.location.line,
         tab: item.kind === "review" ? "diff" : "files",
+        side: item.location.side,
+        from: item.location.from,
+        to: item.location.to,
       });
       close();
       return;

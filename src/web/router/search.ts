@@ -10,6 +10,9 @@ const ToolSearchSchema = v.object({
   sub: v.optional(v.string()),
   path: v.optional(v.pipe(v.string(), v.minLength(1))),
   line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+  /** Diff の `path`/`line` がどちら側の行かを固定する。省略時は "new"
+   * （ToolPane の既定）。old 側にアンカーされた review へのジャンプ専用。 */
+  side: v.optional(v.picklist(["old", "new"])),
   md: v.optional(v.picklist(["source", "preview"])),
   /** worktree が `focus-pane` 経由でまだ切り替わっていない間、他の worktree の
    * `path`/`line` を誤って適用しないためのゲート（別 worktree のファイルを開く

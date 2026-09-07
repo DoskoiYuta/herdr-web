@@ -44,4 +44,15 @@ describe("parseToolSearch", () => {
   ] as const)("parseToolSearch({ inbox: %s }) -> %s", (raw, expected) => {
     expect(parseToolSearch({ inbox: raw })).toEqual(expected);
   });
+
+  // 無いと壊れる: old 側にアンカーされた review へのジャンプが side を運べないと、
+  // ToolPane の既定 "new" にフォールバックし、無関係な行を開いてしまう。
+  test.each([
+    ["old", { side: "old" }],
+    ["new", { side: "new" }],
+    ["other", {}],
+    [undefined, {}],
+  ] as const)("parseToolSearch({ side: %s }) -> %s", (raw, expected) => {
+    expect(parseToolSearch({ side: raw })).toEqual(expected);
+  });
 });

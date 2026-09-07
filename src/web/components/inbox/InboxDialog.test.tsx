@@ -215,6 +215,66 @@ describe("row clicks", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  // 無いと壊れる: old 側にアンカーされた review の location が side を運ばないと、
+  // ToolPane の既定 "new" にフォールバックし、無関係な行を開く。
+  test("clicking a replied review row anchored to the old side puts side=old in the diff search", async () => {
+    inboxGetMock.mockResolvedValue({
+      items: [
+        {
+          section: "replied",
+          kind: "review",
+          id: "r1",
+          title: "a.ts:L10",
+          excerpt: "because x",
+          worktreeRoot: "/repo-a",
+          repoKey: "/repo-a/.git",
+          agent: "claude",
+          at: "2026-01-01T00:00:00.000Z",
+          location: { path: "a.ts", line: 10, side: "old" },
+        },
+      ],
+      counts: { total: 1, bySection: { replied: 1 } } as never,
+    });
+    const { router } = await renderDialog({ store: storeWithFocus("/repo-a") });
+    await waitFor(() => expect(screen.getByTestId("inbox-row")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("inbox-row"));
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ path: "a.ts", line: 10, side: "old" }),
+    );
+  });
+
+  // 無いと壊れる: commit ターゲットの review の from/to が渡らないと、Diff は
+  // WORKTREE/INDEX の比較のまま開き、コメントが付いたコミット間 diff を表示できない。
+  test("clicking a replied review row targeting a commit puts from/to in the diff search", async () => {
+    inboxGetMock.mockResolvedValue({
+      items: [
+        {
+          section: "replied",
+          kind: "review",
+          id: "r1",
+          title: "a.ts:L10",
+          excerpt: "because x",
+          worktreeRoot: "/repo-a",
+          repoKey: "/repo-a/.git",
+          agent: "claude",
+          at: "2026-01-01T00:00:00.000Z",
+          location: { path: "a.ts", line: 10, side: "new", from: "abc123~1", to: "abc123" },
+        },
+      ],
+      counts: { total: 1, bySection: { replied: 1 } } as never,
+    });
+    const { router } = await renderDialog({ store: storeWithFocus("/repo-a") });
+    await waitFor(() => expect(screen.getByTestId("inbox-row")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("inbox-row"));
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ from: "abc123~1", to: "abc123" }),
+    );
+  });
+
   test("clicking an unsent row focuses the pane and closes the dialog", async () => {
     inboxGetMock.mockResolvedValue({
       items: [
@@ -364,6 +424,36 @@ describe("resend", () => {
       await waitFor(() => expect(resendButton).not.toBeDisabled());
     },
   );
+
+  // 無いと壊れる: 再送が失敗しても何も表示されないと、ユーザーは再送できたと
+  // 誤解して待ち続ける。busy も解除されないままだと再試行すらできなくなる。
+  test("shows an error toast and clears busy when the resend API call rejects", async () => {
+    reviewNotifyMock.mockRejectedValueOnce(new Error("network error"));
+    inboxGetMock.mockResolvedValue({
+      items: [
+        {
+          section: "undelivered",
+          kind: "review",
+          id: "x1",
+          title: "t",
+          detail: "d",
+          worktreeRoot: "/repo-a",
+          repoKey: "/repo-a/.git",
+          agent: "claude",
+          at: "2026-01-01T00:00:00.000Z",
+          delivery: { state: "agent_blocked", canResend: true },
+        },
+      ],
+      counts: { total: 1, bySection: { undelivered: 1 } } as never,
+    });
+    await renderDialog();
+    const resendButton = await screen.findByRole("button", { name: "再送" });
+
+    fireEvent.click(resendButton);
+
+    await screen.findByText("再送に失敗しました");
+    await waitFor(() => expect(resendButton).not.toBeDisabled());
+  });
 });
 
 describe("worktree filter", () => {
