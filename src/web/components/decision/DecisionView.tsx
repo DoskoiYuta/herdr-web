@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import type { PaneRow, Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useDecisionEvents, useHerdrState } from "@/lib/HerdrStoreContext";
 import {
   clearDecisionDraft,
@@ -76,6 +77,22 @@ function truncateSessionId(sessionId: string): string {
   return `${sessionId.slice(0, 4)}…${sessionId.slice(-4)}`;
 }
 
+const ITEM_KIND_LABEL: Record<DecisionItem["kind"], string> = {
+  single: "単一選択",
+  multi: "複数選択",
+  text: "自由記述",
+  confirm: "確認",
+};
+
+/** 設問見出し用の番号バッジ。design.pen P3 の丸数字に合わせる。 */
+function ItemNumberBadge({ index }: { index: number }) {
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
+      {index + 1}
+    </span>
+  );
+}
+
 function isAnswered(answer: DecisionItemAnswer | undefined): boolean {
   if (!answer) return false;
   if (answer.selected.length > 0) return true;
@@ -113,7 +130,7 @@ function DecisionAnswerView({
       data-testid={`decision-answer-${item.id}`}
     >
       <div className="flex items-center gap-1.5 text-sm font-medium">
-        <span className="text-xs text-muted-foreground">{index + 1}.</span>
+        <ItemNumberBadge index={index} />
         {item.header}
       </div>
       <p className="text-sm text-muted-foreground">{item.question}</p>
@@ -153,11 +170,11 @@ function DecisionItemForm({
       data-testid={`decision-item-${item.id}`}
     >
       <legend className="flex items-center gap-1.5 text-sm font-medium">
-        <span className="text-xs text-muted-foreground">{index + 1}.</span>
+        <ItemNumberBadge index={index} />
         {item.header}
-        {item.required === false && (
-          <span className="text-xs font-normal text-muted-foreground">(任意)</span>
-        )}
+        <span className="text-xs font-normal text-muted-foreground">
+          {ITEM_KIND_LABEL[item.kind]}・{item.required === false ? "任意" : "必須"}
+        </span>
       </legend>
       <p className="text-sm">{item.question}</p>
 
@@ -186,16 +203,22 @@ function DecisionItemForm({
       )}
 
       {(item.kind === "single" || item.kind === "multi") && !compare && (
-        <div className="flex flex-col gap-1">
-          {item.options.map((opt) => {
+        <div className="flex flex-col gap-1.5">
+          {item.options.map((opt, optIndex) => {
             const checked = answer.selected.includes(opt.label);
             return (
               <div key={opt.label} className="flex flex-col gap-1">
-                <label className="flex items-start gap-1.5 text-sm">
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm",
+                    checked ? "border-primary bg-accent ring-1 ring-primary" : "border-border",
+                  )}
+                >
                   <input
                     type={item.kind === "single" ? "radio" : "checkbox"}
                     name={`decision-item-${item.id}`}
                     checked={checked}
+                    className="mt-0.5"
                     onChange={(e) => {
                       if (item.kind === "single") {
                         setSelected(e.target.checked ? [opt.label] : []);
@@ -208,17 +231,18 @@ function DecisionItemForm({
                       }
                     }}
                   />
-                  <span>
-                    {opt.label}
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium">{opt.label}</span>
                     {opt.recommended && (
                       <span className="ml-1 rounded bg-primary/10 px-1 text-[10px] text-primary">
                         推奨
                       </span>
                     )}
                     {opt.description && (
-                      <span className="ml-1 text-xs text-muted-foreground">{opt.description}</span>
+                      <span className="block text-xs text-muted-foreground">{opt.description}</span>
                     )}
                   </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{optIndex + 1}</span>
                 </label>
                 {opt.preview.length > 0 && (
                   <details className="ml-5">
@@ -266,17 +290,27 @@ function DecisionItemForm({
 
       {item.kind === "confirm" && (
         <div className="flex gap-2">
-          {(["yes", "no"] as const).map((value) => (
-            <label key={value} className="flex items-center gap-1 text-sm">
-              <input
-                type="radio"
-                name={`decision-item-${item.id}`}
-                checked={answer.selected[0] === value}
-                onChange={() => setSelected([value])}
-              />
-              {value === "yes" ? "はい" : "いいえ"}
-            </label>
-          ))}
+          {(["yes", "no"] as const).map((value) => {
+            const checked = answer.selected[0] === value;
+            return (
+              <label
+                key={value}
+                className={cn(
+                  "cursor-pointer rounded-md border px-3 py-1.5 text-sm",
+                  checked ? "border-primary bg-accent" : "border-border",
+                )}
+              >
+                <input
+                  type="radio"
+                  name={`decision-item-${item.id}`}
+                  checked={checked}
+                  onChange={() => setSelected([value])}
+                  className="sr-only"
+                />
+                {value === "yes" ? "はい" : "いいえ"}
+              </label>
+            );
+          })}
         </div>
       )}
 
@@ -540,6 +574,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
       {decision.spec.context.length > 0 &&
         (isOpen ? (
           <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground">コンテキスト</p>
             {decision.spec.context.map((block, i) => (
               <BlockView
                 key={i}

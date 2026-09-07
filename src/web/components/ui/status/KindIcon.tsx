@@ -11,7 +11,7 @@ const KIND_ICON: Record<Kind, typeof Bot> = {
   agent: Bot,
 };
 
-const KIND_LABEL: Record<Kind, string> = {
+export const KIND_LABEL: Record<Kind, string> = {
   review: "レビュー",
   ask: "質問",
   decision: "判断依頼",

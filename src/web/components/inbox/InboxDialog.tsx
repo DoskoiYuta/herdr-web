@@ -7,7 +7,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Inbox as InboxIcon, X } from "lucide-react";
+import {
+  ArrowRight,
+  Inbox as InboxIcon,
+  Lock,
+  MessageCircleReply,
+  Send,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import type { AskPromptState } from "@contract/ask";
 import type { DecisionDeliveryState } from "@contract/decision";
 import type { NotifyState } from "@contract/review";
@@ -36,6 +44,21 @@ const SECTION_LABEL: Record<InboxSection, string> = {
   replied: "返信が届いた",
   unsent: "送信待ち",
   blocked: "入力待ちのエージェント",
+};
+
+/** design.pen P2: セクションごとに色分けした左枠線 + アイコンで種別を示す。 */
+const SECTION_ICON: Record<InboxSection, typeof TriangleAlert> = {
+  undelivered: TriangleAlert,
+  replied: MessageCircleReply,
+  unsent: Send,
+  blocked: Lock,
+};
+
+const SECTION_ACCENT: Record<InboxSection, string> = {
+  undelivered: "border-l-destructive",
+  replied: "border-l-sky-500",
+  unsent: "border-l-violet-500",
+  blocked: "border-l-amber-500",
 };
 
 /** `Select` の「すべての worktree」は空文字を渡せない（Radix が空文字を予約している）ため専用の値にする。 */
@@ -239,11 +262,21 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
           {nonEmptySections.map((section) => {
             const items = bySection.get(section) ?? [];
             return (
-              <section key={section} data-testid={`inbox-section-${section}`}>
-                <header className="flex items-center gap-2 border-l-2 pl-2 text-xs font-semibold text-muted-foreground">
-                  <span>{SECTION_LABEL[section]}</span>
-                  <Badge variant="outline">{items.length}</Badge>
-                </header>
+              <section
+                key={section}
+                data-testid={`inbox-section-${section}`}
+                className={`rounded-md border-l-2 bg-muted/30 py-1.5 ${SECTION_ACCENT[section]}`}
+              >
+                {(() => {
+                  const SectionIcon = SECTION_ICON[section];
+                  return (
+                    <header className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground">
+                      <SectionIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                      <span>{SECTION_LABEL[section]}</span>
+                      <Badge variant="outline">{items.length}</Badge>
+                    </header>
+                  );
+                })()}
                 <ul>
                   {items.map((item) => {
                     const clickable = isRowClickable(item);

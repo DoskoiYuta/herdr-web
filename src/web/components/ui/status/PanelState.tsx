@@ -34,7 +34,7 @@ export function PanelState({ icon: Icon, title, description, action, tone = "mut
       className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center"
     >
       <Icon className={`size-6 ${TONE_CLASS[tone]}`} aria-hidden="true" />
-      <p className={`text-sm font-medium ${TONE_CLASS[tone]}`}>{title}</p>
+      <p className="text-sm font-medium">{title}</p>
       {description && <p className="text-xs text-muted-foreground">{description}</p>}
       {action && (
         <button

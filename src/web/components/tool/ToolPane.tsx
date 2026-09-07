@@ -17,6 +17,7 @@ import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { SendDraftsButton } from "@/components/review/SendDraftsButton";
 import { TabBadge } from "@/components/tool/TabBadge";
 import { Button } from "@/components/ui/button";
+import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
 import { PanelState } from "@/components/ui/status/PanelState";
 import {
   Select,
@@ -104,7 +105,8 @@ function FocusInfoBar({
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
       {focusInfo.agent && (
-        <span>
+        <span className="inline-flex items-center gap-1.5">
+          {focusInfo.agentStatus && <AgentStatusDot status={focusInfo.agentStatus} />}
           {focusInfo.agent}
           {focusInfo.agentStatus ? ` · ${focusInfo.agentStatus}` : ""}
         </span>

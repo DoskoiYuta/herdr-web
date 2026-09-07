@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
-import { KindIcon } from "@/components/ui/status/KindIcon";
+import { KIND_LABEL, KindIcon } from "@/components/ui/status/KindIcon";
 import { StatusChip } from "@/components/ui/status/StatusChip";
 import type { DeliveryResult, Turn } from "@/lib/statusVocab";
 import { cn } from "@/lib/utils";
@@ -195,15 +195,23 @@ export function ThreadCard({
         blinking ? "thread-card-blink border-accent" : "border-border",
       )}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <KindIcon kind={kind} />
-        <span className="font-mono text-[10px] text-muted-foreground">{location}</span>
-        {(turn === "done" || turn === "void") && <StatusChip turn={turn} />}
-        {delivery && (
-          <DeliveryChip delivery={delivery} onResend={delivery.onResend} busy={delivery.busy} />
-        )}
-        {positionEstimated && <span className="text-[10px] text-muted-foreground">位置は推定</span>}
-        {extra}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <KindIcon kind={kind} />
+          <span className="text-xs font-medium">{KIND_LABEL[kind]}</span>
+          <span className="font-mono text-[10px] text-muted-foreground">{location}</span>
+          {(turn === "done" || turn === "void") && <StatusChip turn={turn} />}
+          {positionEstimated && (
+            <span className="text-[10px] text-muted-foreground">位置は推定</span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {unread && <span className="text-[10px] text-muted-foreground">返信あり・未読</span>}
+          {delivery && (
+            <DeliveryChip delivery={delivery} onResend={delivery.onResend} busy={delivery.busy} />
+          )}
+          {extra}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">
