@@ -39,7 +39,7 @@
               "id": "X7PGl",
               "name": "状態 chip（あなたの番 / エージェントの番 / 完了 / 無効） label",
               "fill": "$x:--muted-foreground",
-              "content": "状態 chip — Inbox のグルーピング用（要対応 / 進行中 / 完了 / 無効）。スレッドカードには完了 / 無効のときだけ付け、要対応はアウトラインの明滅で示す",
+              "content": "状態 chip — Inbox のグルーピング用（要対応 / 進行中 / 完了 / 無効）。スレッドカードには完了 / 無効のときだけ付け、要対応はアウトラインの明滅で示す。サイドバーのフォーカス行は角丸の塗り + 行末のフォーカス色ドットで示し、角丸要素に border-left は使わない",
               "fontFamily": "Inter",
               "fontSize": 12,
               "fontWeight": "normal"
@@ -1170,15 +1170,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -1243,6 +1238,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "wMksB",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -1314,6 +1317,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "IpRH4",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -3964,15 +3975,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -4037,6 +4043,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "zpstU",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -4108,6 +4122,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "sYF4i",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -6226,15 +6248,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -6299,6 +6316,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "puHSL",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -6370,6 +6395,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "e8nlu",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -8814,15 +8847,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -8887,6 +8915,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "RFNYM",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -8958,6 +8994,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "ccijv",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -13966,15 +14010,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -14039,6 +14078,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "VqW4H",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -14110,6 +14157,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "mUrXd",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -16118,15 +16173,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -16191,6 +16241,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "AdQ02",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -16262,6 +16320,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "Y6Nd3",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -18948,15 +19014,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -19021,6 +19082,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "xKILj",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -19092,6 +19161,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "aLdP2",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -27521,15 +27598,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -27594,6 +27666,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "Z12b6C",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -27665,6 +27745,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "C4mDEn",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -29642,15 +29730,10 @@
                   "width": "fill_container",
                   "fill": "$x:--sidebar-accent",
                   "cornerRadius": 6,
-                  "stroke": "$focus",
-                  "strokeWidth": {
-                    "left": 2
-                  },
-                  "strokeAlignment": "inner",
                   "gap": 6,
                   "padding": [
                     5,
-                    6,
+                    8,
                     5,
                     22
                   ],
@@ -29715,6 +29798,14 @@
                           "content": "2"
                         }
                       }
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "soWBd",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
@@ -29786,6 +29877,14 @@
                       "fontFamily": "Inter",
                       "fontSize": 11,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "W0QAvF",
+                      "name": "focus dot",
+                      "fill": "$focus",
+                      "width": 6,
+                      "height": 6
                     }
                   ]
                 },
