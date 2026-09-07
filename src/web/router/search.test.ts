@@ -34,12 +34,15 @@ describe("parseToolSearch", () => {
   });
 
   // 無いと壊れる: `?inbox=1` をリロードしても Inbox ダイアログが復元されない。
-  // 数値化された `1`（TanStack Router の既定 search parser の挙動）と不正値の
-  // 両方を確かめる。
+  // TanStack Router の search は JSON で直列化されるため、⌘I で開くと URL は
+  // `?inbox=1`（数値）になる。文字列 `"1"` や `true` を渡す呼び出し元が
+  // 生じても数値 1 に丸め、不正値は落とす。
   test.each([
-    [1, { inbox: "1" }],
-    ["1", { inbox: "1" }],
-    ["0", {}],
+    [1, { inbox: 1 }],
+    ["1", { inbox: 1 }],
+    [true, { inbox: 1 }],
+    ["x", {}],
+    [0, {}],
     [undefined, {}],
   ] as const)("parseToolSearch({ inbox: %s }) -> %s", (raw, expected) => {
     expect(parseToolSearch({ inbox: raw })).toEqual(expected);

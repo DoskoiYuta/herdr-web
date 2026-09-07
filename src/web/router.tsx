@@ -91,14 +91,14 @@ function RootLayout() {
   // Inbox の開閉は search `inbox`（`/focus/$tab` の一部）が正 — リロードで復元、
   // 戻るで閉じる（ui-redesign.md §5.4）。
   const inboxSearch = useSearch({ strict: false, select: (s) => s.inbox });
-  const inboxOpen = inboxSearch === "1";
+  const inboxOpen = inboxSearch === 1;
   const currentTab = useParams({ strict: false, select: (p) => p.tab }) ?? "diff";
   const setInboxOpen = useCallback(
     (nextOpen: boolean) => {
       void navigate({
         to: "/focus/$tab",
         params: { tab: currentTab },
-        search: (prev) => ({ ...prev, inbox: nextOpen ? "1" : undefined }),
+        search: (prev) => ({ ...prev, inbox: nextOpen ? 1 : undefined }),
       });
     },
     [navigate, currentTab],

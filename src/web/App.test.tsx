@@ -193,6 +193,14 @@ describe("App", () => {
     expect(screen.getAllByRole("separator").length).toBeGreaterThan(0);
   });
 
+  // 実走で見つかった不具合: TanStack Router の search は JSON で直列化される
+  // ため、`?inbox=1` を直接開く（＝リロード）と生の文字列 "1" ではなく数値 1
+  // が渡る。`v.literal("1")` だと検証落ちして Inbox が開かなかった。
+  test("opening a URL with ?inbox=1 directly (a reload) shows the Inbox dialog open", async () => {
+    await renderApp("/focus/diff?inbox=1");
+    expect(screen.getByTestId("inbox-dialog")).toBeInTheDocument();
+  });
+
   test("collapsing the tool area hides its content and its divider", async () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
