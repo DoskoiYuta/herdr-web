@@ -11,12 +11,12 @@ herdr の中で複数のエージェントが並行して働く状況で、人�
 
 役割分担は変えない（plan.md §2）:
 
-| 責務 | 担当 |
-|---|---|
-| workspace / pane / エージェントのライフサイクル、入力 | herdr（ターミナル領域に描画） |
-| worktree の作成・実装 | pane 内の Claude Code |
-| 見渡す・移動する・成果を見る・判断を返す | **Web UI（この再設計の対象）** |
-| 両者をつなぐ | `hw` CLI（エージェントが叩く） |
+| 責務                                                  | 担当                           |
+| ----------------------------------------------------- | ------------------------------ |
+| workspace / pane / エージェントのライフサイクル、入力 | herdr（ターミナル領域に描画）  |
+| worktree の作成・実装                                 | pane 内の Claude Code          |
+| 見渡す・移動する・成果を見る・判断を返す              | **Web UI（この再設計の対象）** |
+| 両者をつなぐ                                          | `hw` CLI（エージェントが叩く） |
 
 **不変の前提**: ツール領域は herdr のフォーカスに追従し、ピン留めは持たない（F2-4）。ブラウザ側に独自の「選択中 worktree」を持たせない。
 
@@ -26,61 +26,61 @@ herdr の中で複数のエージェントが並行して働く状況で、人�
 
 ### 2.1 ドメイン語彙
 
-| 語 | 意味 | 出所 |
-|---|---|---|
-| Repository | `git-common-dir` で同一視されるリポジトリ。サイドバーの最上位グループ、レビュー・質問の `repo` キー | git |
-| Worktree | main または linked の作業ツリー。ツール領域が追従する単位、レビュー・質問・判断依頼・Docker・Process の `root` | git |
-| Sub-repository | worktree 配下の submodule / vcstool 子リポジトリ。ツール領域内で切替 | git |
-| Workspace / Tab / Pane | herdr の階層。pane がエージェントを 1 つ持ちうる | herdr |
-| Agent status | `idle / working / blocked / done / unknown`。pane 単位 | herdr |
-| Focus | herdr が 1 つだけ持つフォーカス pane。ツール領域が追う worktree はここから決まる | herdr |
-| Review（レビュー） | 人間 → エージェント。**変更**（worktree または commit）の行範囲に付くスレッド。下書き→一括送信 | 自前 DB |
-| Ask（質問） | 人間 → エージェント。**コードの場所**（worktree のファイル行範囲）に付くスレッド。作成＝即送信。専用セッション or 既存 pane | 自前 DB |
-| Decision（判断依頼） | エージェント → 人間。設問（single/multi/text/confirm）と Block 付きコンテキスト。非ブロッキング、回答は `agent.prompt` で配達 | 自前 DB |
-| Notify / Delivery | Review の通知状態、Decision の配達状態、Ask の最終プロンプト状態。いずれも `agent.prompt` の結果 | 自前 DB |
+| 語                     | 意味                                                                                                                          | 出所    |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Repository             | `git-common-dir` で同一視されるリポジトリ。サイドバーの最上位グループ、レビュー・質問の `repo` キー                           | git     |
+| Worktree               | main または linked の作業ツリー。ツール領域が追従する単位、レビュー・質問・判断依頼・Docker・Process の `root`                | git     |
+| Sub-repository         | worktree 配下の submodule / vcstool 子リポジトリ。ツール領域内で切替                                                          | git     |
+| Workspace / Tab / Pane | herdr の階層。pane がエージェントを 1 つ持ちうる                                                                              | herdr   |
+| Agent status           | `idle / working / blocked / done / unknown`。pane 単位                                                                        | herdr   |
+| Focus                  | herdr が 1 つだけ持つフォーカス pane。ツール領域が追う worktree はここから決まる                                              | herdr   |
+| Review（レビュー）     | 人間 → エージェント。**変更**（worktree または commit）の行範囲に付くスレッド。下書き→一括送信                                | 自前 DB |
+| Ask（質問）            | 人間 → エージェント。**コードの場所**（worktree のファイル行範囲）に付くスレッド。作成＝即送信。専用セッション or 既存 pane   | 自前 DB |
+| Decision（判断依頼）   | エージェント → 人間。設問（single/multi/text/confirm）と Block 付きコンテキスト。非ブロッキング、回答は `agent.prompt` で配達 | 自前 DB |
+| Notify / Delivery      | Review の通知状態、Decision の配達状態、Ask の最終プロンプト状態。いずれも `agent.prompt` の結果                              | 自前 DB |
 
 ### 2.2 機能一覧（実装済み）
 
 観察系（読み取り専用、フォーカス worktree に追従）:
 
-| 機能 | 概要 | 主な操作 |
-|---|---|---|
-| Terminal | herdr TUI を PTY で描画 | 入力、リサイズ、切断後の再接続 |
-| Diff | WORKTREE / INDEX / commit 間の diff。ファイルツリー＋split/unified | ツリー表示、文字サイズ、split/unified、wrap/scroll、全折りたたみ、更新(r)、j/k、比較範囲の解除 |
-| Graph | DAG、ref バッジ、stash、未コミット擬似行、レビュー件数バッジ | 選択で詳細展開、Shift+クリックで範囲、ダブルクリックで diff、fetch(f) |
-| Files | 素の readdir ツリー＋単一ファイル（code / md プレビュー / 画像 / PDF / binary / too-large）、git status 装飾 | パスコピー、ゴミ箱、DnD インポート（上書き確認）、md source/preview |
-| Docker | root に紐づくコンテナ（compose / devcontainer ラベル）5 秒ポーリング | 行展開で `docker logs --follow` |
-| Process | root を cwd とするプロセスツリー、LISTEN ポート。3 秒ポーリング | なし（閲覧のみ） |
+| 機能     | 概要                                                                                                         | 主な操作                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Terminal | herdr TUI を PTY で描画                                                                                      | 入力、リサイズ、切断後の再接続                                                                 |
+| Diff     | WORKTREE / INDEX / commit 間の diff。ファイルツリー＋split/unified                                           | ツリー表示、文字サイズ、split/unified、wrap/scroll、全折りたたみ、更新(r)、j/k、比較範囲の解除 |
+| Graph    | DAG、ref バッジ、stash、未コミット擬似行、レビュー件数バッジ                                                 | 選択で詳細展開、Shift+クリックで範囲、ダブルクリックで diff、fetch(f)                          |
+| Files    | 素の readdir ツリー＋単一ファイル（code / md プレビュー / 画像 / PDF / binary / too-large）、git status 装飾 | パスコピー、ゴミ箱、DnD インポート（上書き確認）、md source/preview                            |
+| Docker   | root に紐づくコンテナ（compose / devcontainer ラベル）5 秒ポーリング                                         | 行展開で `docker logs --follow`                                                                |
+| Process  | root を cwd とするプロセスツリー、LISTEN ポート。3 秒ポーリング                                              | なし（閲覧のみ）                                                                               |
 
 対話系（人間とエージェントの往復）:
 
-| 機能 | 起点 | 相手の解決 | 状態 | 配達 |
-|---|---|---|---|---|
-| Review | Diff で行範囲選択 | 送信時に worktree 内のエージェント pane を解決（複数なら選択） | open → replied → resolved、worktree 付きのみ outdated | debounce 10s、`none/pending/sent/agent_blocked/no_target/unknown` |
-| Ask | Files で行範囲選択 | 作成時に「新規セッション」or「既存 pane」を選ぶ | open → replied → resolved、内容不一致で outdated ⇄ open | 即時。失敗時「再送」 |
-| Decision | `hw decision request`（エージェント） | 呼び出し元 pane | open → answered / dismissed / cancelled | 回答・却下時に配達、`pending/sent/agent_blocked/gone/unknown`、再送 |
+| 機能     | 起点                                  | 相手の解決                                                     | 状態                                                    | 配達                                                                |
+| -------- | ------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| Review   | Diff で行範囲選択                     | 送信時に worktree 内のエージェント pane を解決（複数なら選択） | open → replied → resolved、worktree 付きのみ outdated   | debounce 10s、`none/pending/sent/agent_blocked/no_target/unknown`   |
+| Ask      | Files で行範囲選択                    | 作成時に「新規セッション」or「既存 pane」を選ぶ                | open → replied → resolved、内容不一致で outdated ⇄ open | 即時。失敗時「再送」                                                |
+| Decision | `hw decision request`（エージェント） | 呼び出し元 pane                                                | open → answered / dismissed / cancelled                 | 回答・却下時に配達、`pending/sent/agent_blocked/gone/unknown`、再送 |
 
 操作系（herdr / FS への書き込み。Web UI が持つ書き込みはこれだけ）:
 
-| 操作 | 経路 |
-|---|---|
-| フォーカス移動 | 行クリック → `workspace.focus` / `pane.focus` |
-| ワークスペース作成・改名・削除 | リポジトリ見出しの「+」、workspace 行の右クリック |
-| 質問セッションの起動・解決（workspace.close） | Files の質問コンポーザー、サイドバーの質問行 |
-| `git fetch --prune` | Graph |
-| ファイルのインポート・ゴミ箱移動 | Files のツリー |
-| エージェントへのプロンプト | Review 送信、Ask 作成・返信・再送、Decision 回答・却下・再送 |
+| 操作                                          | 経路                                                         |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| フォーカス移動                                | 行クリック → `workspace.focus` / `pane.focus`                |
+| ワークスペース作成・改名・削除                | リポジトリ見出しの「+」、workspace 行の右クリック            |
+| 質問セッションの起動・解決（workspace.close） | Files の質問コンポーザー、サイドバーの質問行                 |
+| `git fetch --prune`                           | Graph                                                        |
+| ファイルのインポート・ゴミ箱移動              | Files のツリー                                               |
+| エージェントへのプロンプト                    | Review 送信、Ask 作成・返信・再送、Decision 回答・却下・再送 |
 
 ### 2.3 状態の置き場所（現状）
 
-| 種類 | 置き場所 |
-|---|---|
-| フォーカス、pane / workspace ツリー、接続状態 | herdr（WS `/ws/events` で受信、`herdrStore`） |
-| タブ、比較範囲 `from/to`、`sub`、`path/line`、`md` | URL（`/focus/<tab>?…`） |
-| 判断依頼の一覧・詳細 | URL（`/decisions`, `/decisions/<id>`） |
-| レイアウト幅・折りたたみ、ビューア設定、diff 設定、判断依頼の回答下書き | localStorage |
-| レビュー・質問・判断依頼・通知状態・repos | SQLite |
-| 折りたたみ集合、選択ファイル、行選択、ダイアログ開閉、トースト | コンポーネント内 |
+| 種類                                                                    | 置き場所                                      |
+| ----------------------------------------------------------------------- | --------------------------------------------- |
+| フォーカス、pane / workspace ツリー、接続状態                           | herdr（WS `/ws/events` で受信、`herdrStore`） |
+| タブ、比較範囲 `from/to`、`sub`、`path/line`、`md`                      | URL（`/focus/<tab>?…`）                       |
+| 判断依頼の一覧・詳細                                                    | URL（`/decisions`, `/decisions/<id>`）        |
+| レイアウト幅・折りたたみ、ビューア設定、diff 設定、判断依頼の回答下書き | localStorage                                  |
+| レビュー・質問・判断依頼・通知状態・repos                               | SQLite                                        |
+| 折りたたみ集合、選択ファイル、行選択、ダイアログ開閉、トースト          | コンポーネント内                              |
 
 ---
 
@@ -111,17 +111,17 @@ herdr の中で複数のエージェントが並行して働く状況で、人�
 
 ### 4.2 変えること（設計判断）
 
-| # | 判断 | 理由 |
-|---|---|---|
-| D1 | **「Inbox」を新設し、worktree 横断で「いま動くべきこと」を 1 か所に集める。** Inbox はすべてのツールとエージェントセッションから上がるインサイトの集約場所で、対応すると消える。対象: `replied` なレビュー・質問、未送信下書き、未達（agent_blocked / no_target / gone）の通知、blocked なエージェント。**Tool の一部ではなく、画面中央のフローティングダイアログ**として出す（サイドバーの Inbox 項目と ⌘I で開閉）。ツールタブや worktree 見出しとの兼ね合いを持たない。**判断依頼は Inbox に入れず、観察タブと並ぶ通常のツールタブ「判断依頼」で見る**（一覧と詳細、未回答件数バッジ）。回答後も履歴として残るものは Inbox の性質に合わないため | 課題 1・2 |
-| D2 | **対話 3 種を同じ「スレッド」部品で描く。** 内部状態は「要対応 / 進行中 / 完了 / 無効」の 4 語に写像する。スレッドカード上では要対応をバッジで示さず、アウトラインの明滅で注意を引く（完了 / 無効だけ chip を付ける）。4 語は Inbox のフィルタとグルーピングにだけ使う。配達状態は 1 つの部品に統一する（§6.2） | 課題 2 |
-| D3 | **行選択時のコンポーザーに種別を明示する。** Diff では「レビュー」、Files では「質問」と見出しに出し、Files では送信先（新規セッション / 既存 pane）を同じ場所に置く。機能を統合はしない（付く先が「変更」と「場所」で異なる） | 課題 3 |
-| D4 | **サイドバーを 1 モードにする。** `Repository > Workspace > Pane` の 3 段。workspace 行にブランチ・集計状態、pane 行にエージェント名・状態・タイトル。git 管理外は「その他」。ワークスペース表示モードは廃止候補（§7 の要確認） | 課題 4 |
-| D5 | **フォーカス操作を明示する。** 行クリックは「フォーカスを移す（ターミナルも切り替わる）」と分かる見た目にし、現在フォーカスの pane → その worktree → ツール領域の見出し、を同じ色で結ぶ | 課題 8 |
-| D6 | **通知（toast）とダイアログを共通部品にする。** 4 種（情報 / 成功 / 警告 / エラー）＋操作付き（再送・元に戻す等） | 課題 5 |
-| D7 | **ターミナルとツール領域の比率を可変にし、どちらも最大化できる。** 既定は現状どおりターミナル主。Terminal と Tool の両方のヘッダーに「最大化」を置き、同じキーで戻す | 課題 6 |
-| D8 | **設定パネル（軽量）を追加する。** ビューア設定・テーマ・キーボード一覧・接続情報（herdr socket、DB パス、`hw` URL）を 1 か所で見せる。config.json の編集はしない | 課題 7 |
-| D9 | **エージェント非依存にする。** UI の文言・導線から Claude Code 前提を外し、質問の新規セッションや `resume` の表示は herdr が対応するエージェントから選ぶ形にする。エージェント固有の情報（session id の形式など）は herdr の `agent_session` をそのまま見せる | — |
+| #   | 判断                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 理由      |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| D1  | **「Inbox」を新設し、worktree 横断で「いま動くべきこと」を 1 か所に集める。** Inbox はすべてのツールとエージェントセッションから上がるインサイトの集約場所で、対応すると消える。対象: `replied` なレビュー・質問、未送信下書き、未達（agent_blocked / no_target / gone）の通知、blocked なエージェント。**Tool の一部ではなく、画面中央のフローティングダイアログ**として出す（サイドバーの Inbox 項目と ⌘I で開閉）。ツールタブや worktree 見出しとの兼ね合いを持たない。**判断依頼は Inbox に入れず、観察タブと並ぶ通常のツールタブ「判断依頼」で見る**（一覧と詳細、未回答件数バッジ）。回答後も履歴として残るものは Inbox の性質に合わないため | 課題 1・2 |
+| D2  | **対話 3 種を同じ「スレッド」部品で描く。** 内部状態は「要対応 / 進行中 / 完了 / 無効」の 4 語に写像する。スレッドカード上では要対応をバッジで示さず、アウトラインの明滅で注意を引く（完了 / 無効だけ chip を付ける）。4 語は Inbox のフィルタとグルーピングにだけ使う。配達状態は 1 つの部品に統一する（§6.2）                                                                                                                                                                                                                                                                                                                                    | 課題 2    |
+| D3  | **行選択時のコンポーザーに種別を明示する。** Diff では「レビュー」、Files では「質問」と見出しに出し、Files では送信先（新規セッション / 既存 pane）を同じ場所に置く。機能を統合はしない（付く先が「変更」と「場所」で異なる）                                                                                                                                                                                                                                                                                                                                                                                                                     | 課題 3    |
+| D4  | **サイドバーを 1 モードにする。** `Repository > Workspace > Pane` の 3 段。workspace 行にブランチ・集計状態、pane 行にエージェント名・状態・タイトル。git 管理外は「その他」。ワークスペース表示モードは廃止候補（§7 の要確認）                                                                                                                                                                                                                                                                                                                                                                                                                    | 課題 4    |
+| D5  | **フォーカス操作を明示する。** 行クリックは「フォーカスを移す（ターミナルも切り替わる）」と分かる見た目にし、現在フォーカスの pane → その worktree → ツール領域の見出し、を同じ色で結ぶ                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 課題 8    |
+| D6  | **通知（toast）とダイアログを共通部品にする。** 4 種（情報 / 成功 / 警告 / エラー）＋操作付き（再送・元に戻す等）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 課題 5    |
+| D7  | **ターミナルとツール領域の比率を可変にし、どちらも最大化できる。** 既定は現状どおりターミナル主。Terminal と Tool の両方のヘッダーに「最大化」を置き、同じキーで戻す                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 課題 6    |
+| D8  | **設定パネル（軽量）を追加する。** ビューア設定・テーマ・キーボード一覧・接続情報（herdr socket、DB パス、`hw` URL）を 1 か所で見せる。config.json の編集はしない                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 課題 7    |
+| D9  | **エージェント非依存にする。** UI の文言・導線から Claude Code 前提を外し、質問の新規セッションや `resume` の表示は herdr が対応するエージェントから選ぶ形にする。エージェント固有の情報（session id の形式など）は herdr の `agent_session` をそのまま見せる                                                                                                                                                                                                                                                                                                                                                                                      | —         |
 
 ---
 
@@ -140,11 +140,11 @@ herdr の中で複数のエージェントが並行して働く状況で、人�
 └──────────┴──────────────────────────┴────────────────────────┘
 ```
 
-| 領域 | 内容 | 状態 |
-|---|---|---|
-| Navigator | Inbox 見出し（件数）、リポジトリツリー、フッター（herdr 接続状態、設定） | 展開 / アイコンレール（件数バッジ・接続ドット・設定のみ） |
-| Terminal | xterm.js | 通常 / 終了オーバーレイ（code、`herdr` 未検出の補足、再接続） |
-| Tool | header + tabs + body | 通常 / 折りたたみ / 最大化（Terminal を隠す） / herdr 未接続 / worktree 未解決 |
+| 領域      | 内容                                                                     | 状態                                                                           |
+| --------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Navigator | Inbox 見出し（件数）、リポジトリツリー、フッター（herdr 接続状態、設定） | 展開 / アイコンレール（件数バッジ・接続ドット・設定のみ）                      |
+| Terminal  | xterm.js                                                                 | 通常 / 終了オーバーレイ（code、`herdr` 未検出の補足、再接続）                  |
+| Tool      | header + tabs + body                                                     | 通常 / 折りたたみ / 最大化（Terminal を隠す） / herdr 未接続 / worktree 未解決 |
 
 境界はドラッグ。Terminal と Tool の比率は保存する。
 
@@ -165,25 +165,25 @@ Inbox                                   (7)
 ● herdr 接続済み  protocol 20         ⚙
 ```
 
-| 行 | 表示 | 操作 |
-|---|---|---|
-| Inbox | 件数（自分の番の合計）。内訳はホバーで | クリックで Tool を Inbox タブに |
-| Repository | 名前（衝突時は親ディレクトリ付き）、blocked / done 集計、「+」 | 折りたたみ、「+」でワークスペース作成インラインフォーム |
-| Workspace | ラベル、ブランチ chip（複数ブランチなら複数）、状態集計、エージェント数 | クリックでフォーカス移動、右クリックで改名・削除 |
-| Pane | エージェント種別アイコン、状態アイコン＋色、label / title、tab 名 | クリックでフォーカス移動、右クリックで `claude --resume` コピー |
-| 質問セッション | Workspace 行と同じ段に「質問」アイコン付きで置く（別グループにしない） | クリックでフォーカス、右クリックで対象ファイルを開く・解決 |
-| フォーカス強調 | フォーカス pane の行、それを含む workspace 行、Tool header を同じアクセント色で結ぶ | — |
+| 行             | 表示                                                                                | 操作                                                            |
+| -------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Inbox          | 件数（自分の番の合計）。内訳はホバーで                                              | クリックで Tool を Inbox タブに                                 |
+| Repository     | 名前（衝突時は親ディレクトリ付き）、blocked / done 集計、「+」                      | 折りたたみ、「+」でワークスペース作成インラインフォーム         |
+| Workspace      | ラベル、ブランチ chip（複数ブランチなら複数）、状態集計、エージェント数             | クリックでフォーカス移動、右クリックで改名・削除                |
+| Pane           | エージェント種別アイコン、状態アイコン＋色、label / title、tab 名                   | クリックでフォーカス移動、右クリックで `claude --resume` コピー |
+| 質問セッション | Workspace 行と同じ段に「質問」アイコン付きで置く（別グループにしない）              | クリックでフォーカス、右クリックで対象ファイルを開く・解決      |
+| フォーカス強調 | フォーカス pane の行、それを含む workspace 行、Tool header を同じアクセント色で結ぶ | —                                                               |
 
 herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と socket パス、Terminal は動作しうるので残す。
 
 ### 5.3 Tool header
 
-| 要素 | 内容 |
-|---|---|
-| worktree 識別 | basename（太字）、ブランチ、フルパス（ホバー / コピー） |
-| サブリポジトリ切替 | 2 件以上のときだけ Select |
-| フォーカス pane | エージェント名・状態、`claude --resume <id>` コピー |
-| 最大化 / 折りたたみ | D7 |
+| 要素                | 内容                                                    |
+| ------------------- | ------------------------------------------------------- |
+| worktree 識別       | basename（太字）、ブランチ、フルパス（ホバー / コピー） |
+| サブリポジトリ切替  | 2 件以上のときだけ Select                               |
+| フォーカス pane     | エージェント名・状態、`claude --resume <id>` コピー     |
+| 最大化 / 折りたたみ | D7                                                      |
 
 ### 5.4 Tool tabs
 
@@ -246,16 +246,16 @@ herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と
 
 ### 5.5 ダイアログ・オーバーレイ
 
-| 名前 | 内容 |
-|---|---|
+| 名前                     | 内容                                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
 | 送信先の選択（レビュー） | pane カード（レイアウトミニマップ、状態、workspace/tab、出力末尾 6 行）。候補 1 件なら出さない |
-| 送信先の選択（質問） | 新規セッション（既定、エージェント種別）＋ 既存 pane のカード。常に出す |
-| ワークスペース改名 | label 入力 |
-| ワークスペース削除 | 破壊的確認（pane / agent が終了する旨） |
-| 質問を解決 | 確認（セッションを閉じる旨） |
-| 上書き確認 | 衝突パス一覧 |
-| ゴミ箱に移動 | 確認（ディレクトリは中身ごと） |
-| 設定 | ビューア設定、テーマ、キーボード一覧、接続情報 |
+| 送信先の選択（質問）     | 新規セッション（既定、エージェント種別）＋ 既存 pane のカード。常に出す                        |
+| ワークスペース改名       | label 入力                                                                                     |
+| ワークスペース削除       | 破壊的確認（pane / agent が終了する旨）                                                        |
+| 質問を解決               | 確認（セッションを閉じる旨）                                                                   |
+| 上書き確認               | 衝突パス一覧                                                                                   |
+| ゴミ箱に移動             | 確認（ディレクトリは中身ごと）                                                                 |
+| 設定                     | ビューア設定、テーマ、キーボード一覧、接続情報                                                 |
 
 ### 5.6 一過性メッセージ
 
@@ -281,25 +281,25 @@ toast を 1 系統に。用途: 下書き追加 / 送信完了（N 件、宛先�
 
 ### 6.2 状態の写像（ユーザーに見せる語は 4 つ）
 
-| 見せる語 | Review | Ask | Decision | Agent(pane) |
-|---|---|---|---|---|
-| 要対応 | replied、未送信下書きあり | replied | open | blocked |
-| 進行中 | open（送信済み） | open | —（answered で配達済み） | working |
-| 完了 | resolved | resolved | answered / dismissed | done / idle |
-| 無効 | outdated | outdated | cancelled | unknown / セッション消失 |
+| 見せる語 | Review                    | Ask      | Decision                 | Agent(pane)              |
+| -------- | ------------------------- | -------- | ------------------------ | ------------------------ |
+| 要対応   | replied、未送信下書きあり | replied  | open                     | blocked                  |
+| 進行中   | open（送信済み）          | open     | —（answered で配達済み） | working                  |
+| 完了     | resolved                  | resolved | answered / dismissed     | done / idle              |
+| 無効     | outdated                  | outdated | cancelled                | unknown / セッション消失 |
 
 内部状態は変えない。表示語は Inbox のフィルタとグルーピングにだけ使い、スレッドカードには完了 / 無効のときだけ chip を付ける。要対応はアウトラインの明滅で示す。
 
 ### 6.3 配達状態の写像
 
-| 見せる語 | Review notify | Decision delivery | Ask lastPrompt | 操作 |
-|---|---|---|---|---|
-| 未送信 | none | null | — | 送信 |
-| 送信待ち | pending | pending | — | なし（自動再試行中） |
-| 届いた | sent | sent | sent | なし |
-| 入力待ちで未達 | agent_blocked | agent_blocked | agent_blocked | 再送 |
-| 宛先なし | no_target | gone | — | 再送（pane を用意してから） |
-| 不明 | unknown | unknown | unknown | 再送 |
+| 見せる語       | Review notify | Decision delivery | Ask lastPrompt | 操作                        |
+| -------------- | ------------- | ----------------- | -------------- | --------------------------- |
+| 未送信         | none          | null              | —              | 送信                        |
+| 送信待ち       | pending       | pending           | —              | なし（自動再試行中）        |
+| 届いた         | sent          | sent              | sent           | なし                        |
+| 入力待ちで未達 | agent_blocked | agent_blocked     | agent_blocked  | 再送                        |
+| 宛先なし       | no_target     | gone              | —              | 再送（pane を用意してから） |
+| 不明           | unknown       | unknown           | unknown        | 再送                        |
 
 ### 6.4 エージェント状態（アイコン＋色、全画面共通）
 
@@ -309,13 +309,13 @@ idle / working（スピン）/ blocked（警告色）/ done（成功色）/ unkn
 
 ## 7. 決定事項（2026-09-07 確認済み）
 
-| # | 論点 | 決定 |
-|---|---|---|
-| Q1 | サイドバーの「ワークスペース表示」モード | 廃止。`Repository > Workspace > Pane` の 1 モード |
-| Q2 | Inbox の置き場所 | Tool のタブ（観察タブと兄弟ルート） |
-| Q3 | Review と Ask の入口 | 統合しない。同じスレッド部品で描き、種別で区別する |
-| Q4 | 既定レイアウト | ターミナル主のまま。最大化は Terminal と Tool の両方に付ける |
-| Q5 | 判断依頼 URL | 当初 `/inbox/decision/<id>` としたが、判断依頼を専用タブに分けたため `/decisions/<id>` のまま維持する |
+| #   | 論点                                     | 決定                                                                                                  |
+| --- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Q1  | サイドバーの「ワークスペース表示」モード | 廃止。`Repository > Workspace > Pane` の 1 モード                                                     |
+| Q2  | Inbox の置き場所                         | Tool のタブ（観察タブと兄弟ルート）                                                                   |
+| Q3  | Review と Ask の入口                     | 統合しない。同じスレッド部品で描き、種別で区別する                                                    |
+| Q4  | 既定レイアウト                           | ターミナル主のまま。最大化は Terminal と Tool の両方に付ける                                          |
+| Q5  | 判断依頼 URL                             | 当初 `/inbox/decision/<id>` としたが、判断依頼を専用タブに分けたため `/decisions/<id>` のまま維持する |
 
 **Inbox の位置づけ**: 「人間の注意が必要なもの」はすべて Inbox に集約する。現時点の対象は判断依頼・返信済みレビュー/質問・未送信下書き・未達通知・blocked エージェント。今後追加される通知系（例: エージェント完了、worktree 消失によるレビューの outdated 化、herdr の `notification.show` 相当）も、まず Inbox の行として表現できるかを検討し、専用 UI を作るのは Inbox で表せない場合に限る。デスクトップ通知やサイドバーのバッジは Inbox への入口であって、内容を持つ場所にはしない。
 
@@ -323,18 +323,18 @@ idle / working（スピン）/ blocked（警告色）/ done（成功色）/ unkn
 
 design.pen には shadcn の部品ライブラリ（`x:` プレフィックス、Mode / Base / Accent のテーマ軸）を import 済み。標準部品はそれを使い、herdr-web 固有の語彙だけを P0 に定義する。画面はすべて `x:Mode = Dark, x:Base = Zinc` で描いている。
 
-| フレーム | 内容 | 状態 |
-|---|---|---|
-| P0 共通部品 | StatusChip ×4、DeliveryChip ×6、AgentStatus ×5、KindIcon ×4、ToolTab（active / inactive、通知バッジ付き）、Toast ×4、shadcn 部品の参照サンプル。加えて ThreadCard（Review / Ask 共用のスレッド部品）を単独コンポーネントとして配置 | 済 |
-| P1 シェル | Navigator / Terminal / Tool の 3 カラム。Tool は Diff タブ、行範囲にレビュースレッドをインライン表示、ヘッダーに「送信 (3)」と最大化 | 済 |
-| P2 Inbox | シェル上のフローティングダイアログ（スクリム、⌘I）。状態タブ（要対応 / 進行中 / 完了 / すべて）、worktree 絞り込み、返信が届いた / 送信待ち / 入力待ちのエージェント / 届いていない通知 の 4 カード | 済 |
-| P2b 判断依頼一覧 | 判断依頼タブ（通常の worktree 見出し）、状態タブ（未回答 / 回答済み / すべて）、未回答カードと最近の履歴、状態 chip（回答済み / 却下 / 取り下げ）と配達 chip | 済 |
-| P3 判断依頼ビュー | パンくず、ヘッダー（状態・エージェント・worktree・session・pane を開く）、context（markdown + code）、single 設問（推奨・その他）、confirm 設問、メモ、フッター（却下 / 回答を送信） | 済 |
-| P4 Files + 質問 | FS ツリー（git status 装飾）、コードビュー、不一致ストリップ、行範囲選択からの質問コンポーザー（送信先 Select 内蔵） | 済 |
-| P5 Graph | 全ブランチ切替、fetch、レーン付き行（ref バッジ・レビュー件数・下書き件数）、CommitDetail 展開、さらに読み込む | 済 |
-| P6 ダイアログ | 送信先を選ぶ（pane カード: ミニマップ・状態・出力末尾）、ワークスペースを削除（破壊的確認 + 下書き警告）、設定（表示 / 接続 / キーボード） | 済 |
-| P7 herdr 未接続 | Navigator と Tool の空状態（socket パス、復帰の説明、Inbox は参照可の注記） | 済 |
-| P8 Tool 最大化 | Terminal をレールに畳み、Tool を全幅に。レールに復帰ボタンとエージェント状態 | 済 |
+| フレーム          | 内容                                                                                                                                                                                                                               | 状態 |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| P0 共通部品       | StatusChip ×4、DeliveryChip ×6、AgentStatus ×5、KindIcon ×4、ToolTab（active / inactive、通知バッジ付き）、Toast ×4、shadcn 部品の参照サンプル。加えて ThreadCard（Review / Ask 共用のスレッド部品）を単独コンポーネントとして配置 | 済   |
+| P1 シェル         | Navigator / Terminal / Tool の 3 カラム。Tool は Diff タブ、行範囲にレビュースレッドをインライン表示、ヘッダーに「送信 (3)」と最大化                                                                                               | 済   |
+| P2 Inbox          | シェル上のフローティングダイアログ（スクリム、⌘I）。状態タブ（要対応 / 進行中 / 完了 / すべて）、worktree 絞り込み、返信が届いた / 送信待ち / 入力待ちのエージェント / 届いていない通知 の 4 カード                                | 済   |
+| P2b 判断依頼一覧  | 判断依頼タブ（通常の worktree 見出し）、状態タブ（未回答 / 回答済み / すべて）、未回答カードと最近の履歴、状態 chip（回答済み / 却下 / 取り下げ）と配達 chip                                                                       | 済   |
+| P3 判断依頼ビュー | パンくず、ヘッダー（状態・エージェント・worktree・session・pane を開く）、context（markdown + code）、single 設問（推奨・その他）、confirm 設問、メモ、フッター（却下 / 回答を送信）                                               | 済   |
+| P4 Files + 質問   | FS ツリー（git status 装飾）、コードビュー、不一致ストリップ、行範囲選択からの質問コンポーザー（送信先 Select 内蔵）                                                                                                               | 済   |
+| P5 Graph          | 全ブランチ切替、fetch、レーン付き行（ref バッジ・レビュー件数・下書き件数）、CommitDetail 展開、さらに読み込む                                                                                                                     | 済   |
+| P6 ダイアログ     | 送信先を選ぶ（pane カード: ミニマップ・状態・出力末尾）、ワークスペースを削除（破壊的確認 + 下書き警告）、設定（表示 / 接続 / キーボード）                                                                                         | 済   |
+| P7 herdr 未接続   | Navigator と Tool の空状態（socket パス、復帰の説明、Inbox は参照可の注記）                                                                                                                                                        | 済   |
+| P8 Tool 最大化    | Terminal をレールに畳み、Tool を全幅に。レールに復帰ボタンとエージェント状態                                                                                                                                                       | 済   |
 
 | P9 Compose | プロジェクトごとのテーブルカード（見出しに種別・定義ファイル・稼働数）、状態ドット、公開ポート、展開行はアクセントバー、`docker logs --follow` のストリーム | 済 |
 | P10 Process | cwd が worktree 配下のプロセスツリー、LISTEN ポートを先頭列に | 済 |
@@ -351,14 +351,14 @@ design.pen には shadcn の部品ライブラリ（`x:` プレフィックス�
 
 各マイルストーンは独立して main に入れられる単位。実装は TDD（振る舞いテストのみ）、設計判断とレビューは本文書を正とする。
 
-| # | 内容 | 主な変更箇所 | サーバー変更 |
-|---|---|---|---|
-| M10 シェルとタブ基盤 | タブ順 Files / Graph / Diff / Decisions / Process / Compose、ToolTab（バッジ付き）、Docker → Compose 改名、「送信 (N)」を Diff ツールバーへ、Terminal / Tool の最大化と比率保存、Tool header の整理（session 表示の汎用化） | `web/components/tool`, `web/lib/layout`, `web/router` | なし（`/api/review/counts`・`/api/ask/counts`・`/api/decision/counts` をバッジに流用） |
-| M11 状態語彙と共通部品 | StatusChip / DeliveryChip / AgentStatus / KindIcon / Toast の共通化、Review と Ask で共用する ThreadCard（未読の明滅、完了 / 無効のみ chip）、Diff の空状態 | `web/components/{review,ask,ui}` | なし |
-| M12 Navigator | 1 モードの `Repository > Workspace > Pane`、Inbox 項目、フッター（接続状態・設定）、アイコンレール、右クリックに「フォーカスを移す / Diff を開く」 | `web/components/sidebar`, `web/lib/{repoWorkspaces,workspaceView}` | なし（workspace 表示モードの削除） |
-| M13 Inbox | 集約 API、フローティングダイアログ（⌘I、スクリム、worktree 絞り込み）、4 セクション、行からの遷移と再送 | `server/inbox`（新規）, `web/components/inbox`（新規） | `GET /api/inbox?worktree=`（review / ask / decision / herdr state から集約） |
-| M14 Decisions タブ | `/focus/decisions?id=` ルート、`/decisions/<id>` のリダイレクト、一覧（未回答 / 回答済み / すべて）、確定後ビュー、compare の整理 | `web/router`, `web/components/decision` | `hw decision request` の `url` は不変 |
-| M15 質問の送信先ダイアログとエージェント非依存 | 質問コンポーザーを本文のみに、送信先ダイアログ（新規セッション + エージェント種別 / 既存 pane）、`resume` 表示の汎用化 | `web/components/ask`, `web/components/files` | `POST /api/ask` に `agent` を追加、`AskSessionLauncher` が `agent.start` の agent 名を受ける。herdr 対応エージェントの列挙 API |
-| M16 各タブの仕上げ | Graph のファイル行 → Diff 遷移とスクロール、ブランチ切替の文言、Compose のプロジェクト別カードと展開行、Files のビューア種別、失敗・空状態の共通部品、設定ダイアログ（テーマ切替を含む） | `web/components/{graph,docker,files,process}`, `web/components/settings`（新規） | なし |
+| #                                              | 内容                                                                                                                                                                                                                        | 主な変更箇所                                                                     | サーバー変更                                                                                                                   |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| M10 シェルとタブ基盤                           | タブ順 Files / Graph / Diff / Decisions / Process / Compose、ToolTab（バッジ付き）、Docker → Compose 改名、「送信 (N)」を Diff ツールバーへ、Terminal / Tool の最大化と比率保存、Tool header の整理（session 表示の汎用化） | `web/components/tool`, `web/lib/layout`, `web/router`                            | なし（`/api/review/counts`・`/api/ask/counts`・`/api/decision/counts` をバッジに流用）                                         |
+| M11 状態語彙と共通部品                         | StatusChip / DeliveryChip / AgentStatus / KindIcon / Toast の共通化、Review と Ask で共用する ThreadCard（未読の明滅、完了 / 無効のみ chip）、Diff の空状態                                                                 | `web/components/{review,ask,ui}`                                                 | なし                                                                                                                           |
+| M12 Navigator                                  | 1 モードの `Repository > Workspace > Pane`、Inbox 項目、フッター（接続状態・設定）、アイコンレール、右クリックに「フォーカスを移す / Diff を開く」                                                                          | `web/components/sidebar`, `web/lib/{repoWorkspaces,workspaceView}`               | なし（workspace 表示モードの削除）                                                                                             |
+| M13 Inbox                                      | 集約 API、フローティングダイアログ（⌘I、スクリム、worktree 絞り込み）、4 セクション、行からの遷移と再送                                                                                                                     | `server/inbox`（新規）, `web/components/inbox`（新規）                           | `GET /api/inbox?worktree=`（review / ask / decision / herdr state から集約）                                                   |
+| M14 Decisions タブ                             | `/focus/decisions?id=` ルート、`/decisions/<id>` のリダイレクト、一覧（未回答 / 回答済み / すべて）、確定後ビュー、compare の整理                                                                                           | `web/router`, `web/components/decision`                                          | `hw decision request` の `url` は不変                                                                                          |
+| M15 質問の送信先ダイアログとエージェント非依存 | 質問コンポーザーを本文のみに、送信先ダイアログ（新規セッション + エージェント種別 / 既存 pane）、`resume` 表示の汎用化                                                                                                      | `web/components/ask`, `web/components/files`                                     | `POST /api/ask` に `agent` を追加、`AskSessionLauncher` が `agent.start` の agent 名を受ける。herdr 対応エージェントの列挙 API |
+| M16 各タブの仕上げ                             | Graph のファイル行 → Diff 遷移とスクロール、ブランチ切替の文言、Compose のプロジェクト別カードと展開行、Files のビューア種別、失敗・空状態の共通部品、設定ダイアログ（テーマ切替を含む）                                    | `web/components/{graph,docker,files,process}`, `web/components/settings`（新規） | なし                                                                                                                           |
 
 順序は M10 → M11 → M12 → M13 → M14 → M15 → M16。M13 と M14、M15 と M16 はそれぞれ並行できる。
