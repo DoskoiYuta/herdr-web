@@ -174,8 +174,12 @@ export function ToolPane() {
   const [trackedWorktreeRoot, setTrackedWorktreeRoot] = useState(worktreeRoot);
   const [searchCleared, setSearchCleared] = useState(false);
   if (trackedWorktreeRoot !== worktreeRoot) {
+    // null（未解決）→ 実値は初回のフォーカス解決であって切り替えではない
+    // （直接開き・リロードで herdr の focus がまだ届いていないだけ） — この
+    // 遷移では search を落とさない。実値 A → 実値 B のときだけ切り替え扱いにする。
+    const wasResolved = trackedWorktreeRoot !== null;
     setTrackedWorktreeRoot(worktreeRoot);
-    if (intendedRoot !== worktreeRoot) {
+    if (wasResolved && intendedRoot !== worktreeRoot) {
       setSearchCleared(true);
     }
   } else if (searchCleared && Object.keys(search).length === 0) {
