@@ -1,8 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PaneRow, Repo } from "@contract/events";
+import { renderWithStore } from "@/testing/renderWithRouter";
 import { RepoGroup } from "./RepoGroup";
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
@@ -35,11 +34,6 @@ vi.mock("@/lib/api", () => ({
     resolve: vi.fn(),
   },
 }));
-
-function render(ui: ReactElement) {
-  const client = new QueryClient();
-  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
 
 function repo(overrides: Partial<Repo> = {}): Repo {
   return {
@@ -76,13 +70,13 @@ beforeEach(() => {
 
 describe("RepoGroup create-workspace flow", () => {
   test("shows a create button that opens an inline form defaulting the label to the repo name", () => {
-    render(<RepoGroup {...defaultProps()} />);
+    renderWithStore(<RepoGroup {...defaultProps()} />);
     fireEvent.click(screen.getByTestId("create-workspace-/repo/.git"));
     expect(screen.getByLabelText("ワークスペース名")).toHaveValue("repo");
   });
 
   test("submitting the form calls createWorkspace with the main worktree's root as cwd, the label, and focus: true", async () => {
-    render(<RepoGroup {...defaultProps()} />);
+    renderWithStore(<RepoGroup {...defaultProps()} />);
     fireEvent.click(screen.getByTestId("create-workspace-/repo/.git"));
 
     const input = screen.getByLabelText("ワークスペース名");
@@ -100,7 +94,7 @@ describe("RepoGroup create-workspace flow", () => {
 
   test("shows an inline error when creation fails, and keeps the form open", async () => {
     createWorkspace.mockRejectedValueOnce(new Error("boom"));
-    render(<RepoGroup {...defaultProps()} />);
+    renderWithStore(<RepoGroup {...defaultProps()} />);
     fireEvent.click(screen.getByTestId("create-workspace-/repo/.git"));
     fireEvent.click(screen.getByRole("button", { name: "作成" }));
 
@@ -109,7 +103,7 @@ describe("RepoGroup create-workspace flow", () => {
   });
 
   test("cancel closes the form without calling the api", () => {
-    render(<RepoGroup {...defaultProps()} />);
+    renderWithStore(<RepoGroup {...defaultProps()} />);
     fireEvent.click(screen.getByTestId("create-workspace-/repo/.git"));
     fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
     expect(screen.queryByLabelText("ワークスペース名")).not.toBeInTheDocument();
@@ -118,7 +112,7 @@ describe("RepoGroup create-workspace flow", () => {
 
   test("clicking the create button does not toggle repo collapse", () => {
     const onToggleCollapse = vi.fn();
-    render(<RepoGroup {...defaultProps()} onToggleCollapse={onToggleCollapse} />);
+    renderWithStore(<RepoGroup {...defaultProps()} onToggleCollapse={onToggleCollapse} />);
     fireEvent.click(screen.getByTestId("create-workspace-/repo/.git"));
     expect(onToggleCollapse).not.toHaveBeenCalled();
   });
@@ -145,7 +139,7 @@ describe("RepoGroup ask-session grouping", () => {
       ],
     });
 
-    render(<RepoGroup {...defaultProps()} repo={withAsk} />);
+    renderWithStore(<RepoGroup {...defaultProps()} repo={withAsk} />);
 
     expect(screen.getByTestId("workspace-row-w1")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-row-w-ask")).not.toBeInTheDocument();
@@ -154,7 +148,7 @@ describe("RepoGroup ask-session grouping", () => {
   });
 
   test("shows no ask-session group when the repo has no ask workspaces", () => {
-    render(<RepoGroup {...defaultProps()} />);
+    renderWithStore(<RepoGroup {...defaultProps()} />);
     expect(screen.queryByTestId("ask-session-group-header")).not.toBeInTheDocument();
   });
 });

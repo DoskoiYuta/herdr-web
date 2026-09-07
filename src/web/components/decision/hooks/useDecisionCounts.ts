@@ -1,15 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useCallback } from "react";
 import { decisionApi } from "@/lib/api";
-import type { DecisionEvent } from "@/lib/decisionEvent";
+import { useDecisionEvents } from "@/lib/HerdrStoreContext";
 
 const DECISION_COUNTS_QUERY_KEY = ["decision-counts"];
 const REFETCH_MS = 30_000;
 
 /** サイドバー上部の合計バッジ、worktree ごとの行の件数 (plan F13-8)。 */
-export function useDecisionCounts(
-  subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void,
-) {
+export function useDecisionCounts() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: DECISION_COUNTS_QUERY_KEY,
@@ -18,12 +16,11 @@ export function useDecisionCounts(
     refetchInterval: REFETCH_MS,
   });
 
-  useEffect(() => {
-    if (!subscribeDecisionEvents) return;
-    return subscribeDecisionEvents(() => {
+  useDecisionEvents(
+    useCallback(() => {
       void queryClient.invalidateQueries({ queryKey: DECISION_COUNTS_QUERY_KEY });
-    });
-  }, [subscribeDecisionEvents, queryClient]);
+    }, [queryClient]),
+  );
 
   return query;
 }

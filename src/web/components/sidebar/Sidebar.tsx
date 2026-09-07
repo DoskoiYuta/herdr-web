@@ -8,8 +8,6 @@ import { useDecisionCounts } from "@/components/decision/hooks/useDecisionCounts
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/layout";
 import { repoDisplayNames } from "@/lib/repoDisplay";
 import { buildWorkspaceView } from "@/lib/workspaceView";
-import type { AskEvent } from "@/lib/askEvent";
-import type { DecisionEvent } from "@/lib/decisionEvent";
 import { RepoGroup } from "./RepoGroup";
 import type { AskFileLocation } from "./AskSessionGroup";
 import { WorkspaceGroup } from "./WorkspaceGroup";
@@ -29,10 +27,8 @@ export type SidebarProps = {
   onLayoutChange: (next: SidebarLayout) => void;
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
-  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
   /** サイドバー上部の判断依頼バッジクリック (F13-8)。全 worktree 横断の一覧を開く。 */
   onSelectDecisions?: () => void;
-  subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
 };
 
 const CONNECTION_LABEL: Record<SidebarProps["connection"], string> = {
@@ -55,15 +51,13 @@ export function Sidebar({
   layout,
   onLayoutChange,
   onOpenAskFile,
-  subscribeAskEvents,
   onSelectDecisions,
-  subscribeDecisionEvents,
 }: SidebarProps) {
   const [mode, setMode] = useState<SidebarMode>("repository");
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string>>(new Set());
   const [liveWidth, setLiveWidth] = useState(layout.width);
-  const decisionCountsQuery = useDecisionCounts(subscribeDecisionEvents);
+  const decisionCountsQuery = useDecisionCounts();
   const decisionCounts = decisionCountsQuery.data;
 
   const displayNames = useMemo(() => repoDisplayNames(repos), [repos]);
@@ -195,7 +189,6 @@ export function Sidebar({
                 onToggleCollapse={() => toggleRepo(repo.key)}
                 onSelectPane={onSelectPane}
                 onOpenAskFile={onOpenAskFile}
-                subscribeAskEvents={subscribeAskEvents}
               />
             ))}
 

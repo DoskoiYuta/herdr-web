@@ -1,7 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
+import { makeFakeStore } from "@/testing/renderWithRouter";
 import type { StatusResponse } from "@contract/git";
 import type { FileResponse, LsResponse, TrashResponse } from "@contract/fs";
 
@@ -189,11 +192,35 @@ function ls(entries: LsResponse["entries"] = []): LsResponse {
   return { entries };
 }
 
-function renderPanel(props: Partial<React.ComponentProps<typeof FilesPanel>> = {}): ReactElement {
+type FilesPanelTestProps = Partial<React.ComponentProps<typeof FilesPanel>>;
+
+/** Stands in for ToolPane: owns `selectedPath`/`mdMode` locally so tests can
+ * click a tree entry (via the PathTree stub below) and see FilesPanel react,
+ * exactly as it did when FilesPanel owned that state itself. */
+function TestFilesPanel({ initialLocation, ...rest }: FilesPanelTestProps) {
+  const [selectedPath, setSelectedPath] = useState<string | null>(initialLocation?.path ?? null);
+  const [mdMode, setMdMode] = useState<"source" | "preview">("preview");
+  return (
+    <FilesPanel
+      repo="/repo"
+      repoChangedTick={0}
+      selectedPath={selectedPath}
+      onSelectedPathChange={setSelectedPath}
+      mdMode={mdMode}
+      onMdModeChange={setMdMode}
+      initialLocation={initialLocation}
+      {...rest}
+    />
+  );
+}
+
+function renderPanel(props: FilesPanelTestProps = {}): ReactElement {
   const client = new QueryClient();
   return (
     <QueryClientProvider client={client}>
-      <FilesPanel repo="/repo" repoChangedTick={0} {...props} />
+      <HerdrStoreProvider store={makeFakeStore()}>
+        <TestFilesPanel {...props} />
+      </HerdrStoreProvider>
     </QueryClientProvider>
   );
 }

@@ -138,7 +138,7 @@ const api = createApp({
   ask: ask.routes,
   decision: {
     ...decision.routes,
-    buildUrl: (id) => `http://${config.host}:${config.port}/#decision/${id}`,
+    buildUrl: (id) => `http://${config.host}:${config.port}/decisions/${id}`,
   },
   docker: { allowedRoots: config.allowedRoots, cache: dockerCache },
   proc: { allowedRoots: config.allowedRoots },

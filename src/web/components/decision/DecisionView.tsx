@@ -1,13 +1,13 @@
 import type {
   Decision,
   DecisionAnswer,
-  DecisionEvent,
   DecisionItem,
   DecisionItemAnswer,
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { decisionApi } from "@/lib/api";
+import { useDecisionEvents } from "@/lib/HerdrStoreContext";
 import {
   clearDecisionDraft,
   type DecisionDraft,
@@ -24,9 +24,8 @@ export type DecisionViewProps = {
   onClose?: () => void;
   /** F8-3 と同じ「pane を開く」。 */
   onFocusPane?: (paneId: string) => void;
-  subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
   /** `location` Block クリック: ask の「対象ファイルを開く」と同じ経路
-   * で Files タブを開く。決定ビュー自体は呼び出し元 (App.tsx) が閉じてよい。 */
+   * で Files タブを開く。決定ビュー自体は呼び出し元が閉じてよい。 */
   onOpenLocation?: OpenLocation;
 };
 
@@ -269,13 +268,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /** 判断依頼ビュー (plan F13-8): context → 設問 → 回答フォーム → 送信 / 却下。 */
-export function DecisionView({
-  id,
-  onClose,
-  onFocusPane,
-  subscribeDecisionEvents,
-  onOpenLocation,
-}: DecisionViewProps) {
+export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: DecisionViewProps) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["decision", id], queryFn: () => decisionApi.get(id) });
   const decision: Decision | undefined = query.data;
@@ -323,12 +316,11 @@ export function DecisionView({
     if (decision && decision.status !== "open") clearDecisionDraft(id);
   }, [decision, id]);
 
-  useEffect(() => {
-    if (!subscribeDecisionEvents) return;
-    return subscribeDecisionEvents(() => {
+  useDecisionEvents(
+    useCallback(() => {
       void queryClient.invalidateQueries({ queryKey: ["decision", id] });
-    });
-  }, [subscribeDecisionEvents, queryClient, id]);
+    }, [queryClient, id]),
+  );
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {

@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Ask } from "@contract/ask";
 import type { WorkspaceGroup } from "@/lib/repoWorkspaces";
+import { renderWithStore } from "@/testing/renderWithRouter";
 import { AskSessionGroup } from "./AskSessionGroup";
 
 const list = vi.fn();
@@ -15,11 +14,6 @@ vi.mock("@/lib/api", () => ({
     resolve: (...args: unknown[]) => resolve(...args),
   },
 }));
-
-function render(ui: ReactElement) {
-  const client = new QueryClient();
-  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
 
 function ask(overrides: Partial<Ask> = {}): Ask {
   return {
@@ -108,25 +102,25 @@ beforeEach(() => {
 
 describe("AskSessionGroup", () => {
   test("renders nothing when there are no ask workspaces", () => {
-    const { container } = render(<AskSessionGroup {...defaultProps()} workspaces={[]} />);
+    const { container } = renderWithStore(<AskSessionGroup {...defaultProps()} workspaces={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   test("shows the workspace label and status icon, and clicking selects its first pane", () => {
     const onSelectPane = vi.fn();
-    render(<AskSessionGroup {...defaultProps()} onSelectPane={onSelectPane} />);
+    renderWithStore(<AskSessionGroup {...defaultProps()} onSelectPane={onSelectPane} />);
     expect(screen.getByText("ask:abc12345")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("ask-session-row-w-ask"));
     expect(onSelectPane).toHaveBeenCalledWith("p1");
   });
 
   test("collapsing hides the workspace rows", () => {
-    render(<AskSessionGroup {...defaultProps()} collapsed={true} />);
+    renderWithStore(<AskSessionGroup {...defaultProps()} collapsed={true} />);
     expect(screen.queryByTestId("ask-session-row-w-ask")).not.toBeInTheDocument();
   });
 
   test("right-click opens a menu with 対象ファイルを開く and 解決", async () => {
-    render(<AskSessionGroup {...defaultProps()} />);
+    renderWithStore(<AskSessionGroup {...defaultProps()} />);
     await vi.waitFor(() => expect(list).toHaveBeenCalled());
     openMenu();
     expect(screen.getByText("対象ファイルを開く")).toBeInTheDocument();
@@ -135,7 +129,7 @@ describe("AskSessionGroup", () => {
 
   test("対象ファイルを開く calls onOpenAskFile with the matched ask's worktree/path/line", async () => {
     const onOpenAskFile = vi.fn();
-    render(<AskSessionGroup {...defaultProps()} onOpenAskFile={onOpenAskFile} />);
+    renderWithStore(<AskSessionGroup {...defaultProps()} onOpenAskFile={onOpenAskFile} />);
     await vi.waitFor(() => expect(list).toHaveBeenCalled());
     openMenu();
     await waitForMatchedItem("対象ファイルを開く");
@@ -148,7 +142,7 @@ describe("AskSessionGroup", () => {
   }, 45_000);
 
   test("解決 opens a confirm dialog naming the path; confirming calls askApi.resolve", async () => {
-    render(<AskSessionGroup {...defaultProps()} />);
+    renderWithStore(<AskSessionGroup {...defaultProps()} />);
     await vi.waitFor(() => expect(list).toHaveBeenCalled());
     openMenu();
     await waitForMatchedItem("解決");
@@ -164,7 +158,7 @@ describe("AskSessionGroup", () => {
 
   test("an unmatched workspace label (no ask found) disables both menu items with a hint", async () => {
     list.mockResolvedValue([]);
-    render(<AskSessionGroup {...defaultProps()} />);
+    renderWithStore(<AskSessionGroup {...defaultProps()} />);
     await vi.waitFor(() => expect(list).toHaveBeenCalled());
     openMenu();
 

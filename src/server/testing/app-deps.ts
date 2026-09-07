@@ -91,7 +91,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     hw: { state, resolver },
     herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
     ask: ask.routes,
-    decision: { ...decision.routes, buildUrl: (id) => `http://test/#decision/${id}` },
+    decision: { ...decision.routes, buildUrl: (id) => `http://test/decisions/${id}` },
   };
   return {
     app: createApp(deps),

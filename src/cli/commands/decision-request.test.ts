@@ -62,7 +62,7 @@ describe("decisionRequestCommand", () => {
       calls.push(req);
       return Promise.resolve({
         ok: true,
-        value: { id: "abc", url: "http://x/#decision/abc", paneResolved: true },
+        value: { id: "abc", url: "http://x/decisions/abc", paneResolved: true },
       });
     };
 
@@ -76,7 +76,7 @@ describe("decisionRequestCommand", () => {
     expect(result.exitCode).toBe(EXIT_OK);
     expect(JSON.parse(result.stdout)).toEqual({
       id: "abc",
-      url: "http://x/#decision/abc",
+      url: "http://x/decisions/abc",
       paneResolved: true,
     });
     expect(result.stderr).toBeUndefined();
@@ -99,7 +99,7 @@ describe("decisionRequestCommand", () => {
       client: fakeClient(() =>
         Promise.resolve({
           ok: true,
-          value: { id: "abc", url: "http://x/#decision/abc", paneResolved: false },
+          value: { id: "abc", url: "http://x/decisions/abc", paneResolved: false },
         }),
       ),
       env: {},

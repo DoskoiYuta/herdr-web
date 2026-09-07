@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { herdrApi } from "@/lib/api";
-import type { AskEvent } from "@/lib/askEvent";
 import { askWorkspacesFor, groupByWorkspace } from "@/lib/repoWorkspaces";
 import { cn } from "@/lib/utils";
 import { AskSessionGroup, type AskFileLocation } from "./AskSessionGroup";
@@ -22,7 +21,6 @@ export type RepoGroupProps = {
   onSelectPane: (paneId: string) => void;
   /** 質問セッション行の「対象ファイルを開く」（F10 の右クリックメニュー）。 */
   onOpenAskFile: (location: AskFileLocation) => void;
-  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
 };
 
 /** plan.md F8-1 / F8-4: repository ヘッダーに名前と blocked/done バッジ（blocked を
@@ -43,7 +41,6 @@ export function RepoGroup({
   onToggleCollapse,
   onSelectPane,
   onOpenAskFile,
-  subscribeAskEvents,
 }: RepoGroupProps) {
   const workspaces = groupByWorkspace(repo);
   const askWorkspaces = askWorkspacesFor(repo);
@@ -170,7 +167,6 @@ export function RepoGroup({
             onToggleCollapse={() => setAskCollapsed((prev) => !prev)}
             onSelectPane={onSelectPane}
             onOpenAskFile={onOpenAskFile}
-            subscribeAskEvents={subscribeAskEvents}
           />
         </div>
       )}

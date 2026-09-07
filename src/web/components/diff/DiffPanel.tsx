@@ -14,7 +14,7 @@ import type { PatchResponse } from "@contract/git";
 import type { ReviewTarget, Side } from "@contract/review";
 import { buildAnchor } from "@/lib/anchor";
 import { gitApi, reviewApi, type ForDiffMatch } from "@/lib/api";
-import type { ReviewEvent } from "@/lib/herdrStore";
+import { useReviewEvents } from "@/lib/HerdrStoreContext";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import {
@@ -124,8 +124,6 @@ export interface DiffPanelProps {
   /** See usePatch's `pollMs`: a client-side refetch interval for repos that
    * don't get their own `repoChangedTick` (a sub-repo/submodule selection). */
   pollMs?: number;
-  /** F5-9: review / review-notify WS イベントを購読し、インライン表示を追従させる。 */
-  subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
   /** Review タブからのジャンプ先（F5-8）。一度消費したら親が null に戻す想定。 */
   initialLocation?: DiffInitialLocation | null;
   /** ジャンプ先に一度スクロールしたら呼ばれる。親はこれを受けて `initialLocation`
@@ -141,7 +139,6 @@ export function DiffPanel({
   to,
   repoChangedTick,
   pollMs,
-  subscribeReviewEvents,
   initialLocation = null,
   onInitialLocationConsumed,
 }: DiffPanelProps) {
@@ -538,12 +535,14 @@ export function DiffPanel({
   // （repo を判別できないイベント — review-notify 等 — は素通しする）。
   // refreshMatches 自体が forDiffTimerRef で 1 つのタイマーにデバウンスして
   // いるため、patch 変化とイベント発火をまたいでも 200ms に 1 回にまとまる。
-  useEffect(() => {
-    if (!subscribeReviewEvents) return;
-    return subscribeReviewEvents((event) => {
-      if (reviewEventMatchesRepo(event, repoKey)) refreshMatches();
-    });
-  }, [subscribeReviewEvents, refreshMatches, repoKey]);
+  useReviewEvents(
+    useCallback(
+      (event) => {
+        if (reviewEventMatchesRepo(event, repoKey)) refreshMatches();
+      },
+      [refreshMatches, repoKey],
+    ),
+  );
 
   const composerTarget = useMemo(() => {
     if (!selection || selecting) return null;

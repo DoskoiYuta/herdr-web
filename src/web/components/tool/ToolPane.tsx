@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AgentSessionInfo, AgentStatus } from "@contract/herdr";
 import type { SubRepo } from "@contract/git";
-import type { PaneRow, Repo } from "@contract/events";
+import type { PaneRow } from "@contract/events";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { DockerPanel } from "@/components/docker/DockerPanel";
-import { FilesPanel, type FilesInitialLocation } from "@/components/files/FilesPanel";
+import { FilesPanel } from "@/components/files/FilesPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
 import { ProcessPanel } from "@/components/process/ProcessPanel";
 import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
@@ -21,11 +21,11 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gitApi, reviewApi, SendTargetError } from "@/lib/api";
-import type { AskEvent } from "@/lib/askEvent";
-import type { ReviewEvent } from "@/lib/herdrStore";
+import { useHerdrState, useReviewEvents } from "@/lib/HerdrStoreContext";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
 import { agentPanesAt } from "@/lib/sendTargets";
 import { cn } from "@/lib/utils";
+import { normalizeTab, type ToolSearch, type ToolTab } from "@/router/search";
 import { STATUS_META } from "@/components/sidebar/PaneRow";
 import { PaneLayoutMiniMap } from "./PaneLayoutMiniMap";
 import { usePanePreview } from "./hooks/usePanePreview";
@@ -49,102 +49,7 @@ const SUB_REPO_KIND_LABEL: Record<SubRepo["kind"], string> = {
 
 export type CommitRange = { from: string; to: string } | null;
 
-/** plan.md F2-2: フォーカス pane のエージェント情報。null はフォーカス無し/herdr 未接続。 */
-export type ToolPaneFocusInfo = {
-  agent: string | null;
-  agentStatus: AgentStatus | null;
-  agentSession: AgentSessionInfo | null;
-};
-
-/** 送信先が確定できなかったときの `POST /api/review/send` 409 レスポンスの表示文言。 */
-const SEND_TARGET_ERROR_MESSAGE: Record<SendTargetError["type"], string> = {
-  no_agent: "この worktree にエージェントがいません",
-  ambiguous_target: "送信先を選んでください",
-  invalid_target: "選んだセッションはこの worktree にいません",
-};
-
-/** Send-target picker candidate card (ToolPane's dialog, 2+ agent panes at
- * the current worktree). Renders immediately from `pane` (the sidebar's
- * PaneRow) and fills in workspace/tab/title, the layout minimap, and the
- * output tail once `usePanePreview` resolves — a failed/slow preview just
- * leaves those parts out, the card stays clickable throughout. */
-function SendTargetCard({
-  pane,
-  fetchPreview,
-  onSelect,
-}: {
-  pane: PaneRow;
-  fetchPreview: boolean;
-  onSelect: (paneId: string) => void;
-}) {
-  const { data: preview } = usePanePreview(pane.paneId, fetchPreview);
-  const meta = STATUS_META[preview?.agentStatus ?? pane.agentStatus];
-  const StatusIcon = meta.icon;
-  const workspaceLabel = preview?.workspaceLabel ?? pane.workspaceLabel;
-  const tabLabel = preview?.tabLabel ?? pane.tabLabel;
-  const title = preview?.title ?? pane.label ?? pane.tabLabel ?? pane.paneId;
-  const sessionId = preview?.agentSession?.slice(0, 8) ?? null;
-  const tail = preview?.tail ?? [];
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      className="h-auto flex-col items-stretch gap-1.5 p-2 text-left whitespace-normal"
-      onClick={() => onSelect(pane.paneId)}
-    >
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="truncate">
-          {workspaceLabel ?? "?"} › {tabLabel ?? "?"}
-        </span>
-        {sessionId && <span className="shrink-0 font-mono">{sessionId}</span>}
-      </div>
-      <div className="flex items-center gap-2">
-        {preview?.layout && (
-          <PaneLayoutMiniMap layout={preview.layout} candidatePaneId={pane.paneId} />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <StatusIcon
-              className={cn("size-3 shrink-0", meta.className, meta.spin && "animate-spin")}
-            />
-            <span className="truncate text-sm font-medium">{title}</span>
-          </div>
-          {tail.length > 0 && (
-            <pre className="mt-1 max-h-24 overflow-hidden rounded bg-muted/50 p-1 font-mono text-[10px] whitespace-pre-wrap break-all text-muted-foreground">
-              {tail.slice(-6).join("\n")}
-            </pre>
-          )}
-        </div>
-      </div>
-    </Button>
-  );
-}
-
-export interface ToolPaneProps {
-  worktreeRoot: string | null;
-  /** リポジトリキー（git-common-dir 絶対パス）。レビュー API に渡す `repo`。 */
-  repoKey?: string | null;
-  /** サイドバーツリーの repos。送信先候補（`worktreeRoot` のエージェント pane）を
-   * 引くのに使う — サブリポジトリ選択中でも pane はこの worktree root に紐付く。 */
-  repos?: Repo[];
-  pinned: boolean;
-  onPinToggle: () => void;
-  repoChangedTick: number;
-  onOpenPath: (root: string) => void;
-  focusInfo?: ToolPaneFocusInfo | null;
-  /** F5-9: review / review-notify WS イベントの購読（herdrStore から渡す）。 */
-  subscribeReviewEvents?: (cb: (event: ReviewEvent) => void) => () => void;
-  /** F10: ask / ask-notify WS イベントの購読（herdrStore から渡す）。herdrStore
-   * がまだこのイベントを持たない間は未指定で、FilesPanel の for-file ポーリング
-   * のみで追従する。 */
-  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
-  /** F10: 質問セッション行の「対象ファイルを開く」からのジャンプ先。Files タブへ
-   * 切り替え、該当ファイルを選択してスクロールする。一度消費したら親が null に
-   * 戻す想定（DiffPanel の `initialLocation` と同じ流儀）。 */
-  filesInitialLocation?: FilesInitialLocation | null;
-  onFilesInitialLocationConsumed?: () => void;
-}
+const EMPTY_SEARCH: ToolSearch = {};
 
 function ResumeCopyButton({ sessionId }: { sessionId: string }) {
   const [copied, setCopied] = useState(false);
@@ -168,7 +73,11 @@ function ResumeCopyButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-function FocusInfoBar({ focusInfo }: { focusInfo: ToolPaneFocusInfo }) {
+function FocusInfoBar({
+  focusInfo,
+}: {
+  focusInfo: NonNullable<ReturnType<typeof useHerdrState>["focus"]>;
+}) {
   if (!focusInfo.agent && !focusInfo.agentSession) return null;
   const session = focusInfo.agentSession;
   const showResume = session?.source === "herdr:claude" && session.kind === "id";
@@ -238,52 +147,241 @@ function OpenPathForm({ onOpenPath }: { onOpenPath: (root: string) => void }) {
   );
 }
 
-export function ToolPane({
-  worktreeRoot,
-  repoKey = null,
-  repos = [],
-  pinned,
-  onPinToggle,
-  repoChangedTick,
-  onOpenPath,
-  focusInfo,
-  subscribeReviewEvents,
-  subscribeAskEvents,
-  filesInitialLocation = null,
-  onFilesInitialLocationConsumed,
-}: ToolPaneProps) {
-  const [comparison, setComparison] = useState<CommitRange>(null);
-  const [activeTab, setActiveTab] = useState(() => (filesInitialLocation ? "files" : "diff"));
-  const [initialLocation, setInitialLocation] = useState<DiffInitialLocation | null>(null);
+/** Send-target picker candidate card (ToolPane's dialog, 2+ agent panes at
+ * the current worktree). Renders immediately from `pane` (the sidebar's
+ * PaneRow) and fills in workspace/tab/title, the layout minimap, and the
+ * output tail once `usePanePreview` resolves — a failed/slow preview just
+ * leaves those parts out, the card stays clickable throughout. */
+function SendTargetCard({
+  pane,
+  fetchPreview,
+  onSelect,
+}: {
+  pane: PaneRow;
+  fetchPreview: boolean;
+  onSelect: (paneId: string) => void;
+}) {
+  const { data: preview } = usePanePreview(pane.paneId, fetchPreview);
+  const meta = STATUS_META[preview?.agentStatus ?? pane.agentStatus];
+  const StatusIcon = meta.icon;
+  const workspaceLabel = preview?.workspaceLabel ?? pane.workspaceLabel;
+  const tabLabel = preview?.tabLabel ?? pane.tabLabel;
+  const title = preview?.title ?? pane.label ?? pane.tabLabel ?? pane.paneId;
+  const sessionId = preview?.agentSession?.slice(0, 8) ?? null;
+  const tail = preview?.tail ?? [];
 
-  // F10: 質問セッション行「対象ファイルを開く」が来たら Files タブへ切り替える
-  // （React 公式の「変化した prop から state を合わせ込む」パターン、
-  // `prevWorktreeRoot` と同じ発想）。
-  const [prevFilesInitialLocation, setPrevFilesInitialLocation] = useState(filesInitialLocation);
-  if (filesInitialLocation !== prevFilesInitialLocation) {
-    setPrevFilesInitialLocation(filesInitialLocation);
-    if (filesInitialLocation && activeTab !== "files") setActiveTab("files");
-  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className="h-auto flex-col items-stretch gap-1.5 p-2 text-left whitespace-normal"
+      onClick={() => onSelect(pane.paneId)}
+    >
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span className="truncate">
+          {workspaceLabel ?? "?"} › {tabLabel ?? "?"}
+        </span>
+        {sessionId && <span className="shrink-0 font-mono">{sessionId}</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        {preview?.layout && (
+          <PaneLayoutMiniMap layout={preview.layout} candidatePaneId={pane.paneId} />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <StatusIcon
+              className={cn("size-3 shrink-0", meta.className, meta.spin && "animate-spin")}
+            />
+            <span className="truncate text-sm font-medium">{title}</span>
+          </div>
+          {tail.length > 0 && (
+            <pre className="mt-1 max-h-24 overflow-hidden rounded bg-muted/50 p-1 font-mono text-[10px] whitespace-pre-wrap break-all text-muted-foreground">
+              {tail.slice(-6).join("\n")}
+            </pre>
+          )}
+        </div>
+      </div>
+    </Button>
+  );
+}
 
-  // A commit comparison picked in one worktree's Graph tab is meaningless
-  // (and can even reference a hash the new worktree doesn't have) once focus
-  // moves to a different worktree — drop back to the working tree comparison.
-  // Adjusted during render (React's documented "state that depends on a
-  // prop changing" pattern — see DiffPanel.tsx's `prevItemsForSelection` /
-  // `prevInitialLocation`), not in an effect: an effect here would setState
-  // synchronously on every worktreeRoot change and force an extra commit.
-  const [prevWorktreeRoot, setPrevWorktreeRoot] = useState(worktreeRoot);
-  // `subRepoId` is the selected entry's `SubRepo.id` ("" = the worktree
-  // root itself). Reset alongside `comparison`/`initialLocation` when
-  // `worktreeRoot` changes; deliberately NOT reset on `repoChangedTick`
-  // (see ToolPaneProps).
-  const [subRepoId, setSubRepoId] = useState("");
-  if (worktreeRoot !== prevWorktreeRoot) {
-    setPrevWorktreeRoot(worktreeRoot);
-    if (comparison !== null) setComparison(null);
-    if (initialLocation !== null) setInitialLocation(null);
-    if (subRepoId !== "") setSubRepoId("");
+/** `/focus/$tab` (focus 追従) と `/w/$root/$tab` (ピン留め) どちらの下でも
+ * 描画される。`root` params の有無が「ピン留め済みか」を決め、URL がタブ・
+ * 比較範囲・選択サブリポジトリ・ジャンプ先の唯一の正になる — このコンポーネント
+ * 自身はローカル state を持たない（送信ダイアログの開閉やエラー文言のような
+ * 一時的な UI 状態を除く）。 */
+/** `useNavigate()`'s generic type infers `never` params/search without a
+ * static `from` — but ToolPane is the component for two different routes
+ * (`/focus/$tab` and `/w/$root/$tab`), so there's no single `from` to give
+ * it. Both routes share the same params/search shape at runtime, so a
+ * hand-written signature stands in for the type-safe one. */
+type ToolPaneParams = { tab: string; root?: string };
+type ToolPaneNavigate = (opts: {
+  to?: string;
+  params?: ToolPaneParams | ((prev: ToolPaneParams) => ToolPaneParams);
+  search?: ToolSearch | ((prev: ToolSearch) => ToolSearch);
+  replace?: boolean;
+}) => Promise<void>;
+
+export function ToolPane() {
+  const params = useParams({ strict: false }) as { tab?: string; root?: string };
+  const search = useSearch({ strict: false }) as ToolSearch;
+  const navigate = useNavigate() as unknown as ToolPaneNavigate;
+  const state = useHerdrState();
+
+  const pinnedRoot = params.root !== undefined ? params.root : null;
+  const pinned = pinnedRoot !== null;
+  const worktreeRoot = pinnedRoot ?? state.focus?.worktreeRoot ?? null;
+  const tab: ToolTab = normalizeTab(params.tab);
+  const repos = state.repos;
+  const repoKey = state.focus?.repoKey ?? null;
+  const focusInfo = state.focus;
+  const repoChangedTick = worktreeRoot ? (state.repoChanged[worktreeRoot]?.tick ?? 0) : 0;
+
+  // `/focus/$tab` の worktreeRoot は herdr の focus に追従するので、URL を変えずに
+  // 変わることがある（`/w/$root/$tab` は root が URL 自体なので、値が変わるのは
+  // 常にナビゲーション経由）。前の worktree の比較範囲・選択サブリポジトリ・
+  // ジャンプ先が新しい worktree に持ち越されないよう、値が変わった回だけ search
+  // を空にする（ピン留めの付け外しは worktreeRoot の値自体は変えないので対象外）。
+  // `navigate()` は次のレンダーまで URL に反映されないため、worktreeRoot が
+  // 変わったレンダー自身でも旧 search を使わないよう、React の「レンダー中に
+  // state を調整する」パターン（FilesPanel.tsx の selectedPath 切り替えと同様）
+  // で `searchCleared` を同じレンダーパス内に確定させる。effect は URL を実際に
+  // 空にする navigate の発行だけを担い、`searchCleared` 自体は URL が実際に
+  // 空になったことを検知したレンダーで戻す（effect 内で setState しない）。
+  const [trackedWorktreeRoot, setTrackedWorktreeRoot] = useState(worktreeRoot);
+  const [searchCleared, setSearchCleared] = useState(false);
+  if (trackedWorktreeRoot !== worktreeRoot) {
+    setTrackedWorktreeRoot(worktreeRoot);
+    setSearchCleared(true);
+  } else if (searchCleared && Object.keys(search).length === 0) {
+    setSearchCleared(false);
   }
+  const effectiveSearch = searchCleared ? EMPTY_SEARCH : search;
+  useEffect(() => {
+    if (searchCleared) void navigate({ search: () => ({}), replace: true });
+  }, [searchCleared, navigate]);
+
+  const comparison: CommitRange =
+    effectiveSearch.from && effectiveSearch.to
+      ? { from: effectiveSearch.from, to: effectiveSearch.to }
+      : null;
+  const subRepoId = effectiveSearch.sub ?? "";
+  const initialLocation: DiffInitialLocation | null =
+    tab === "diff" && effectiveSearch.path
+      ? { path: effectiveSearch.path, line: effectiveSearch.line ?? 1, side: "new" }
+      : null;
+  const filesSelectedPath = tab === "files" ? (effectiveSearch.path ?? null) : null;
+  const filesMdMode = effectiveSearch.md ?? "preview";
+  const filesInitialLocation =
+    tab === "files" && effectiveSearch.path && effectiveSearch.line
+      ? { path: effectiveSearch.path, line: effectiveSearch.line }
+      : null;
+
+  const handleTabChange = useCallback(
+    (nextTab: string) => {
+      void navigate({
+        params: (prev) => ({ ...prev, tab: nextTab }),
+        search: (prev) => ({ ...prev, path: undefined, line: undefined }),
+      });
+    },
+    [navigate],
+  );
+
+  const handleSelectCommit = useCallback(
+    (range: CommitRange) => {
+      void navigate({ search: (prev) => ({ ...prev, from: range?.from, to: range?.to }) });
+    },
+    [navigate],
+  );
+
+  const openDiffFor = useCallback(
+    (range: { from: string; to: string }) => {
+      void navigate({
+        params: (prev) => ({ ...prev, tab: "diff" }),
+        search: (prev) => ({ ...prev, from: range.from, to: range.to }),
+      });
+    },
+    [navigate],
+  );
+
+  const resetToWorktree = useCallback(() => {
+    void navigate({ search: (prev) => ({ ...prev, from: undefined, to: undefined }) });
+  }, [navigate]);
+
+  const handleInitialLocationConsumed = useCallback(() => {
+    void navigate({ search: (prev) => ({ ...prev, path: undefined, line: undefined }) });
+  }, [navigate]);
+
+  const handleFilesSelectedPathChange = useCallback(
+    (path: string | null) => {
+      // 別ファイルを選ぶと `md`（ソース/プレビュー切替）も一緒に落とす —
+      // 前のファイルで選んでいた表示モードが無関係な新しいファイルに残らない
+      // ようにする。
+      void navigate({
+        search: (prev) => ({ ...prev, path: path ?? undefined, line: undefined, md: undefined }),
+      });
+    },
+    [navigate],
+  );
+
+  const handleFilesMdModeChange = useCallback(
+    (mode: "source" | "preview") => {
+      void navigate({ search: (prev) => ({ ...prev, md: mode === "preview" ? undefined : mode }) });
+    },
+    [navigate],
+  );
+
+  const handleFilesInitialLocationConsumed = useCallback(() => {
+    void navigate({ search: (prev) => ({ ...prev, line: undefined }) });
+  }, [navigate]);
+
+  const handleSubRepoChange = useCallback(
+    (id: string) => {
+      void navigate({
+        search: (prev) => ({
+          ...prev,
+          sub: id === "" ? undefined : id,
+          from: undefined,
+          to: undefined,
+          path: undefined,
+          line: undefined,
+        }),
+      });
+    },
+    [navigate],
+  );
+
+  const handleOpenPath = useCallback(
+    (root: string) => {
+      void navigate({
+        to: "/w/$root/$tab",
+        params: { root, tab: "diff" },
+        search: {},
+      });
+    },
+    [navigate],
+  );
+
+  const handlePinToggle = useCallback(() => {
+    if (!worktreeRoot) return;
+    if (pinned) {
+      // focus の worktree がピン留め中のものと違う場合、比較範囲・ジャンプ先は
+      // その別 worktree に対して無関係な値なので持ち越さない。
+      const keepSearch = state.focus?.worktreeRoot === worktreeRoot;
+      void navigate({
+        to: "/focus/$tab",
+        params: { tab },
+        search: keepSearch ? (prev) => prev : {},
+      });
+    } else {
+      void navigate({
+        to: "/w/$root/$tab",
+        params: { root: worktreeRoot, tab },
+        search: (prev) => prev,
+      });
+    }
+  }, [navigate, pinned, tab, worktreeRoot, state.focus]);
 
   // Sub-repository switcher (plan.md: submodules + `.repos/<child>` nested
   // repos). Listed even for a null worktreeRoot (query stays disabled) so
@@ -318,23 +416,6 @@ export function ToolPane({
   // クエリをこの間隔でポーリングして代替する。
   const subRepoPollMs = isSubRepoSelected ? SUB_REPO_POLL_MS : undefined;
 
-  const handleSelectCommit = useCallback((range: CommitRange) => {
-    setComparison(range);
-  }, []);
-
-  const openDiffFor = useCallback((range: { from: string; to: string }) => {
-    setComparison(range);
-    setActiveTab("diff");
-  }, []);
-
-  const resetToWorktree = useCallback(() => {
-    setComparison(null);
-  }, []);
-
-  const handleInitialLocationConsumed = useCallback(() => {
-    setInitialLocation(null);
-  }, []);
-
   // git-graph の review 件数バッジ + 送信ボタン（F5-10）。review WS イベントと
   // repoChangedTick の両方で tick を上げ、`staleTime: Infinity` のクエリを
   // 明示的に再フェッチする（useGraph/useReviewList と同じ流儀）。
@@ -346,12 +427,14 @@ export function ToolPane({
   const reviewCounts = countsQuery.data ?? null;
   const pendingDrafts = reviewCounts?.pendingDrafts ?? 0;
 
-  useEffect(() => {
-    if (!subscribeReviewEvents) return;
-    return subscribeReviewEvents((event) => {
-      if (reviewEventMatchesRepo(event, resolvedRepoKey)) setReviewTick((t) => t + 1);
-    });
-  }, [subscribeReviewEvents, resolvedRepoKey]);
+  useReviewEvents(
+    useCallback(
+      (event) => {
+        if (reviewEventMatchesRepo(event, resolvedRepoKey)) setReviewTick((t) => t + 1);
+      },
+      [resolvedRepoKey],
+    ),
+  );
 
   // 送信先候補は subRepoRoot ではなく worktreeRoot（実際の git worktree）に
   // 紐付く — pane はサブリポジトリ選択とは無関係にトップの worktree で開かれる。
@@ -399,7 +482,7 @@ export function ToolPane({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-4 text-center">
         <p className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</p>
-        <OpenPathForm onOpenPath={onOpenPath} />
+        <OpenPathForm onOpenPath={handleOpenPath} />
       </div>
     );
   }
@@ -419,7 +502,7 @@ export function ToolPane({
           {subRepos.length > 1 && (
             <Select
               value={toSelectValue(subRepoId)}
-              onValueChange={(v) => setSubRepoId(fromSelectValue(v))}
+              onValueChange={(v) => handleSubRepoChange(fromSelectValue(v))}
             >
               <SelectTrigger size="sm" className="max-w-40" aria-label="サブリポジトリを選択">
                 <SelectValue />
@@ -450,7 +533,7 @@ export function ToolPane({
           </Button>
           <button
             type="button"
-            onClick={onPinToggle}
+            onClick={handlePinToggle}
             aria-pressed={pinned}
             aria-label={pinned ? "ピン留めを解除" : "ピン留め"}
             className="shrink-0 rounded-md px-1.5 py-1 text-sm hover:bg-muted"
@@ -485,7 +568,7 @@ export function ToolPane({
 
       {focusInfo && <FocusInfoBar focusInfo={focusInfo} />}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1">
+      <Tabs value={tab} onValueChange={handleTabChange} className="min-h-0 flex-1">
         <TabsList className="mx-2 mt-2 w-fit">
           <TabsTrigger value="diff">Diff</TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
@@ -513,7 +596,6 @@ export function ToolPane({
             to={comparison?.to}
             repoChangedTick={repoChangedTick}
             pollMs={subRepoPollMs}
-            subscribeReviewEvents={subscribeReviewEvents}
             initialLocation={initialLocation}
             onInitialLocationConsumed={handleInitialLocationConsumed}
           />
@@ -525,7 +607,12 @@ export function ToolPane({
               <span>
                 選択中: {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
               </span>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setActiveTab("diff")}>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => handleTabChange("diff")}
+              >
                 Diff で見る
               </Button>
             </div>
@@ -551,9 +638,12 @@ export function ToolPane({
             repoKey={resolvedRepoKey}
             worktreeRoot={worktreeRoot}
             repos={repos}
-            subscribeAskEvents={subscribeAskEvents}
+            selectedPath={filesSelectedPath}
+            onSelectedPathChange={handleFilesSelectedPathChange}
+            mdMode={filesMdMode}
+            onMdModeChange={handleFilesMdModeChange}
             initialLocation={filesInitialLocation}
-            onInitialLocationConsumed={onFilesInitialLocationConsumed}
+            onInitialLocationConsumed={handleFilesInitialLocationConsumed}
           />
         </TabsContent>
 
@@ -568,3 +658,10 @@ export function ToolPane({
     </div>
   );
 }
+
+/** 送信先が確定できなかったときの `POST /api/review/send` 409 レスポンスの表示文言。 */
+const SEND_TARGET_ERROR_MESSAGE: Record<SendTargetError["type"], string> = {
+  no_agent: "この worktree にエージェントがいません",
+  ambiguous_target: "送信先を選んでください",
+  invalid_target: "選んだセッションはこの worktree にいません",
+};

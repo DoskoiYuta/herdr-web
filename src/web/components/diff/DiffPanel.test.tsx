@@ -1,7 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { renderWithStore } from "@/testing/renderWithRouter";
 import { comparisonLabel } from "./DiffPanel.tsx";
 
 // Minimal stand-in for @pierre/diffs/react's CodeView (same pattern as
@@ -116,13 +116,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderPanel(props: { repo: string; from?: string; to?: string; repoChangedTick: number }) {
-  const client = new QueryClient();
-  return render(
-    <QueryClientProvider client={client}>
-      <DiffPanel {...props} />
-    </QueryClientProvider>,
-  );
+function renderPanel(props: React.ComponentProps<typeof DiffPanel>) {
+  return renderWithStore(<DiffPanel {...props} />);
 }
 
 test("comparisonLabel: defaults to WORKTREE vs HEAD", () => {
@@ -149,34 +144,20 @@ test("auto-applies the first fetched patch (nothing was displayed yet)", async (
 });
 
 test("auto-applies a changed patch while scrolled at the top (no banner)", async () => {
-  const client = new QueryClient();
-  const { rerender } = render(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoChangedTick={0} />
-    </QueryClientProvider>,
-  );
+  const { rerender } = renderPanel({ repo: "/repo", repoChangedTick: 0 });
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
 
   fetchMock.mockImplementation(async () =>
     jsonResponse(patch("h2", [{ name: "b.txt", contentLine: "world" }])),
   );
-  rerender(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoChangedTick={1} />
-    </QueryClientProvider>,
-  );
+  rerender(<DiffPanel repo="/repo" repoChangedTick={1} />);
 
   await waitFor(() => expect(screen.getByText("b.txt")).toBeInTheDocument());
   expect(screen.queryByText("変更があります")).not.toBeInTheDocument();
 });
 
 test("shows an update banner (not auto-applied) when scrolled away from top, and applies on click", async () => {
-  const client = new QueryClient();
-  const { rerender } = render(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoChangedTick={0} />
-    </QueryClientProvider>,
-  );
+  const { rerender } = renderPanel({ repo: "/repo", repoChangedTick: 0 });
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
 
   fireEvent.click(screen.getByTestId("simulate-scroll-away"));
@@ -184,11 +165,7 @@ test("shows an update banner (not auto-applied) when scrolled away from top, and
   fetchMock.mockImplementation(async () =>
     jsonResponse(patch("h2", [{ name: "b.txt", contentLine: "world" }])),
   );
-  rerender(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoChangedTick={1} />
-    </QueryClientProvider>,
-  );
+  rerender(<DiffPanel repo="/repo" repoChangedTick={1} />);
 
   await waitFor(() => expect(screen.getByText("変更があります")).toBeInTheDocument());
   expect(screen.getByText("a.txt")).toBeInTheDocument();
@@ -202,12 +179,7 @@ test("shows an update banner (not auto-applied) when scrolled away from top, and
 
 test("auto-applies when the currently displayed diff is empty, even scrolled away from top", async () => {
   fetchMock.mockImplementation(async () => jsonResponse(patch("h0", [])));
-  const client = new QueryClient();
-  const { rerender } = render(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoChangedTick={0} />
-    </QueryClientProvider>,
-  );
+  const { rerender } = renderPanel({ repo: "/repo", repoChangedTick: 0 });
   await waitFor(() => expect(screen.getByText(/0 files/)).toBeInTheDocument());
 
   fireEvent.click(screen.getByTestId("simulate-scroll-away"));
@@ -215,11 +187,7 @@ test("auto-applies when the currently displayed diff is empty, even scrolled awa
   fetchMock.mockImplementation(async () =>
     jsonResponse(patch("h1", [{ name: "a.txt", contentLine: "hello" }])),
   );
-  rerender(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoChangedTick={1} />
-    </QueryClientProvider>,
-  );
+  rerender(<DiffPanel repo="/repo" repoChangedTick={1} />);
 
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
   expect(screen.queryByText("変更があります")).not.toBeInTheDocument();
@@ -227,17 +195,12 @@ test("auto-applies when the currently displayed diff is empty, even scrolled awa
 
 test("calls onInitialLocationConsumed once after jumping, and doesn't re-jump once the parent clears it", async () => {
   const onInitialLocationConsumed = vi.fn();
-  const client = new QueryClient();
-  const { rerender } = render(
-    <QueryClientProvider client={client}>
-      <DiffPanel
-        repo="/repo"
-        repoChangedTick={0}
-        initialLocation={{ path: "a.txt", line: 1, side: "new" }}
-        onInitialLocationConsumed={onInitialLocationConsumed}
-      />
-    </QueryClientProvider>,
-  );
+  const { rerender } = renderPanel({
+    repo: "/repo",
+    repoChangedTick: 0,
+    initialLocation: { path: "a.txt", line: 1, side: "new" as const },
+    onInitialLocationConsumed,
+  });
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
   await waitFor(() => expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1));
 
@@ -249,14 +212,12 @@ test("calls onInitialLocationConsumed once after jumping, and doesn't re-jump on
     jsonResponse(patch("h2", [{ name: "a.txt", contentLine: "hello" }])),
   );
   rerender(
-    <QueryClientProvider client={client}>
-      <DiffPanel
-        repo="/repo"
-        repoChangedTick={1}
-        initialLocation={null}
-        onInitialLocationConsumed={onInitialLocationConsumed}
-      />
-    </QueryClientProvider>,
+    <DiffPanel
+      repo="/repo"
+      repoChangedTick={1}
+      initialLocation={null}
+      onInitialLocationConsumed={onInitialLocationConsumed}
+    />,
   );
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
   expect(onInitialLocationConsumed).toHaveBeenCalledTimes(1);

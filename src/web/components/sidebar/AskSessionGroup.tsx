@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, MessageCircleQuestion } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { WorkspaceGroup } from "@/lib/repoWorkspaces";
 import { cn } from "@/lib/utils";
 import { askApi } from "@/lib/api";
-import type { AskEvent } from "@/lib/askEvent";
+import { useAskEvents } from "@/lib/HerdrStoreContext";
 import { askEventMatchesRepo } from "@/lib/askEvent";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,8 +38,6 @@ export type AskSessionGroupProps = {
   onSelectPane: (paneId: string) => void;
   /** 「対象ファイルを開く」: ツールペインの Files タブへ該当ファイル/行を開く。 */
   onOpenAskFile: (location: AskFileLocation) => void;
-  /** ask / ask-notify WS イベントの購読（herdrStore から渡す）。ask 一覧の再フェッチに使う。 */
-  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
 };
 
 /**
@@ -62,7 +60,6 @@ export function AskSessionGroup({
   onToggleCollapse,
   onSelectPane,
   onOpenAskFile,
-  subscribeAskEvents,
 }: AskSessionGroupProps) {
   const queryClient = useQueryClient();
   const askListQuery = useQuery({
@@ -72,14 +69,16 @@ export function AskSessionGroup({
     refetchInterval: ASK_LIST_REFETCH_MS,
   });
 
-  useEffect(() => {
-    if (!subscribeAskEvents) return;
-    return subscribeAskEvents((event) => {
-      if (askEventMatchesRepo(event, repoKey)) {
-        void queryClient.invalidateQueries({ queryKey: ["ask-list", repoKey] });
-      }
-    });
-  }, [subscribeAskEvents, repoKey, queryClient]);
+  useAskEvents(
+    useCallback(
+      (event) => {
+        if (askEventMatchesRepo(event, repoKey)) {
+          void queryClient.invalidateQueries({ queryKey: ["ask-list", repoKey] });
+        }
+      },
+      [repoKey, queryClient],
+    ),
+  );
 
   const asks = askListQuery.data ?? [];
 

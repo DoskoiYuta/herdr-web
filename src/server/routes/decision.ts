@@ -17,7 +17,7 @@ import { resolveShortId } from "./short-id";
 export type DecisionRoutesDeps = {
   repository: DecisionRepository;
   service: DecisionService;
-  /** `http://<host>:<port>/#decision/<id>` の形の URL を組み立てる (plan §9.w)。 */
+  /** `http://<host>:<port>/decisions/<id>` の形の URL を組み立てる (plan §9.w)。 */
   buildUrl: (id: string) => string;
 };
 

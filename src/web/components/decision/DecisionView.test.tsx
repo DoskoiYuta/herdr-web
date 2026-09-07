@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Decision, DecisionEvent } from "@contract/decision";
 import { clearDecisionDraft, getDecisionDraft } from "@/lib/decisionDrafts";
+import { renderWithStore } from "@/testing/renderWithRouter";
 import { DecisionView } from "./DecisionView";
 
 const get = vi.fn();
@@ -18,11 +17,6 @@ vi.mock("@/lib/api", () => ({
     resend: vi.fn(),
   },
 }));
-
-function render(ui: ReactElement) {
-  const client = new QueryClient();
-  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
 
 function baseDecision(overrides: Partial<Decision> = {}): Decision {
   return {
@@ -75,7 +69,7 @@ describe("DecisionView", () => {
     get.mockResolvedValue(decision);
     answer.mockResolvedValue({ ...decision, status: "answered" });
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
     const radios = screen.getAllByRole("radio");
@@ -94,7 +88,7 @@ describe("DecisionView", () => {
     get.mockResolvedValue(decision);
     dismiss.mockResolvedValue({ ...decision, status: "answered" });
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "却下" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "却下" }));
@@ -126,7 +120,7 @@ describe("DecisionView", () => {
     get.mockResolvedValue(decision);
     answer.mockResolvedValue({ ...decision, status: "answered" });
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "送信" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "送信" }));
@@ -139,13 +133,6 @@ describe("DecisionView", () => {
   test("refetches when a decision WS event fires", async () => {
     const decision = baseDecision();
     get.mockResolvedValue(decision);
-    const listener: { emit: ((event: DecisionEvent) => void) | null } = { emit: null };
-    const subscribeDecisionEvents = (cb: (event: DecisionEvent) => void) => {
-      listener.emit = cb;
-      return () => {
-        listener.emit = null;
-      };
-    };
     const fakeEvent: DecisionEvent = {
       type: "decision",
       action: "answered",
@@ -154,10 +141,10 @@ describe("DecisionView", () => {
       paneId: null,
     };
 
-    render(<DecisionView id="decision-1" subscribeDecisionEvents={subscribeDecisionEvents} />);
+    const { store } = renderWithStore(<DecisionView id="decision-1" />);
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
 
-    listener.emit?.(fakeEvent);
+    store.emitDecision(fakeEvent);
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
   });
 
@@ -173,7 +160,7 @@ describe("DecisionView", () => {
     });
     get.mockResolvedValue(decision);
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
     expect(screen.getByText(/念のため/)).toBeInTheDocument();
@@ -217,7 +204,7 @@ describe("DecisionView", () => {
     get.mockResolvedValue(decision);
     answer.mockResolvedValue({ ...decision, status: "answered" });
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument());
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
@@ -260,7 +247,7 @@ describe("DecisionView", () => {
     get.mockResolvedValue(decision);
     answer.mockResolvedValue({ ...decision, status: "answered" });
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("どちらにしますか その他"), {
@@ -279,7 +266,7 @@ describe("DecisionView", () => {
     get.mockResolvedValueOnce(decision).mockResolvedValue({ ...decision, status: "dismissed" });
     dismiss.mockResolvedValue({ ...decision, status: "dismissed" });
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
     fireEvent.click(screen.getAllByRole("radio")[0]!);
     fireEvent.click(screen.getByRole("button", { name: "却下" }));
@@ -310,12 +297,12 @@ describe("DecisionView", () => {
     });
     get.mockResolvedValue(decision);
 
-    const { unmount } = render(<DecisionView id="decision-1" />);
+    const { unmount } = renderWithStore(<DecisionView id="decision-1" />);
     await waitFor(() => expect(screen.getByLabelText("メモ")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("メモ"), { target: { value: "書きかけの回答" } });
     unmount();
 
-    render(<DecisionView id="decision-1" />);
+    renderWithStore(<DecisionView id="decision-1" />);
     await waitFor(() => expect(screen.getByLabelText("メモ")).toHaveValue("書きかけの回答"));
   });
 });

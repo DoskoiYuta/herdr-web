@@ -1,8 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PaneRow, Repo } from "@contract/events";
+import { renderWithStore } from "@/testing/renderWithRouter";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
 const listAsks = vi.fn();
@@ -13,11 +12,6 @@ vi.mock("@/lib/api", () => ({
     resolve: vi.fn(),
   },
 }));
-
-function render(ui: ReactElement) {
-  const client = new QueryClient();
-  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
@@ -68,7 +62,7 @@ beforeEach(() => {
 
 describe("Sidebar", () => {
   test("renders repo header and a workspace row (leaf, no per-pane rows)", () => {
-    render(<Sidebar {...defaultProps()} />);
+    renderWithStore(<Sidebar {...defaultProps()} />);
     expect(screen.getByText("repo")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-row-w1")).toBeInTheDocument();
     // aggregated status summary, not a per-pane row
@@ -76,7 +70,7 @@ describe("Sidebar", () => {
   });
 
   test("workspace row shows an aggregated status count (working) and agent count, omitting zero counts", () => {
-    render(<Sidebar {...defaultProps()} />);
+    renderWithStore(<Sidebar {...defaultProps()} />);
     const row = screen.getByTestId("workspace-row-w1");
     expect(within(row).queryByLabelText("状態: blocked")).not.toBeInTheDocument();
     expect(within(row).queryByLabelText("状態: done")).not.toBeInTheDocument();
@@ -87,7 +81,7 @@ describe("Sidebar", () => {
   test("shows blocked/done badges on the repo header with an icon (not just color), blocked most prominent", () => {
     const props = defaultProps();
     props.repos = [repo({ counts: { blocked: 2, done: 1 } })];
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     const header = screen.getByTestId("repo-header-/repo/.git");
     const blockedBadge = within(header).getByText("2").closest("span")!;
     expect(within(blockedBadge).getByText("2")).toBeInTheDocument();
@@ -97,7 +91,7 @@ describe("Sidebar", () => {
 
   test("clicking a workspace row focuses its focused pane if any, else its first pane", () => {
     const props = defaultProps();
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     fireEvent.click(screen.getByTestId("workspace-row-w1"));
     expect(props.onSelectPane).toHaveBeenCalledWith("p1");
   });
@@ -116,7 +110,7 @@ describe("Sidebar", () => {
         ],
       }),
     ];
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     fireEvent.click(screen.getByTestId("workspace-row-w1"));
     expect(props.onSelectPane).toHaveBeenCalledWith("p2");
   });
@@ -124,7 +118,7 @@ describe("Sidebar", () => {
   test("the workspace row of the focused workspace is highlighted via aria-current", () => {
     const props = defaultProps();
     props.focusedWorkspaceId = "w1";
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     expect(screen.getByTestId("workspace-row-w1")).toHaveAttribute("aria-current", "true");
     cleanup();
     // pane.focused だけでは選択状態にならない（workspace ごとのアクティブ pane に過ぎない）
@@ -137,14 +131,14 @@ describe("Sidebar", () => {
         ],
       }),
     ];
-    render(<Sidebar {...other} />);
+    renderWithStore(<Sidebar {...other} />);
     expect(screen.getByTestId("workspace-row-w1")).not.toHaveAttribute("aria-current");
   });
 
   test("the workspace row containing the pinned worktree shows a pin marker", () => {
     const props = defaultProps();
     props.pinnedWorktreeRoot = "/repo";
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     expect(
       within(screen.getByTestId("workspace-row-w1")).getByLabelText("ピン留め中"),
     ).toBeInTheDocument();
@@ -165,7 +159,7 @@ describe("Sidebar", () => {
         ],
       }),
     ];
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     const row = screen.getByTestId("workspace-row-w1");
     expect(within(row).getByText("feature")).toBeInTheDocument();
     expect(within(row).getByText("feature").closest("span")).toHaveAttribute(
@@ -178,18 +172,18 @@ describe("Sidebar", () => {
     const props = defaultProps();
     props.herdrConnected = false;
     props.connection = "reconnecting";
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     expect(screen.getByText("herdr 未接続（再接続中…）")).toBeInTheDocument();
   });
 
   test("collapsing a repo group hides its workspace rows", () => {
-    render(<Sidebar {...defaultProps()} />);
+    renderWithStore(<Sidebar {...defaultProps()} />);
     fireEvent.click(screen.getByTestId("repo-header-/repo/.git"));
     expect(screen.queryByTestId("workspace-row-w1")).not.toBeInTheDocument();
   });
 
   test("switching to workspace mode reconstructs workspace > tab > pane from the same rows", () => {
-    render(<Sidebar {...defaultProps()} />);
+    renderWithStore(<Sidebar {...defaultProps()} />);
     fireEvent.click(screen.getByRole("radio", { name: "ワークスペース表示" }));
     expect(screen.getByText("workspace w1")).toBeInTheDocument();
     expect(screen.getByText("tab t1")).toBeInTheDocument();
@@ -200,7 +194,7 @@ describe("Sidebar", () => {
     const props = defaultProps();
     props.layout = { width: 240, collapsed: true };
     props.repos = [repo({ counts: { blocked: 3, done: 0 } })];
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     expect(screen.getByLabelText("サイドバー（折りたたみ）")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace-row-w1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("サイドバーを開く"));
@@ -209,13 +203,13 @@ describe("Sidebar", () => {
 
   test("the collapse button persists collapsed=true via onLayoutChange", () => {
     const props = defaultProps();
-    render(<Sidebar {...props} />);
+    renderWithStore(<Sidebar {...props} />);
     fireEvent.click(screen.getByLabelText("サイドバーを折りたたむ"));
     expect(props.onLayoutChange).toHaveBeenCalledWith({ width: 240, collapsed: true });
   });
 
   test("is resizable via the ResizeHandle separator", () => {
-    render(<Sidebar {...defaultProps()} />);
+    renderWithStore(<Sidebar {...defaultProps()} />);
     expect(screen.getByRole("separator")).toBeInTheDocument();
   });
 });

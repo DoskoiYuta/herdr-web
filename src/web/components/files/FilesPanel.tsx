@@ -34,7 +34,7 @@ import {
   type ForFileMatch,
 } from "@/lib/api";
 import { buildAnchor } from "@/lib/anchor";
-import type { AskEvent } from "@/lib/askEvent";
+import { useAskEvents } from "@/lib/HerdrStoreContext";
 import { askEventMatchesRepo } from "@/lib/askEvent";
 import { agentPanesAt } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
@@ -80,8 +80,13 @@ export interface FilesPanelProps {
    * サブリポジトリ選択時は `repo`（=表示中のサブリポジトリ root）と異なる。 */
   worktreeRoot?: string | null;
   repos?: Repo[];
-  /** F10: ask / ask-notify WS イベントを購読し、インライン表示を追従させる。 */
-  subscribeAskEvents?: (cb: (event: AskEvent) => void) => () => void;
+  /** 選択中のファイル。URL の `path` (plan.md F14-4) に置く — 消費したら null に
+   * 戻す契約は無く、常に呼び出し側 (ToolPane) が URL から渡す。 */
+  selectedPath: string | null;
+  onSelectedPathChange: (path: string | null) => void;
+  /** markdown のソース/プレビュー切替。URL の `md`。 */
+  mdMode: "source" | "preview";
+  onMdModeChange: (mode: "source" | "preview") => void;
   /** F10: 質問セッションの「対象ファイルを開く」からのジャンプ先。 */
   initialLocation?: FilesInitialLocation | null;
   /** ジャンプ先のファイルを開いたら（スクロールの成否によらず）呼ばれる。親は
@@ -119,7 +124,10 @@ export function FilesPanel({
   repoKey = null,
   worktreeRoot = null,
   repos = [],
-  subscribeAskEvents,
+  selectedPath,
+  onSelectedPathChange,
+  mdMode,
+  onMdModeChange,
   initialLocation = null,
   onInitialLocationConsumed,
 }: FilesPanelProps) {
@@ -135,22 +143,6 @@ export function FilesPanel({
     },
     [updateSettings],
   );
-
-  const [selectedPath, setSelectedPath] = useState<string | null>(
-    () => initialLocation?.path ?? null,
-  );
-
-  // F10: 質問セッションの「対象ファイルを開く」からのジャンプ先を選択に反映する。
-  // React 公式の「変化した prop から state を合わせ込む」パターン（DiffPanel.tsx
-  // の `prevInitialLocation` と同じ）— effect 内で直接 setState すると
-  // react(set-state-in-effect) に引っかかるため、render 中に済ませる。
-  const [prevInitialLocation, setPrevInitialLocation] = useState(initialLocation);
-  if (initialLocation !== prevInitialLocation) {
-    setPrevInitialLocation(initialLocation);
-    if (initialLocation && initialLocation.path !== selectedPath) {
-      setSelectedPath(initialLocation.path);
-    }
-  }
 
   // Directories whose listing has been requested at least once. Grows only:
   // collapsing a folder keeps its children in the tree (removing them would
@@ -199,19 +191,18 @@ export function FilesPanel({
   // an effect) so the previous file's dimensions/error never flash for the
   // newly selected one.
   const [previewedPath, setPreviewedPath] = useState<string | null>(null);
-  // F10: markdown ソース/プレビュー toggle, per-file selection, and range
-  // selection (ask composer target) — all reset on the same "new file
+  // Range selection (ask composer target) — reset on the same "new file
   // selected" render-time adjustment as the image-preview state above
   // (React's documented "derive state from a changed prop" pattern), since
   // an ask on file A's lines must never survive into file B's viewer.
-  const [mdMode, setMdMode] = useState<"source" | "preview">("preview");
+  // `mdMode` doesn't need the same treatment: it's controlled via the URL and
+  // every navigation that changes `selectedPath` also clears `md` (ToolPane).
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
   const [selecting, setSelecting] = useState(false);
   if (selectedPath !== previewedPath) {
     setPreviewedPath(selectedPath);
     if (imageDims !== null) setImageDims(null);
     if (previewError) setPreviewError(false);
-    if (mdMode !== "preview") setMdMode("preview");
     if (selection !== null) setSelection(null);
   }
 
@@ -314,12 +305,14 @@ export function FilesPanel({
     };
   }, [refreshMatches]);
 
-  useEffect(() => {
-    if (!subscribeAskEvents) return;
-    return subscribeAskEvents((event) => {
-      if (askEventMatchesRepo(event, repoKey)) refreshMatches();
-    });
-  }, [subscribeAskEvents, refreshMatches, repoKey]);
+  useAskEvents(
+    useCallback(
+      (event) => {
+        if (askEventMatchesRepo(event, repoKey)) refreshMatches();
+      },
+      [refreshMatches, repoKey],
+    ),
+  );
 
   const askPanes = useMemo(
     () => (worktreeRoot ? agentPanesAt(repos, worktreeRoot) : []),
@@ -469,9 +462,12 @@ export function FilesPanel({
         // The trashed path may be a directory that contained the currently
         // selected file — clear the selection for either case so the
         // viewer doesn't keep showing a file that no longer exists.
-        setSelectedPath((prev) =>
-          prev !== null && (prev === path || prev.startsWith(`${path}/`)) ? null : prev,
-        );
+        if (
+          selectedPath !== null &&
+          (selectedPath === path || selectedPath.startsWith(`${path}/`))
+        ) {
+          onSelectedPathChange(null);
+        }
         showStatusMessage(`ゴミ箱に移動しました: ${path}`, 3000);
       } catch (err) {
         // TrashUnavailableError's own message is already the user-facing
@@ -479,7 +475,7 @@ export function FilesPanel({
         showStatusMessage(err instanceof Error ? err.message : String(err), 4000);
       }
     })();
-  }, [trashTarget, repo, queryClient, showStatusMessage]);
+  }, [trashTarget, repo, queryClient, showStatusMessage, selectedPath, onSelectedPathChange]);
 
   const contextMenuItems = useCallback(
     (item: { path: string; kind: "file" | "directory" }) => {
@@ -566,7 +562,7 @@ export function FilesPanel({
                 initialExpansion="closed"
                 fontSize={settings.fontSize}
                 selectedPath={selectedPath}
-                onSelectFile={setSelectedPath}
+                onSelectFile={onSelectedPathChange}
                 onExpandedDirsChange={handleExpandedDirsChange}
                 contextMenuItems={contextMenuItems}
                 onExternalDrop={handleExternalDrop}
@@ -597,14 +593,14 @@ export function FilesPanel({
                     <button
                       type="button"
                       className={mdMode === "preview" ? "font-semibold text-foreground" : ""}
-                      onClick={() => setMdMode("preview")}
+                      onClick={() => onMdModeChange("preview")}
                     >
                       プレビュー
                     </button>
                     <button
                       type="button"
                       className={mdMode === "source" ? "font-semibold text-foreground" : ""}
-                      onClick={() => setMdMode("source")}
+                      onClick={() => onMdModeChange("source")}
                     >
                       ソース
                     </button>

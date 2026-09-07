@@ -1,9 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Review } from "@contract/review";
 import type { ReviewEvent } from "@/lib/herdrStore";
+import { renderWithStore } from "@/testing/renderWithRouter";
 
 // Same minimal CodeView stand-in as DiffPanel.test.tsx / DiffView.test.tsx,
 // extended to (a) let a test fire a line selection and (b) render whatever
@@ -184,12 +184,7 @@ afterEach(() => {
 });
 
 function renderPanel() {
-  const client = new QueryClient();
-  return render(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoKey="/repo/.git" repoChangedTick={0} />
-    </QueryClientProvider>,
-  );
+  return renderWithStore(<DiffPanel repo="/repo" repoKey="/repo/.git" repoChangedTick={0} />);
 }
 
 test("selecting a line opens the composer; submitting calls reviewApi.create with the right body", async () => {
@@ -307,48 +302,32 @@ test("composer submit is disabled with a hint until createdAtHead resolves", asy
 
 test("a review WS event for a different repo does not trigger a for-diff refetch", async () => {
   forDiffMock.mockResolvedValue([]);
-  const client = new QueryClient();
-  let emit: ((event: ReviewEvent) => void) | undefined;
-  const subscribeReviewEvents = vi.fn((cb: (event: ReviewEvent) => void) => {
-    emit = cb;
-    return () => {};
-  });
-  render(
-    <QueryClientProvider client={client}>
-      <DiffPanel
-        repo="/repo"
-        repoKey="/repo/.git"
-        repoChangedTick={0}
-        subscribeReviewEvents={subscribeReviewEvents}
-      />
-    </QueryClientProvider>,
-  );
+  const { store } = renderPanel();
   await waitFor(() => expect(screen.getByText("a.txt")).toBeInTheDocument());
   await waitFor(() => expect(forDiffMock).toHaveBeenCalledTimes(1));
 
-  emit?.({
+  store.emitReview({
     type: "review",
     event: "created",
     review: review({ repo: "/other-repo/.git" }),
-  });
+  } satisfies ReviewEvent);
   // No new call should be scheduled — give the 200ms debounce window time to
   // pass and confirm it stayed quiet.
   await new Promise((resolve) => setTimeout(resolve, 250));
   expect(forDiffMock).toHaveBeenCalledTimes(1);
 
-  emit?.({ type: "review", event: "created", review: review({ repo: "/repo/.git" }) });
+  store.emitReview({
+    type: "review",
+    event: "created",
+    review: review({ repo: "/repo/.git" }),
+  } satisfies ReviewEvent);
   await waitFor(() => expect(forDiffMock).toHaveBeenCalledTimes(2));
 });
 
 test("stale inline annotations are dropped when repoKey changes, not left showing a different repo's thread", async () => {
   const match = { review: review(), line: 2, span: 1, confidence: "exact" as const };
   forDiffMock.mockResolvedValue([match]);
-  const client = new QueryClient();
-  const { rerender } = render(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoKey="/repo/.git" repoChangedTick={0} />
-    </QueryClientProvider>,
-  );
+  const { rerender } = renderPanel();
   await waitFor(() => expect(screen.getByText("please double-check")).toBeInTheDocument());
 
   // Simulate the repoKey resolving to a different repository while `repo`
@@ -356,11 +335,7 @@ test("stale inline annotations are dropped when repoKey changes, not left showin
   // immediately rather than keep showing the old repo's review thread until
   // the new forDiff call resolves.
   forDiffMock.mockImplementation(() => new Promise(() => {}));
-  rerender(
-    <QueryClientProvider client={client}>
-      <DiffPanel repo="/repo" repoKey="/other-repo/.git" repoChangedTick={0} />
-    </QueryClientProvider>,
-  );
+  rerender(<DiffPanel repo="/repo" repoKey="/other-repo/.git" repoChangedTick={0} />);
 
   await waitFor(() => expect(screen.queryByText("please double-check")).not.toBeInTheDocument());
 });

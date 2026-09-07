@@ -40,7 +40,7 @@ describe("POST /api/decision", () => {
     expect(res.status).toBe(201);
     const body = await json(res);
     expect(typeof body.id).toBe("string");
-    expect(body.url).toBe(`http://test/#decision/${body.id}`);
+    expect(body.url).toBe(`http://test/decisions/${body.id}`);
     expect(body.paneResolved).toBe(false);
   });
 

@@ -369,6 +369,27 @@ src/cli                      → contract のみ
 - F13-10. Claude Code 側の導線は README に雛形を置く: `.claude/skills/hw-decision/SKILL.md`（AskUserQuestion の代わりに `hw decision request` を使う、出したらターンを終える、書式は `hw decision schema`）と、AskUserQuestion を PreToolUse hook で deny し理由文で `hw decision request` へ誘導する settings.json の例。`hw` がユーザーの設定ファイルを書き換えることはしない。
 - F13-11. 依頼作成時、herdr が接続していればサーバーが `notification.show`（`{ title, body?, sound? }`）でデスクトップ通知を出す。`title` は「判断依頼: <依頼の title または最初の設問の header>」、`body` は「<agent> / <worktree の basename>。Web UI で回答してください」。失敗しても依頼の作成自体は成功させ、ログにのみ残す。
 
+### F14. ツール領域のルーティング（URL が画面状態の正）
+
+- F14-1. ツール領域（右側 aside）の中身はルーターが決める。シェル（サイドバー / ターミナル / aside の 3 カラム、幅と折りたたみ）はルートの外に置き、ターミナルはルート遷移で再マウントされない。ルーターは TanStack Router（`@tanstack/react-router`）、履歴はブラウザ履歴（hash ではない）。サーバーは未知のパスに index.html を返す（`serveEmbedded` は対応済み、dev は Vite の SPA フォールバック）。search params は valibot で検証し、不正値は既定値に丸める。
+- F14-2. ルート構成:
+  - `/` → `/focus/diff` へリダイレクト。
+  - `/focus/<tab>` … herdr の focus に追従して worktree を決める（今の既定動作）。
+  - `/w/<root>/<tab>` … `<root>` は worktree ルートの絶対パスを `encodeURIComponent` したもの。この形のときは focus に追従せず固定する（今の「ピン留め」と「手動で開いたパス」の両方がこれになる。サーバーへの `pin` メッセージはこのルートに入ったとき / 出たときに送る）。
+  - `<tab>` は `diff | graph | files | docker | process`。
+  - `/decisions` と `/decisions/<id>` … 判断依頼の一覧とビュー。`/focus` / `/w` と兄弟なので、開いても ToolPane はアンマウントされない（別ルートのマッチとして描画が切り替わるだけで、戻ったときにタブ・比較範囲・選択ファイルは URL から復元される）。
+- F14-3. search params（タブごと）:
+  - diff: `from`, `to`（比較範囲。無ければ WORKTREE vs HEAD）、`sub`（サブリポジトリ id）、`path`, `line`（ジャンプ先。`initialLocation` の置き換え）。
+  - graph: `sub`。
+  - files: `sub`, `path`（選択ファイル）, `line`（選択行）, `md`（`source | preview`）。
+  - docker / process: `sub`。
+  - サブリポジトリ切替と worktree 切替で消えるべき params（`from` / `to` / `path` / `line`）はナビゲーション時に落とす。
+  - タブ切替では `path` / `line` を落とす（タブごとに意味が異なるため）。`from` / `to` / `sub` は残す。
+- F14-4. 既存 state の移し先: App の `decisionUi` / `pinned` / `manualWorktreeRoot`、ToolPane の `activeTab` / `comparison` / `subRepoId` / `initialLocation`、FilesPanel の `selectedPath` / `mdMode`、App の `filesInitialLocation`（ask の「対象ファイルを開く」と decision の `location` Block は `navigate({ to: "/w/$root/files", search: { path, line } })` になる）。これらの `useState` と「消費したら null に戻す」契約はすべて削除する。ローカルに残すのは一時的な UI 状態（ドラッグ幅、送信中フラグ、ダイアログ開閉、コピー済み表示）だけ。
+- F14-5. herdrStore は React Context（`HerdrStoreProvider` / `useHerdrState()` / `useHerdrStore()`）で配り、WS イベントの購読は `useReviewEvents(cb)` / `useAskEvents(cb)` / `useDecisionEvents(cb)` のフックにする。`subscribeXxxEvents` を props で渡す経路はすべて消す。
+- F14-6. サーバーが返す判断依頼の URL（`hw decision request` の `url`、§9.w）は `http://<host>:<port>/decisions/<id>` にする。`#decision/<id>` は受け付けない（移行期間は設けない。未コミットの依頼 URL は存在しないため）。
+- F14-7. 動作は変えない。既存のテスト（App / ToolPane / 各 Panel）は、props で渡していた state を URL とルーターのテスト用ユーティリティ（メモリ履歴）に置き換えて通す。ブラウザの戻る / 進むでタブと判断依頼ビューが切り替わること、リロードで同じ画面に戻ること、判断依頼ビューから戻っても比較範囲が残ることを振る舞いテストにする。
+
 ## 8. 非機能要件
 
 - N1. `127.0.0.1` に固定。`tailscale serve --bg 8080` で公開する手順を README に書く。`--host` は緊急用で非 loopback なら警告。
@@ -605,6 +626,7 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - **M8a: 判断依頼（互換成立）** — 契約 + DB + `hw decision request/show/list/cancel/schema` + サイドバーの行とバッジ + 依頼ビュー（markdown と選択肢）+ 回答 / 却下の配達と再送。
 - **M8b: 判断依頼（表現力）** — Block 描画（code / diff / mermaid / svg / html / image / location / table）と compare レイアウト。
 - **M8c: 判断依頼（仕上げ）** — 回答への location 添付、履歴、README のスキル / hook 雛形。
+- **M9: ツール領域のルーティング** — F14。TanStack Router 導入、URL への state 移行、herdrStore の Context 化と購読フック、判断依頼 URL の変更。機能追加なし。
 
 ## 15. 将来拡張
 

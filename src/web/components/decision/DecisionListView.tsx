@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import type { Decision, DecisionEvent } from "@contract/decision";
+import { useCallback, useState } from "react";
+import type { Decision } from "@contract/decision";
 import { decisionApi } from "@/lib/api";
+import { useDecisionEvents } from "@/lib/HerdrStoreContext";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -25,7 +26,6 @@ const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
 export type DecisionListViewProps = {
   onSelect: (id: string) => void;
   onClose?: () => void;
-  subscribeDecisionEvents?: (cb: (event: DecisionEvent) => void) => () => void;
 };
 
 function resultLabel(decision: Decision): string | null {
@@ -47,11 +47,7 @@ function worktreeBasename(root: string | null): string | null {
 
 /** 全 worktree 横断の判断依頼一覧 (plan F13-8)。既定は open のみ、open が上。
  * 非 open の行には結果（answered の選択内容）と配達状態を出す。 */
-export function DecisionListView({
-  onSelect,
-  onClose,
-  subscribeDecisionEvents,
-}: DecisionListViewProps) {
+export function DecisionListView({ onSelect, onClose }: DecisionListViewProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
   const queryClient = useQueryClient();
   const queryKey = ["decision-list", statusFilter];
@@ -66,12 +62,11 @@ export function DecisionListView({
     return 0;
   });
 
-  useEffect(() => {
-    if (!subscribeDecisionEvents) return;
-    return subscribeDecisionEvents(() => {
+  useDecisionEvents(
+    useCallback(() => {
       void queryClient.invalidateQueries({ queryKey: ["decision-list"] });
-    });
-  }, [subscribeDecisionEvents, queryClient]);
+    }, [queryClient]),
+  );
 
   return (
     <div className="flex h-full w-full flex-col">

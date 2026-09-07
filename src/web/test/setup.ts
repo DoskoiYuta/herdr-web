@@ -24,4 +24,8 @@ if (typeof window !== "undefined") {
   if (!window.HTMLElement.prototype.scrollIntoView) {
     window.HTMLElement.prototype.scrollIntoView = () => {};
   }
+  // TanStack Router's scroll restoration calls window.scrollTo on every
+  // navigation; jsdom's own scrollTo is a stub that logs "not implemented"
+  // instead of a no-op.
+  window.scrollTo = () => {};
 }

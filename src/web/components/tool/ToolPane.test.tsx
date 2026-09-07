@@ -1,12 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { FocusMessage } from "@contract/events";
 import type { SubReposResponse } from "@contract/git";
 import type { PaneRow, Repo } from "@contract/events";
 import type { ReviewCountsResponse } from "@contract/review";
-import type { ReviewEvent } from "@/lib/herdrStore";
+import { makeFakeStore, renderWithRouter } from "@/testing/renderWithRouter";
 import { ToolPane } from "./ToolPane";
 
 function counts(overrides: Partial<ReviewCountsResponse> = {}): ReviewCountsResponse {
@@ -43,18 +42,51 @@ function reposWithPanes(root: string, panes: PaneRow[]): Repo[] {
   ];
 }
 
-// Radix `Tabs.Trigger` activates on `mousedown`, not `click` (see
-// @radix-ui/react-tabs) — `fireEvent.click` alone never dispatches a
-// `mousedown`, so switching tabs in jsdom needs this helper.
-function selectTab(name: string) {
-  fireEvent.mouseDown(screen.getByRole("tab", { name }));
+function focusMessage(overrides: Partial<FocusMessage> = {}): FocusMessage {
+  return {
+    type: "focus",
+    pane: "p1",
+    workspace: "w1",
+    cwd: "/repo",
+    foregroundCwd: "/repo",
+    worktreeRoot: "/Users/dev/project",
+    repoKey: null,
+    agent: null,
+    agentStatus: null,
+    agentSession: null,
+    ...overrides,
+  };
 }
 
-// ToolPane's review-counts query is a TanStack Query hook, so every render
-// needs a QueryClientProvider ancestor.
-function render(ui: ReactElement) {
-  const client = new QueryClient();
-  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+/** worktreeRoot に追従する `/focus/diff` を、その worktree/repoKey/repos で
+ * フォーカス中として描画する（旧テストの `worktreeRoot`/`repoKey`/`repos` prop
+ * に相当）。 */
+async function renderFocused(
+  opts: {
+    worktreeRoot?: string | null;
+    repoKey?: string | null;
+    repos?: Repo[];
+    focusOverrides?: Partial<FocusMessage>;
+  } = {},
+) {
+  const { worktreeRoot = "/Users/dev/project", repoKey = null, repos = [], focusOverrides } = opts;
+  const store = makeFakeStore({
+    repos,
+    focus:
+      worktreeRoot === null ? null : focusMessage({ worktreeRoot, repoKey, ...focusOverrides }),
+  });
+  return { ...(await renderWithRouter(() => <ToolPane />, { path: "/focus/diff", store })), store };
+}
+
+// Radix `Tabs.Trigger` activates on `mousedown`, not `click` (see
+// @radix-ui/react-tabs) — `fireEvent.click` alone never dispatches a
+// `mousedown`, so switching tabs in jsdom needs this helper. Tab switches
+// navigate the router (async), so wait for the trigger to actually become
+// the active tab before returning.
+async function selectTab(name: string) {
+  const trigger = screen.getByRole("tab", { name });
+  fireEvent.mouseDown(trigger);
+  await waitFor(() => expect(trigger).toHaveAttribute("data-state", "active"));
 }
 
 let diffPanelMountCount = 0;
@@ -84,14 +116,14 @@ vi.mock("@/components/files/FilesPanel", () => ({
     <div data-testid="files-panel-stub">
       {repo}
       {initialLocation && (
-        <span data-testid="files-panel-initial-location">
-          {initialLocation.path}:{initialLocation.line}
-        </span>
-      )}
-      {initialLocation && (
-        <button type="button" onClick={onInitialLocationConsumed}>
-          consume
-        </button>
+        <>
+          <span data-testid="files-panel-initial-location">
+            {initialLocation.path}:{initialLocation.line}
+          </span>
+          <button type="button" onClick={onInitialLocationConsumed}>
+            consume
+          </button>
+        </>
       )}
     </div>
   ),
@@ -169,98 +201,45 @@ describe("ToolPane", () => {
     diffPanelMountCount = 0;
   });
 
-  test("remounts DiffPanel (fresh instance) when worktreeRoot changes, so no stale diff/annotations survive a focus switch", () => {
-    const client = new QueryClient();
-    const renderWith = (worktreeRoot: string, repoChangedTick: number) =>
-      rtlRender(
-        <QueryClientProvider client={client}>
-          <ToolPane
-            worktreeRoot={worktreeRoot}
-            pinned={false}
-            onPinToggle={vi.fn()}
-            repoChangedTick={repoChangedTick}
-            onOpenPath={vi.fn()}
-          />
-        </QueryClientProvider>,
-      );
-
-    const { rerender } = renderWith("/Users/dev/project-a", 0);
+  // 無いと壊れる: focus 追従中に worktree が切り替わっても DiffPanel が使い回され、
+  // 前の worktree の annotation/選択が残る。
+  test("remounts DiffPanel (fresh instance) when worktreeRoot changes, but not for a repoChangedTick bump alone", async () => {
+    const repoKey = "/Users/dev/project-a/.git";
+    const { store } = await renderFocused({ worktreeRoot: "/Users/dev/project-a", repoKey });
     expect(diffPanelMountCount).toBe(1);
 
-    rerender(
-      <QueryClientProvider client={client}>
-        <ToolPane
-          worktreeRoot="/Users/dev/project-b"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />
-      </QueryClientProvider>,
+    store.setState({ focus: focusMessage({ worktreeRoot: "/Users/dev/project-b", repoKey }) });
+    await waitFor(() =>
+      expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+        "/Users/dev/project-b:WORKTREE:HEAD",
+      ),
     );
     expect(diffPanelMountCount).toBe(2);
-    expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
-      "/Users/dev/project-b:WORKTREE:HEAD",
-    );
 
-    // rerendering with the same worktreeRoot/comparison doesn't remount
-    rerender(
-      <QueryClientProvider client={client}>
-        <ToolPane
-          worktreeRoot="/Users/dev/project-b"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={1}
-          onOpenPath={vi.fn()}
-        />
-      </QueryClientProvider>,
-    );
+    countsMock.mockClear();
+    store.setState({ repoChanged: { "/Users/dev/project-b": { head: "h", tick: 1 } } });
+    await waitFor(() => expect(countsMock).toHaveBeenCalled());
     expect(diffPanelMountCount).toBe(2);
   });
 
-  test("shows the empty state and an open-path form when no worktree is selected", () => {
-    render(
-      <ToolPane
-        worktreeRoot={null}
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-      />,
-    );
+  test("shows the empty state and an open-path form when no worktree is selected", async () => {
+    await renderFocused({ worktreeRoot: null });
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
     expect(screen.getByLabelText("リポジトリのパスを開く")).toBeInTheDocument();
   });
 
-  test("submitting the open-path form resolves the root and lifts it up", async () => {
-    const onOpenPath = vi.fn();
-    render(
-      <ToolPane
-        worktreeRoot={null}
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={onOpenPath}
-      />,
-    );
+  test("submitting the open-path form resolves the root and navigates to /w/<root>/diff", async () => {
+    const { router } = await renderFocused({ worktreeRoot: null });
     fireEvent.change(screen.getByLabelText("リポジトリのパスを開く"), {
       target: { value: "/tmp/repo" },
     });
     fireEvent.click(screen.getByRole("button", { name: "開く" }));
-    await screen.findByRole("button", { name: "開く" });
-    expect(onOpenPath).toHaveBeenCalledWith("/tmp/repo");
+    await waitFor(() => expect(screen.getByText("repo")).toBeInTheDocument());
+    expect(router.state.location.pathname).toBe(`/w/${encodeURIComponent("/tmp/repo")}/diff`);
   });
 
-  test("shows the worktree header, tabs (no Review tab), and pin toggle when a worktree is selected", () => {
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-      />,
-    );
+  test("shows the worktree header, tabs (no Review tab), and pin toggle when a worktree is selected", async () => {
+    await renderFocused();
     expect(screen.getByText("project")).toBeInTheDocument();
     expect(screen.getByText("/Users/dev/project")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Diff" })).toBeInTheDocument();
@@ -271,173 +250,137 @@ describe("ToolPane", () => {
     );
   });
 
-  test("switching to the Files tab renders FilesPanel with the current repo", () => {
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-      />,
-    );
-    selectTab("Files");
+  test("switching to the Files tab renders FilesPanel with the current repo", async () => {
+    await renderFocused();
+    await selectTab("Files");
     expect(screen.getByTestId("files-panel-stub")).toHaveTextContent("/Users/dev/project");
   });
 
-  test("filesInitialLocation switches to the Files tab and passes the location down to FilesPanel", () => {
-    const onFilesInitialLocationConsumed = vi.fn();
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-        filesInitialLocation={{ path: "src/a.ts", line: 42 }}
-        onFilesInitialLocationConsumed={onFilesInitialLocationConsumed}
-      />,
-    );
+  test("navigating straight to the files tab with path/line passes the location down to FilesPanel, and consuming it drops line only", async () => {
+    const store = makeFakeStore({ focus: focusMessage() });
+    const { router } = await renderWithRouter(() => <ToolPane />, {
+      path: "/focus/files?path=src%2Fa.ts&line=42",
+      store,
+    });
     expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("data-state", "active");
     expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("src/a.ts:42");
 
+    // Drive ToolPane's real onInitialLocationConsumed wiring via the stub's
+    // consume button, rather than calling router.navigate directly.
     fireEvent.click(screen.getByRole("button", { name: "consume" }));
-    expect(onFilesInitialLocationConsumed).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByTestId("files-panel-initial-location")).not.toBeInTheDocument(),
+    );
+    expect(router.state.location.search).not.toHaveProperty("line");
+    expect(router.state.location.search).toMatchObject({ path: "src/a.ts" });
   });
 
-  test("pin toggle calls onPinToggle and reflects pressed state", () => {
-    const onPinToggle = vi.fn();
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={true}
-        onPinToggle={onPinToggle}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-      />,
+  // 無いと壊れる: /w/$root/$tab は root が変わっても同一ルートのパラメータ更新
+  // としてしか扱われず（remountDeps が無ければ）ToolPane が再マウントされない。
+  // その場合「worktree が変わったら from/to/path/line を落とす」effect が、
+  // この navigate で渡したばかりの path/line まで消してしまう。
+  test("navigating to a different /w/<root> with path/line keeps them (root change remounts ToolPane)", async () => {
+    const store = makeFakeStore();
+    const { router } = await renderWithRouter(() => <ToolPane />, {
+      path: `/w/${encodeURIComponent("/Users/dev/project-a")}/diff`,
+      store,
+    });
+    await router.navigate({
+      to: "/w/$root/$tab",
+      params: { root: "/Users/dev/project-b", tab: "files" },
+      search: { path: "src/a.ts", line: 3 },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("files-panel-stub")).toHaveTextContent("/Users/dev/project-b"),
     );
+    expect(screen.getByTestId("files-panel-initial-location")).toHaveTextContent("src/a.ts:3");
+    expect(router.state.location.search).toMatchObject({ path: "src/a.ts", line: 3 });
+  });
+
+  test("pin toggle navigates between /w and /focus, reflecting pressed state", async () => {
+    const worktreeRoot = "/Users/dev/project";
+    const store = makeFakeStore({ focus: focusMessage({ worktreeRoot }) });
+    const { router } = await renderWithRouter(() => <ToolPane />, {
+      path: `/w/${encodeURIComponent(worktreeRoot)}/diff`,
+      store,
+    });
     const pin = screen.getByLabelText("ピン留めを解除");
     expect(pin).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(pin);
-    expect(onPinToggle).toHaveBeenCalled();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/focus/diff"));
+    expect(screen.getByLabelText("ピン留め")).toHaveAttribute("aria-pressed", "false");
   });
 
-  test("selecting a commit in the graph tab sets the diff comparison and shows a reset button", () => {
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-      />,
-    );
-    selectTab("Graph");
+  test("selecting a commit in the graph tab sets the diff comparison and shows a reset button", async () => {
+    await renderFocused();
+    await selectTab("Graph");
     fireEvent.click(screen.getByTestId("graph-panel-stub"));
-    selectTab("Diff");
+    await selectTab("Diff");
 
     expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project:aaa111:bbb222",
     );
     const resetButton = screen.getByRole("button", { name: "作業ツリーに戻る" });
     fireEvent.click(resetButton);
-    expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
-      "/Users/dev/project:WORKTREE:HEAD",
+    await waitFor(() =>
+      expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+        "/Users/dev/project:WORKTREE:HEAD",
+      ),
     );
   });
 
   test("shows the focused pane's agent/status and offers a claude --resume copy button", async () => {
     const writeText = vi.fn(async () => {});
     Object.assign(navigator, { clipboard: { writeText } });
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-        focusInfo={{
-          agent: "claude",
-          agentStatus: "working",
-          agentSession: { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" },
-        }}
-      />,
-    );
+    await renderFocused({
+      focusOverrides: {
+        agent: "claude",
+        agentStatus: "working",
+        agentSession: { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" },
+      },
+    });
     expect(screen.getByText("claude · working")).toBeInTheDocument();
     const copyButton = screen.getByRole("button", { name: "claude --resume abc-123" });
     fireEvent.click(copyButton);
     expect(writeText).toHaveBeenCalledWith("claude --resume abc-123");
   });
 
-  test("does not show a resume button for a non-claude agent session", () => {
-    render(
-      <ToolPane
-        worktreeRoot="/Users/dev/project"
-        pinned={false}
-        onPinToggle={vi.fn()}
-        repoChangedTick={0}
-        onOpenPath={vi.fn()}
-        focusInfo={{
-          agent: "codex",
-          agentStatus: "idle",
-          agentSession: { source: "herdr:codex", agent: "codex", kind: "path", value: "/tmp/x" },
-        }}
-      />,
-    );
+  test("does not show a resume button for a non-claude agent session", async () => {
+    await renderFocused({
+      focusOverrides: {
+        agent: "codex",
+        agentStatus: "idle",
+        agentSession: { source: "herdr:codex", agent: "codex", kind: "path", value: "/tmp/x" },
+      },
+    });
     expect(screen.getByText("codex · idle")).toBeInTheDocument();
     expect(screen.queryByText(/claude --resume/)).not.toBeInTheDocument();
   });
 
-  test("switching worktreeRoot resets a picked commit comparison back to the working tree", () => {
-    const client = new QueryClient();
-    const { rerender } = rtlRender(
-      <QueryClientProvider client={client}>
-        <ToolPane
-          worktreeRoot="/Users/dev/project-a"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />
-      </QueryClientProvider>,
-    );
-    selectTab("Graph");
+  // 無いと壊れる: focus 追従中に worktree が切り替わったのに前の比較範囲が
+  // 残ると、新しい worktree に存在しないハッシュで diff を取りに行ってしまう。
+  test("switching worktreeRoot resets a picked commit comparison back to the working tree", async () => {
+    const { store } = await renderFocused({ worktreeRoot: "/Users/dev/project-a" });
+    await selectTab("Graph");
     fireEvent.click(screen.getByTestId("graph-panel-stub"));
-    selectTab("Diff");
+    await selectTab("Diff");
     expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project-a:aaa111:bbb222",
     );
 
-    rerender(
-      <QueryClientProvider client={client}>
-        <ToolPane
-          worktreeRoot="/Users/dev/project-b"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />
-      </QueryClientProvider>,
-    );
-    expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
-      "/Users/dev/project-b:WORKTREE:HEAD",
+    store.setState({ focus: focusMessage({ worktreeRoot: "/Users/dev/project-b" }) });
+    await waitFor(() =>
+      expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+        "/Users/dev/project-b:WORKTREE:HEAD",
+      ),
     );
   });
 
   describe("review counts + send button", () => {
     test("passes reviewCounts fetched via reviewApi.counts down to GraphPanel", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 3 }));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
-      selectTab("Graph");
+      await renderFocused({ repoKey: "/Users/dev/project/.git" });
+      await selectTab("Graph");
       await waitFor(() =>
         expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
           "graph:/Users/dev/project:3",
@@ -447,33 +390,17 @@ describe("ToolPane", () => {
 
     test("send button shows pendingDrafts and is disabled at 0", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 0 }));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({ repoKey: "/Users/dev/project/.git" });
       const button = await screen.findByRole("button", { name: "送信 (0)" });
       expect(button).toBeDisabled();
     });
 
     test("send button is enabled with a nonzero count and, with a single agent pane, POSTs /api/review/send with its pane id", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          repos={reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })])}
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        repos: reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })]),
+      });
       const button = await screen.findByRole("button", { name: "送信 (2)" });
       expect(button).not.toBeDisabled();
       fireEvent.click(button);
@@ -488,17 +415,10 @@ describe("ToolPane", () => {
 
     test("disables the send button and shows a hint when the worktree has no agent pane", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          repos={reposWithPanes("/Users/dev/project", [pane({ agent: null })])}
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        repos: reposWithPanes("/Users/dev/project", [pane({ agent: null })]),
+      });
       const button = await screen.findByRole("button", { name: "送信 (2)" });
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute("title", "この worktree にエージェントがいません");
@@ -506,20 +426,13 @@ describe("ToolPane", () => {
 
     test("with two agent panes, clicking send opens a picker; choosing the second pane sends with its id", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          repos={reposWithPanes("/Users/dev/project", [
-            pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
-            pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
-          ])}
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        repos: reposWithPanes("/Users/dev/project", [
+          pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
+          pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
+        ]),
+      });
       const button = await screen.findByRole("button", { name: "送信 (1)" });
       fireEvent.click(button);
 
@@ -548,20 +461,13 @@ describe("ToolPane", () => {
         layout: null,
         tail: ["doing thing A", "doing thing B"],
       }));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          repos={reposWithPanes("/Users/dev/project", [
-            pane({ paneId: "claude-1" }),
-            pane({ paneId: "claude-2", agent: "codex" }),
-          ])}
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        repos: reposWithPanes("/Users/dev/project", [
+          pane({ paneId: "claude-1" }),
+          pane({ paneId: "claude-2", agent: "codex" }),
+        ]),
+      });
       fireEvent.click(await screen.findByRole("button", { name: "送信 (1)" }));
       expect(await screen.findByText("送信先を選択")).toBeInTheDocument();
 
@@ -575,20 +481,13 @@ describe("ToolPane", () => {
     test("a failed preview fetch still leaves the card usable — clicking it sends to that pane", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 1 }));
       panePreviewMock.mockRejectedValue(new Error("boom"));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          repos={reposWithPanes("/Users/dev/project", [
-            pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
-            pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
-          ])}
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        repos: reposWithPanes("/Users/dev/project", [
+          pane({ paneId: "claude-1", label: "first", workspaceLabel: "ws-1" }),
+          pane({ paneId: "claude-2", agent: "codex", label: "second", workspaceLabel: "ws-2" }),
+        ]),
+      });
       fireEvent.click(await screen.findByRole("button", { name: "送信 (1)" }));
       const card = await screen.findByRole("button", { name: /ws-1.*first/s });
       fireEvent.click(card);
@@ -605,17 +504,10 @@ describe("ToolPane", () => {
     test("shows a readable message when the server answers 409 no_agent", async () => {
       countsMock.mockResolvedValueOnce(counts({ pendingDrafts: 2 }));
       sendMock.mockRejectedValueOnce(new SendTargetError("no_agent"));
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          repos={reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })])}
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        repos: reposWithPanes("/Users/dev/project", [pane({ paneId: "claude-1" })]),
+      });
       const button = await screen.findByRole("button", { name: "送信 (2)" });
       fireEvent.click(button);
 
@@ -623,25 +515,10 @@ describe("ToolPane", () => {
     });
 
     test("a review WS event for a different repo does not refetch review counts", async () => {
-      let emit: ((event: ReviewEvent) => void) | undefined;
-      const subscribeReviewEvents = vi.fn((cb: (event: ReviewEvent) => void) => {
-        emit = cb;
-        return () => {};
-      });
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-          subscribeReviewEvents={subscribeReviewEvents}
-        />,
-      );
+      const { store } = await renderFocused({ repoKey: "/Users/dev/project/.git" });
       await waitFor(() => expect(countsMock).toHaveBeenCalledTimes(1));
 
-      emit?.({
+      store.emitReview({
         type: "review",
         event: "created",
         review: {
@@ -664,7 +541,7 @@ describe("ToolPane", () => {
       });
       expect(countsMock).toHaveBeenCalledTimes(1);
 
-      emit?.({
+      store.emitReview({
         type: "review",
         event: "created",
         review: {
@@ -691,15 +568,7 @@ describe("ToolPane", () => {
 
   describe("sub-repo switcher", () => {
     test("does not show the select when there's only one entry (the root)", async () => {
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused();
       await waitFor(() => expect(subreposMock).toHaveBeenCalledWith("/Users/dev/project"));
       expect(
         screen.queryByRole("combobox", { name: "サブリポジトリを選択" }),
@@ -718,16 +587,7 @@ describe("ToolPane", () => {
           },
         ],
       });
-      render(
-        <ToolPane
-          worktreeRoot="/Users/dev/project"
-          repoKey="/Users/dev/project/.git"
-          pinned={false}
-          onPinToggle={vi.fn()}
-          repoChangedTick={0}
-          onOpenPath={vi.fn()}
-        />,
-      );
+      await renderFocused({ repoKey: "/Users/dev/project/.git" });
 
       const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
       expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
@@ -747,7 +607,7 @@ describe("ToolPane", () => {
       // header path shows <worktree>/<subrepo>
       expect(screen.getByText("/Users/dev/project/vendor/lib")).toBeInTheDocument();
 
-      selectTab("Graph");
+      await selectTab("Graph");
       expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
         "graph:/Users/dev/project/vendor/lib",
       );
@@ -765,18 +625,7 @@ describe("ToolPane", () => {
           },
         ],
       });
-      const client = new QueryClient();
-      const { rerender } = rtlRender(
-        <QueryClientProvider client={client}>
-          <ToolPane
-            worktreeRoot="/Users/dev/project-a"
-            pinned={false}
-            onPinToggle={vi.fn()}
-            repoChangedTick={0}
-            onOpenPath={vi.fn()}
-          />
-        </QueryClientProvider>,
-      );
+      const { store } = await renderFocused({ worktreeRoot: "/Users/dev/project-a" });
       const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
       fireEvent.click(trigger);
       const option = await screen.findByRole("option", { name: /lib/ });
@@ -790,17 +639,7 @@ describe("ToolPane", () => {
       // subreposMock's default implementation (single root entry) applies
       // to project-b, since the queued mockResolvedValueOnce above was
       // already consumed by the mount above.
-      rerender(
-        <QueryClientProvider client={client}>
-          <ToolPane
-            worktreeRoot="/Users/dev/project-b"
-            pinned={false}
-            onPinToggle={vi.fn()}
-            repoChangedTick={0}
-            onOpenPath={vi.fn()}
-          />
-        </QueryClientProvider>,
-      );
+      store.setState({ focus: focusMessage({ worktreeRoot: "/Users/dev/project-b" }) });
       await waitFor(() =>
         expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
           "/Users/dev/project-b:WORKTREE:HEAD",
