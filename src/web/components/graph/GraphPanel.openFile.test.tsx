@@ -116,7 +116,11 @@ describe("GraphPanel file-row jump to Diff", () => {
     expect(onOpenFile).toHaveBeenCalledWith({ from: hash(1), to: hash(0) }, "src/a.ts");
   });
 
-  test("clicking a file under a root commit reports a range with no `from`", async () => {
+  // 無いと壊れる: from が無い range を許すと、Diff は WORKTREE vs HEAD に
+  // すり替わって開く — ユーザーには別のコミット/ファイルを見せたように見える
+  // (M16 レビュー指摘)。ルートコミットのファイル行はそもそもクリックできない
+  // ようにする。
+  test("clicking a file under a root commit does not jump (no valid `from` to diff against)", async () => {
     const graph = makeGraph();
     setupFetchMock(graph);
     const onOpenFile = vi.fn();
@@ -136,6 +140,6 @@ describe("GraphPanel file-row jump to Diff", () => {
 
     fireEvent.click(screen.getByText("src/a.ts"));
 
-    expect(onOpenFile).toHaveBeenCalledWith({ from: undefined, to: hash(1) }, "src/a.ts");
+    expect(onOpenFile).not.toHaveBeenCalled();
   });
 });

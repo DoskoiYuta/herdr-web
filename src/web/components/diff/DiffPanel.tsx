@@ -42,12 +42,11 @@ import { orderItemsByTree } from "./order.ts";
 import { lineNumberToIndex, sideLines } from "./sideLines.ts";
 import {
   initialBannerState,
-  loadSettings,
   reduceBanner,
-  saveSettings,
   updateBanner as deriveUpdateBanner,
+  useSettings,
 } from "./state.ts";
-import type { BannerState, Settings } from "./state.ts";
+import type { BannerState } from "./state.ts";
 import StatusLine from "./StatusLine.tsx";
 import { buildTree, fileStats, fileStatus, statsDecoration, toGitStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
@@ -133,8 +132,7 @@ export function DiffPanel({
   sendButton,
   onOpenGraph = () => {},
 }: DiffPanelProps) {
-  const [settings, setSettings] = useState<Settings>(() => loadSettings());
-  useEffect(() => saveSettings(settings), [settings]);
+  const [settings, setDiffSettings] = useSettings();
 
   const [viewerSettings, updateViewerSettings] = useViewerSettings();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -762,10 +760,10 @@ export function DiffPanel({
         showTree={viewerSettings.showTree}
         onToggleTree={() => updateViewerSettings({ showTree: !viewerSettings.showTree })}
         onToggleDiffStyle={() =>
-          setSettings((s) => ({ ...s, diffStyle: s.diffStyle === "split" ? "unified" : "split" }))
+          setDiffSettings({ diffStyle: settings.diffStyle === "split" ? "unified" : "split" })
         }
         onToggleOverflow={() =>
-          setSettings((s) => ({ ...s, overflow: s.overflow === "wrap" ? "scroll" : "wrap" }))
+          setDiffSettings({ overflow: settings.overflow === "wrap" ? "scroll" : "wrap" })
         }
         onFontDec={() =>
           updateViewerSettings({ fontSize: Math.max(MIN_FONT_SIZE, viewerSettings.fontSize - 1) })

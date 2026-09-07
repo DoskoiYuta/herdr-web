@@ -245,6 +245,11 @@ export function ToolPane() {
 
   const openFileInDiff = useCallback(
     (range: { from?: string; to: string }, path: string) => {
+      // `from` 無し（ルートコミットの file 行）は、サーバーが空木を commit
+      // として受け付けないため意味のある比較を組めない — GraphRow 側で
+      // クリック自体を止めているが、ここでも二重に弾く（M16 レビュー指摘:
+      // 弾かないと Diff が黙って WORKTREE vs HEAD にすり替わる）。
+      if (range.from === undefined) return;
       void navigate({
         params: (prev) => ({ ...prev, tab: "diff" }),
         search: (prev) => ({ ...prev, from: range.from, to: range.to, path, line: undefined }),

@@ -35,20 +35,45 @@ export function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle("dark", dark);
 }
 
-/** 起動時に一度呼ぶ（main.tsx）。`system` のときは OS 設定の変更にも追従する
- * — 呼び出し元はアプリの寿命いっぱい生きているので購読の解除は不要。 */
+// `system` のときだけ OS のダーク/ライト切替を購読する — 他のテーマに切り替え
+// たら必ず外す（M16 レビュー指摘: 外さないと、後で system 以外へ切替えても
+// OS 側の変更で `dark` クラスが勝手に付け外しされ続ける）。
+let mediaQuery: MediaQueryList | null = null;
+let mediaQueryListener: (() => void) | null = null;
+
+function unregisterSystemListener(): void {
+  if (mediaQuery && mediaQueryListener) {
+    mediaQuery.removeEventListener("change", mediaQueryListener);
+  }
+  mediaQuery = null;
+  mediaQueryListener = null;
+}
+
+function registerSystemListener(): void {
+  // Always tear down any previous subscription first rather than treating a
+  // non-null `mediaQuery` as "already registered, skip" — the latter would
+  // keep listening on a stale `MediaQueryList` if `matchMedia` itself ever
+  // changes (only actually happens in tests, but the cost of getting this
+  // wrong — a permanently stuck theme — is worse than one redundant
+  // add/removeEventListener pair).
+  unregisterSystemListener();
+  if (typeof matchMedia === "undefined") return;
+  mediaQuery = matchMedia("(prefers-color-scheme: dark)");
+  mediaQueryListener = () => applyTheme("system");
+  mediaQuery.addEventListener("change", mediaQueryListener);
+}
+
+/** 起動時に一度呼ぶ（main.tsx）。 */
 export function initTheme(): void {
   const theme = loadTheme();
   applyTheme(theme);
-  if (theme === "system" && typeof matchMedia !== "undefined") {
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-      if (loadTheme() === "system") applyTheme("system");
-    });
-  }
+  if (theme === "system") registerSystemListener();
 }
 
-/** 設定ダイアログのテーマ切替: 保存して即座に反映する。 */
+/** 設定ダイアログのテーマ切替: 保存して即座に反映し、購読を `theme` に合わせる。 */
 export function setTheme(theme: Theme): void {
   saveTheme(theme);
   applyTheme(theme);
+  if (theme === "system") registerSystemListener();
+  else unregisterSystemListener();
 }

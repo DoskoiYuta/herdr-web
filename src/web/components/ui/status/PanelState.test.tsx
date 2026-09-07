@@ -26,4 +26,16 @@ describe("PanelState", () => {
     render(<PanelState icon={AlertTriangle} title="失敗" />);
     expect(screen.queryByRole("button")).toBeNull();
   });
+
+  // 無いと壊れる: スクリーンリーダーが失敗/警告状態を能動的に読み上げない
+  // （role が無いと単なる静的テキストにしか見えない）。
+  test.each([
+    ["error" as const, "alert"],
+    ["warning" as const, "alert"],
+    ["muted" as const, "status"],
+    [undefined, "status"],
+  ])("tone=%s gets role=%s", (tone, role) => {
+    render(<PanelState icon={AlertTriangle} title="状態" tone={tone} />);
+    expect(screen.getByRole(role)).toBeInTheDocument();
+  });
 });

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { healthApi } from "@/lib/api";
 import { readLayout, LAYOUT_STORAGE_KEY } from "@/lib/layout";
-import { loadSettings, saveSettings } from "@/components/diff/state";
+import { useSettings } from "@/components/diff/state";
 import type { DiffStyle, Overflow } from "@/components/diff/state";
 import { loadTheme, setTheme, type Theme } from "@/lib/theme";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
@@ -43,19 +43,11 @@ export interface SettingsDialogProps {
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [theme, setThemeState] = useState<Theme>(() => loadTheme());
   const [viewerSettings, updateViewerSettings] = useViewerSettings();
-  const [diffSettings, setDiffSettings] = useState(() => loadSettings());
+  const [diffSettings, updateDiffSettings] = useSettings();
 
   const handleThemeChange = (next: Theme) => {
     setTheme(next);
     setThemeState(next);
-  };
-
-  const updateDiffSettings = (partial: { diffStyle?: DiffStyle; overflow?: Overflow }) => {
-    setDiffSettings((prev) => {
-      const next = { ...prev, ...partial };
-      saveSettings(next);
-      return next;
-    });
   };
 
   const healthQuery = useQuery({

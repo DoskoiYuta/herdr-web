@@ -207,7 +207,15 @@ export default function GraphRow({
               repo={repo}
               hash={row.hash}
               onOpenFile={
-                onOpenFile && !isUncommitted ? (path) => onOpenFile(row.hash, path) : undefined
+                // ルートコミット（parent 無し）は from を持てない diff にしか
+                // ならない（サーバー側の assertCommitish が空木を commit として
+                // 拒否する）ので、そもそもクリックできないようにする —
+                // クリックできてしまうと「WORKTREE vs HEAD にすり替わる」だけの
+                // 遷移になり、ユーザーには別のファイル/コミットを見せられたよう
+                // に見える。
+                onOpenFile && !isUncommitted && commit.parents.length > 0
+                  ? (path) => onOpenFile(row.hash, path)
+                  : undefined
               }
               note={detailNote}
             />

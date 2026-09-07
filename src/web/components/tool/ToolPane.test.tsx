@@ -454,15 +454,19 @@ describe("ToolPane", () => {
     expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent("src/a.ts::");
   });
 
-  // 無いと壊れる: ルートコミット（parent 無し）のファイル行クリックが
-  // "from" を要求すると、範囲が組めず遷移そのものが失われる。
-  test("clicking a file row under a root commit (no parent) still jumps, with no comparison base", async () => {
+  // 無いと壊れる: `from` 無しの range をそのまま通すと、Diff が黙って
+  // WORKTREE vs HEAD にすり替わって開く — 見ているのが選んだコミットの
+  // ファイルだと誤認する（M16 レビュー指摘）。
+  test("a file-row jump with no comparison base (root commit) does not navigate at all", async () => {
     await renderFocused();
     await selectTab("Graph");
     fireEvent.click(screen.getByTestId("graph-panel-open-file-root"));
 
-    await screen.findByTestId("diff-panel-stub");
-    expect(screen.getByTestId("diff-panel-initial-location")).toHaveTextContent("src/root.ts::");
+    await selectTab("Diff");
+    expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+      "/Users/dev/project:WORKTREE:HEAD",
+    );
+    expect(screen.queryByTestId("diff-panel-initial-location")).not.toBeInTheDocument();
   });
 
   // D9: エージェント非依存。無いと壊れる: session 表示が claude 固有の

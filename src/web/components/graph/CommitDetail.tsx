@@ -93,6 +93,9 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
             // rows are mostly flattened away) and capped — the tree scrolls
             // internally beyond that.
             style={{ height: Math.min(320, 24 * paths.length + 32) }}
+            // ルートコミットなど onOpenFile が渡らないケースは、行をクリック
+            // しても Diff へは飛べない（GraphRow 参照）。
+            aria-disabled={!onOpenFile}
           >
             <PathTree
               paths={paths}

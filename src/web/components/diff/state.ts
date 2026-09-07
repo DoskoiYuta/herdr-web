@@ -1,6 +1,7 @@
-// Pure state helpers for the diff viewer. No DOM, no fetch, no
-// localStorage — everything here is plain functions over plain data so it
-// can be unit tested directly (state.test.ts).
+// Pure state helpers for the diff viewer, plus the one bit of persisted
+// settings this viewer owns (`useSettings`, backed by
+// `@/lib/localStorageStore`) — reducers/derivations here have no DOM/fetch
+// dependency and are unit tested directly (state.test.ts).
 //
 // Trimmed port of tdiff's src/client/state.ts: this repo drops the
 // SSE/EventSource connection tracking, the "server instance" binding
@@ -15,6 +16,8 @@
 //     a freshly fetched patch hash that differs from what's currently
 //     rendered raises a banner instead of forcing a re-render, and the
 //     banner clears once that hash is actually applied.
+
+import { createLocalStorageStore } from "@/lib/localStorageStore";
 
 export type DiffStyle = "split" | "unified";
 export type Overflow = "wrap" | "scroll";
@@ -49,26 +52,28 @@ export function validateSettings(raw: unknown, defaults: Settings = DEFAULT_SETT
 
 const SETTINGS_KEY = "herdr-web:diff-settings";
 
-/** Also read/written by the settings dialog's "Diff の既定表示" (ui-redesign.md
- * §5.5) — kept in this pure module (rather than DiffPanel.tsx) so importing
- * it doesn't drag in DiffPanel's own module, which tests routinely mock
- * wholesale. */
+/** `createLocalStorageStore` (lib/localStorageStore.ts), not a plain
+ * load/save pair: DiffPanel and the settings dialog's "Diff の既定表示"
+ * (ui-redesign.md §5.5) both read this, and a `useState(() => load())` in
+ * each would only pick up the other's write on remount. Kept in this pure
+ * module (rather than DiffPanel.tsx) so importing it doesn't drag in
+ * DiffPanel's own module, which tests routinely mock wholesale. */
+const settingsStore = createLocalStorageStore<Settings>({
+  key: SETTINGS_KEY,
+  defaultValue: DEFAULT_SETTINGS,
+  validate: validateSettings,
+});
+
 export function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    return validateSettings(JSON.parse(raw));
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
+  return settingsStore.get();
 }
 
 export function saveSettings(settings: Settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore — settings just won't persist across reloads
-  }
+  settingsStore.set(settings);
+}
+
+export function useSettings(): [Settings, (partial: Partial<Settings>) => void] {
+  return settingsStore.useStore();
 }
 
 // ---------------------------------------------------------------------------

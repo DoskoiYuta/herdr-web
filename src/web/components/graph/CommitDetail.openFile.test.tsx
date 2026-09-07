@@ -54,6 +54,20 @@ describe("CommitDetail file row", () => {
     expect(onOpenFile).toHaveBeenCalledWith("src/a.ts");
   });
 
+  // 無いと壊れる: ルートコミット等で onOpenFile が渡らないとき、ツリーが
+  // クリック可能に見えたまま何も起きないと「壊れている」ように見える。
+  test("marks the tree aria-disabled when no onOpenFile is given (e.g. a root commit)", async () => {
+    renderDetail(undefined);
+    await waitFor(() => expect(screen.getByRole("tree")).toBeInTheDocument());
+    expect(screen.getByRole("tree").parentElement).toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("does not mark the tree aria-disabled when onOpenFile is given", async () => {
+    renderDetail(vi.fn());
+    await waitFor(() => expect(screen.getByRole("tree")).toBeInTheDocument());
+    expect(screen.getByRole("tree").parentElement).toHaveAttribute("aria-disabled", "false");
+  });
+
   test("has no 'diff を見る' button (removed in favor of the file-row jump)", async () => {
     renderDetail();
     await waitFor(() => expect(screen.getByRole("tree")).toBeInTheDocument());

@@ -27,8 +27,12 @@ const TONE_CLASS: Record<PanelStateTone, string> = {
 };
 
 export function PanelState({ icon: Icon, title, description, action, tone = "muted" }: PanelStateProps) {
+  const role = tone === "error" || tone === "warning" ? "alert" : "status";
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
+    <div
+      role={role}
+      className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center"
+    >
       <Icon className={`size-6 ${TONE_CLASS[tone]}`} aria-hidden="true" />
       <p className={`text-sm font-medium ${TONE_CLASS[tone]}`}>{title}</p>
       {description && <p className="text-xs text-muted-foreground">{description}</p>}
