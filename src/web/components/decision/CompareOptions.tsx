@@ -54,8 +54,8 @@ export function CompareOptions({
                 toggle(opt.label);
               }
             }}
-            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border p-3 text-left ${
-              checked ? "border-primary bg-accent ring-1 ring-primary" : "border-border"
+            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border border-border p-3 text-left ${
+              checked ? "bg-accent" : ""
             }`}
           >
             <div className="flex items-center gap-1.5 text-sm font-medium">

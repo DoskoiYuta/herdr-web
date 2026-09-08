@@ -9,12 +9,14 @@ export function CodeBlock({ language, text }: { language: string; text: string }
   const isDark = useIsDark();
   if (isTooLarge(text)) return <TooLargeBlock text={text} />;
   return (
-    <File
-      file={{ name: `block.${language}`, contents: text, lang: language }}
-      options={{
-        theme: { dark: "pierre-dark", light: "pierre-light" },
-        themeType: isDark ? "dark" : "light",
-      }}
-    />
+    <div className="overflow-hidden rounded-md">
+      <File
+        file={{ name: `block.${language}`, contents: text, lang: language }}
+        options={{
+          theme: { dark: "pierre-dark", light: "pierre-light" },
+          themeType: isDark ? "dark" : "light",
+        }}
+      />
+    </div>
   );
 }

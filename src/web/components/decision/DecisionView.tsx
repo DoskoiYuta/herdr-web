@@ -124,13 +124,13 @@ const ITEM_KIND_LABEL: Record<DecisionItem["kind"], string> = {
   single: "単一選択",
   multi: "複数選択",
   text: "自由記述",
-  confirm: "確認",
+  confirm: "はい・いいえ",
 };
 
-/** 設問見出し用の番号バッジ。design.pen P3 の丸数字に合わせる。 */
+/** 設問見出し用の番号バッジ。design.pen P3v2 の丸数字（塗り潰し）に合わせる。 */
 function ItemNumberBadge({ index }: { index: number }) {
   return (
-    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-medium text-background">
       {index + 1}
     </span>
   );
@@ -185,6 +185,79 @@ function DecisionAnswerView({
   );
 }
 
+/** 選択肢 1 行 (design.pen P3v2)。枠線なし、選択中だけ `bg-accent`。ラジオ/
+ * チェックボックスは実要素として残し（既存テストが `role=radio` で拾う）、
+ * 見た目は 14px の丸/角に絞る。 */
+function DecisionOptionRow({
+  kind,
+  itemId,
+  label,
+  index,
+  checked,
+  recommended,
+  description,
+  preview,
+  worktreeRoot,
+  onOpenLocation,
+  onToggle,
+}: {
+  kind: "single" | "multi";
+  itemId: string;
+  label: string;
+  index: number;
+  checked: boolean;
+  recommended: boolean;
+  description: string | null;
+  preview: DecisionItem["options"][number]["preview"];
+  worktreeRoot: string | null;
+  onOpenLocation?: OpenLocation;
+  onToggle: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-[7px] text-[13px]",
+        checked && "bg-accent",
+      )}
+    >
+      <input
+        type={kind === "single" ? "radio" : "checkbox"}
+        name={`decision-item-${itemId}`}
+        checked={checked}
+        className="mt-0.5 size-3.5 shrink-0"
+        onChange={(e) => onToggle(e.target.checked)}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className={cn(checked && "font-semibold")}>{label}</span>
+          {recommended && (
+            <span
+              className="rounded border px-1 text-[10px]"
+              style={{ borderColor: "var(--kind-decision)", color: "var(--kind-decision)" }}
+            >
+              推奨
+            </span>
+          )}
+        </span>
+        {description && <span className="block text-xs text-muted-foreground">{description}</span>}
+        {preview.length > 0 && (
+          <span className="mt-1 flex flex-col gap-1.5 rounded bg-muted p-2 text-xs">
+            {preview.map((block, i) => (
+              <BlockView
+                key={i}
+                block={block}
+                worktreeRoot={worktreeRoot}
+                onOpenLocation={onOpenLocation}
+              />
+            ))}
+          </span>
+        )}
+      </span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{index + 1}</span>
+    </label>
+  );
+}
+
 function DecisionItemForm({
   item,
   index,
@@ -204,24 +277,26 @@ function DecisionItemForm({
   worktreeRoot: string | null;
   onOpenLocation?: OpenLocation;
 }) {
+  const [noteOpen, setNoteOpen] = useState(answer.note !== null);
   const setSelected = (selected: string[]) => onChange({ ...answer, selected });
   const setOther = (other: string) =>
     onChange({ ...answer, other: other.length > 0 ? other : null });
   const setNote = (note: string) => onChange({ ...answer, note: note.length > 0 ? note : null });
+  const otherChecked = (answer.other ?? "").trim().length > 0;
 
   return (
     <fieldset
-      className="flex flex-col gap-2 border-b border-border pb-4"
+      className="flex flex-col gap-2 border-t border-border pt-3.5"
       data-testid={`decision-item-${item.id}`}
     >
-      <legend className="flex items-center gap-1.5 text-sm font-medium">
+      <legend className="flex items-center gap-1.5">
         <ItemNumberBadge index={index} />
-        {item.header}
-        <span className="text-xs font-normal text-muted-foreground">
-          {ITEM_KIND_LABEL[item.kind]}・{item.required === false ? "任意" : "必須"}
+        <span className="text-sm font-semibold">{item.header}</span>
+        <span className="text-[11px] text-muted-foreground">
+          {ITEM_KIND_LABEL[item.kind]} · {item.required === false ? "任意" : "必須"}
         </span>
       </legend>
-      <p className="text-sm">{item.question}</p>
+      <p className="text-[13px]">{item.question}</p>
 
       {(item.kind === "single" || item.kind === "multi") && compare && (
         <>
@@ -233,11 +308,24 @@ function DecisionItemForm({
             onOpenLocation={onOpenLocation}
           />
           {(item.allowOther ?? true) && (
-            <label className="flex items-center gap-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">その他:</span>
+            <label
+              className={cn(
+                "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-[7px] text-[13px]",
+                otherChecked && "bg-accent",
+              )}
+            >
+              <input
+                type={item.kind === "single" ? "radio" : "checkbox"}
+                name={`decision-item-${item.id}`}
+                checked={otherChecked}
+                readOnly
+                className="size-3.5 shrink-0"
+              />
+              <span className="shrink-0 text-muted-foreground">その他</span>
               <input
                 type="text"
-                className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-sm"
+                placeholder="自由記述…"
+                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-[13px]"
                 value={answer.other ?? ""}
                 onChange={(e) => setOther(e.target.value)}
                 aria-label={`${item.header} その他`}
@@ -248,73 +336,52 @@ function DecisionItemForm({
       )}
 
       {(item.kind === "single" || item.kind === "multi") && !compare && (
-        <div className="flex flex-col gap-1.5">
-          {item.options.map((opt, optIndex) => {
-            const checked = answer.selected.includes(opt.label);
-            return (
-              <div key={opt.label} className="flex flex-col gap-1">
-                <label
-                  className={cn(
-                    "flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm",
-                    checked ? "border-primary bg-accent ring-1 ring-primary" : "border-border",
-                  )}
-                >
-                  <input
-                    type={item.kind === "single" ? "radio" : "checkbox"}
-                    name={`decision-item-${item.id}`}
-                    checked={checked}
-                    className="mt-0.5"
-                    onChange={(e) => {
-                      if (item.kind === "single") {
-                        setSelected(e.target.checked ? [opt.label] : []);
-                      } else {
-                        setSelected(
-                          e.target.checked
-                            ? [...answer.selected, opt.label]
-                            : answer.selected.filter((s) => s !== opt.label),
-                        );
-                      }
-                    }}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium">{opt.label}</span>
-                    {opt.recommended && (
-                      <span className="ml-1 rounded bg-primary/10 px-1 text-[10px] text-primary">
-                        推奨
-                      </span>
-                    )}
-                    {opt.description && (
-                      <span className="block text-xs text-muted-foreground">{opt.description}</span>
-                    )}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{optIndex + 1}</span>
-                </label>
-                {opt.preview.length > 0 && (
-                  <details className="ml-5">
-                    <summary className="cursor-pointer text-xs text-muted-foreground">
-                      プレビュー
-                    </summary>
-                    <div className="flex flex-col gap-1.5 pt-1">
-                      {opt.preview.map((block, i) => (
-                        <BlockView
-                          key={i}
-                          block={block}
-                          worktreeRoot={worktreeRoot}
-                          onOpenLocation={onOpenLocation}
-                        />
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            );
-          })}
+        <div className="flex flex-col gap-0.5">
+          {item.options.map((opt, optIndex) => (
+            <DecisionOptionRow
+              key={opt.label}
+              kind={item.kind as "single" | "multi"}
+              itemId={item.id}
+              label={opt.label}
+              index={optIndex}
+              checked={answer.selected.includes(opt.label)}
+              recommended={opt.recommended}
+              description={opt.description}
+              preview={opt.preview}
+              worktreeRoot={worktreeRoot}
+              onOpenLocation={onOpenLocation}
+              onToggle={(checked) => {
+                if (item.kind === "single") {
+                  setSelected(checked ? [opt.label] : []);
+                } else {
+                  setSelected(
+                    checked
+                      ? [...answer.selected, opt.label]
+                      : answer.selected.filter((s) => s !== opt.label),
+                  );
+                }
+              }}
+            />
+          ))}
           {(item.allowOther ?? true) && (
-            <label className="flex items-center gap-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">その他:</span>
+            <label
+              className={cn(
+                "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-[7px] text-[13px]",
+                otherChecked && "bg-accent",
+              )}
+            >
+              <input
+                type={item.kind === "single" ? "radio" : "checkbox"}
+                name={`decision-item-${item.id}`}
+                checked={otherChecked}
+                readOnly
+                className="size-3.5 shrink-0"
+              />
+              <span className="shrink-0 text-muted-foreground">その他</span>
               <input
                 type="text"
-                className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-sm"
+                placeholder="自由記述…"
+                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-[13px]"
                 value={answer.other ?? ""}
                 onChange={(e) => setOther(e.target.value)}
                 aria-label={`${item.header} その他`}
@@ -326,7 +393,7 @@ function DecisionItemForm({
 
       {item.kind === "text" && (
         <textarea
-          className="min-h-16 rounded-md border border-border bg-background px-1.5 py-1 text-sm"
+          className="min-h-16 rounded-md border border-border bg-background px-1.5 py-1 text-[13px]"
           value={answer.other ?? ""}
           onChange={(e) => setOther(e.target.value)}
           aria-label={item.header}
@@ -341,8 +408,8 @@ function DecisionItemForm({
               <label
                 key={value}
                 className={cn(
-                  "cursor-pointer rounded-md border px-3 py-1.5 text-sm",
-                  checked ? "border-primary bg-accent" : "border-border",
+                  "cursor-pointer rounded-md border px-3 py-1.5 text-[13px]",
+                  checked ? "border-transparent bg-accent ring-1 ring-ring" : "border-border",
                 )}
               >
                 <input
@@ -359,16 +426,26 @@ function DecisionItemForm({
         </div>
       )}
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted-foreground">メモ（任意）</span>
-        <textarea
-          placeholder="エージェントに伝える補足があれば"
-          className="min-h-16 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-          value={answer.note ?? ""}
-          onChange={(e) => setNote(e.target.value)}
-          aria-label={`${item.header} メモ`}
-        />
-      </label>
+      {noteOpen ? (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">メモ</span>
+          <textarea
+            placeholder="エージェントに伝える補足があれば"
+            className="min-h-10 rounded-md border border-border bg-background px-2 py-1.5 text-[13px]"
+            value={answer.note ?? ""}
+            onChange={(e) => setNote(e.target.value)}
+            aria-label={`${item.header} メモ`}
+          />
+        </label>
+      ) : (
+        <button
+          type="button"
+          className="w-fit text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setNoteOpen(true)}
+        >
+          ＋ メモを追加
+        </button>
+      )}
     </fieldset>
   );
 }
@@ -577,7 +654,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
       <header className="flex shrink-0 flex-col gap-1.5 border-b border-border px-3 py-2.5">
         <div className="flex items-center gap-2">
           <KindIcon kind="decision" className="size-5 shrink-0" />
-          <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">
+          <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold">
             {decision.spec.title ?? decision.spec.items[0]?.header ?? "判断依頼"}
           </h2>
           <StatusChip
@@ -647,18 +724,15 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
       )}
 
       {isOpen && decision.spec.context.length > 0 && (
-        <div className="shrink-0 px-3 py-2">
-          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
-            <p className="text-xs font-medium text-muted-foreground">コンテキスト</p>
-            {decision.spec.context.map((block, i) => (
-              <BlockView
-                key={i}
-                block={block}
-                worktreeRoot={decision.worktreeRoot}
-                onOpenLocation={onOpenLocation}
-              />
-            ))}
-          </div>
+        <div className="flex shrink-0 flex-col gap-2 px-3 py-2 text-sm">
+          {decision.spec.context.map((block, i) => (
+            <BlockView
+              key={i}
+              block={block}
+              worktreeRoot={decision.worktreeRoot}
+              onOpenLocation={onOpenLocation}
+            />
+          ))}
         </div>
       )}
 
@@ -682,29 +756,25 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           ))
         ) : (
           <>
-            <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-              <p className="text-xs font-medium text-muted-foreground">
-                確定した回答（読み取り専用）
-              </p>
-              {decision.spec.items.map((item, index) => (
+            {decision.spec.items.map((item, index) => (
+              <div key={item.id} className={cn("border-border pt-3.5", index > 0 && "border-t")}>
                 <DecisionAnswerView
-                  key={item.id}
                   item={item}
                   index={index}
                   answer={decision.answer?.answers[item.id]}
                 />
-              ))}
-            </div>
+              </div>
+            ))}
 
             {decision.spec.context.length > 0 && (
               <details
                 data-testid="decision-context"
-                className="flex flex-col gap-2 rounded-lg border border-border p-3"
+                className="flex flex-col gap-2 border-t border-border pt-3.5"
               >
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-                  コンテキスト（折りたたみ）
+                  コンテキスト
                 </summary>
-                <div className="flex flex-col gap-2 pt-1">
+                <div className="flex flex-col gap-2 pt-1 text-[13px]">
                   {decision.spec.context.map((block, i) => (
                     <BlockView
                       key={i}

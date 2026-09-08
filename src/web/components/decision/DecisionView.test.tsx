@@ -211,7 +211,9 @@ describe("DecisionView", () => {
     renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument());
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    // A/B のカード自体はラジオではなくクリック可能な div。ラジオが残るのは
+    // 「その他」欄の選択状態表示用の 1 個だけ。
+    expect(screen.queryAllByRole("radio")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "A" }));
     fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
@@ -654,7 +656,46 @@ describe("DecisionView", () => {
     const details = (await screen.findByTestId("decision-context")) as HTMLDetailsElement;
     expect(details.open).toBe(false);
 
-    fireEvent.click(screen.getByText("コンテキスト（折りたたみ）"));
+    fireEvent.click(screen.getByText("コンテキスト"));
     expect(details.open).toBe(true);
+  });
+
+  // 無いと壊れる: 「その他」欄に入力しても選択状態が変わらないと、必須設問で
+  // 自由記述だけ書いても回答済みに見えず、送信していいか判断できない。
+  test("typing into the allowOther field marks it as the selected option", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    const otherInput = screen.getByLabelText("どちらにしますか その他");
+    const otherRadio = screen.getByRole("radio", { name: "その他" });
+    expect(otherRadio).not.toBeChecked();
+
+    fireEvent.change(otherInput, { target: { value: "C案" } });
+    expect(otherRadio).toBeChecked();
+  });
+
+  // 無いと壊れる: 下書きに保存済みの note が最初は畳まれたままだと、
+  // 書いたメモが見えなくなり回答の中身が失われて見える。
+  test("a note already present on the answer starts the memo field expanded", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+
+    const first = renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+    expect(screen.queryByLabelText("どちらにしますか メモ")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ メモを追加" }));
+    fireEvent.change(screen.getByLabelText("どちらにしますか メモ"), {
+      target: { value: "念のため" },
+    });
+    first.unmount();
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("どちらにしますか メモ")).toHaveValue("念のため"),
+    );
   });
 });
