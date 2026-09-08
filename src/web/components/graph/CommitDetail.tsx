@@ -92,11 +92,6 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
             {query.data.body ? `\n\n${query.data.body}` : ""}
           </pre>
           <div
-            className="rounded-sm border border-border"
-            // Sized to the file count (rows are ~24px; ancestor directory
-            // rows are mostly flattened away) and capped — the tree scrolls
-            // internally beyond that.
-            style={{ height: Math.min(320, 24 * paths.length + 32) }}
             // ルートコミットなど onOpenFile が渡らないケースは、行をクリック
             // しても Diff へは飛べない（GraphRow 参照）。
             aria-disabled={!onOpenFile}
@@ -110,6 +105,10 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
               selectedPath={null}
               search={false}
               onSelectFile={onOpenFile}
+              // No cap and no internal scroll here (unlike Files/Diff): the
+              // tree draws at full content height and scrolls with the rest
+              // of Graph's single virtualized list.
+              style={{ height: "auto" }}
             />
           </div>
         </div>
