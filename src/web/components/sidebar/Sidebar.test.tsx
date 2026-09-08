@@ -252,6 +252,44 @@ describe("Sidebar", () => {
     expect(props.onLayoutChange).toHaveBeenCalledWith({ width: 240, collapsed: false });
   });
 
+  // 無いと壊れる: 折りたたみ中、workspace を切り替える手段が Inbox しかなくなる
+  // (design.pen P14: アイコンレールに workspace ごとの状態ドット + 番号)。
+  test("clicking a workspace's dot in the collapsed icon rail focuses that workspace's pane", () => {
+    const props = defaultProps();
+    props.layout = { width: 240, collapsed: true };
+    props.repos = [
+      repo({
+        key: "/a/.git",
+        worktrees: [
+          {
+            root: "/a",
+            branch: "main",
+            isMain: true,
+            panes: [pane({ paneId: "p-a", workspaceId: "wa" })],
+          },
+        ],
+      }),
+      repo({
+        key: "/b/.git",
+        worktrees: [
+          {
+            root: "/b",
+            branch: "main",
+            isMain: true,
+            panes: [pane({ paneId: "p-b", workspaceId: "wb", focused: true })],
+          },
+        ],
+      }),
+    ];
+    renderWithStore(<Sidebar {...props} />);
+
+    fireEvent.click(screen.getByLabelText("wa を開く"));
+    expect(props.onSelectPane).toHaveBeenCalledWith("p-a");
+
+    fireEvent.click(screen.getByLabelText("wb を開く"));
+    expect(props.onSelectPane).toHaveBeenCalledWith("p-b");
+  });
+
   test("the collapse button persists collapsed=true via onLayoutChange", () => {
     const props = defaultProps();
     renderWithStore(<Sidebar {...props} />);

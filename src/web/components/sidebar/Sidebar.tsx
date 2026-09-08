@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Inbox as InboxIcon, PanelLeft, Unplug, Settings as SettingsIcon } from "lucide-react";
+import type { AgentStatus } from "@contract/herdr";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +10,30 @@ import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { useInboxCounts } from "@/components/inbox/hooks/useInboxCounts";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/layout";
 import { repoDisplayNames } from "@/lib/repoDisplay";
+import { groupByWorkspace, type WorkspaceGroup } from "@/lib/repoWorkspaces";
 import { cn } from "@/lib/utils";
 import { RepoGroup } from "./RepoGroup";
 import type { AskFileLocation } from "./AskSessionRow";
+
+/** 折りたたみ時のアイコンレール用: workspace の代表状態（blocked を最優先）。 */
+function workspaceStatus(workspace: WorkspaceGroup): AgentStatus {
+  let working = false;
+  let done = false;
+  for (const pane of workspace.panes) {
+    if (pane.agentStatus === "blocked") return "blocked";
+    if (pane.agentStatus === "working") working = true;
+    else if (pane.agentStatus === "done") done = true;
+  }
+  if (working) return "working";
+  if (done) return "done";
+  return "idle";
+}
+
+/** フォーカス中 pane（無ければ先頭 pane）— RepoWorkspaceRow の行クリックと同じ規約。 */
+function workspaceTarget(workspace: WorkspaceGroup): string | null {
+  const focused = workspace.panes.find((p) => p.focused);
+  return (focused ?? workspace.panes[0])?.paneId ?? null;
+}
 
 export type SidebarLayout = { width: number; collapsed: boolean };
 
@@ -87,14 +109,9 @@ export function Sidebar({
   const status = connectionStatus(connection, herdrConnected);
 
   const displayNames = useMemo(() => repoDisplayNames(repos), [repos]);
-  const totals = useMemo(
-    () =>
-      repos.reduce(
-        (acc, r) => ({ blocked: acc.blocked + r.counts.blocked, done: acc.done + r.counts.done }),
-        { blocked: 0, done: 0 },
-      ),
-    [repos],
-  );
+  // 折りたたみ時のアイコンレール用: workspace ごとの状態ドット + 番号
+  // (design.pen P14)。ask workspace は他の一覧同様に除外する。
+  const collapsedRailWorkspaces = useMemo(() => repos.flatMap(groupByWorkspace), [repos]);
 
   const toggleRepo = (key: string) => setCollapsedRepos((prev) => toggleInSet(prev, key));
 
@@ -125,8 +142,25 @@ export function Sidebar({
             </Badge>
           )}
         </button>
-        {totals.blocked > 0 && <AgentStatusDot status="blocked" label={String(totals.blocked)} />}
-        {totals.done > 0 && <AgentStatusDot status="done" label={String(totals.done)} />}
+        {collapsedRailWorkspaces.map((workspace, index) => {
+          const target = workspaceTarget(workspace);
+          return (
+            <button
+              key={workspace.workspaceId}
+              type="button"
+              onClick={() => target && onSelectPane(target)}
+              disabled={target === null}
+              aria-label={`${workspace.workspaceLabel} を開く`}
+              className="rounded-md p-0.5 hover:bg-muted"
+            >
+              <AgentStatusDot
+                status={workspaceStatus(workspace)}
+                label={String(index + 1)}
+                className="text-xs"
+              />
+            </button>
+          );
+        })}
         <span className="flex-1" />
         <span
           className={cn("size-2 rounded-full", status.ok ? "bg-green-500" : "bg-destructive")}
