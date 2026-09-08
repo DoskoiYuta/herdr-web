@@ -6,7 +6,7 @@ import type {
   DecisionItemAnswer,
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { PaneRow, Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
@@ -20,7 +20,7 @@ import {
   setDecisionDraft,
 } from "@/lib/decisionDrafts";
 import { Button } from "@/components/ui/button";
-import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
+import { AgentStatusDot, STATUS_META } from "@/components/ui/status/AgentStatusDot";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { KindIcon } from "@/components/ui/status/KindIcon";
 import { StatusChip } from "@/components/ui/status/StatusChip";
@@ -101,6 +101,17 @@ function worktreeBasename(root: string): string {
   const trimmed = root.replace(/\/+$/, "");
   const idx = trimmed.lastIndexOf("/");
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
+
+/** `{repo name} · {branch}` for the meta row (design.pen P3: "herdr-web ·
+ * main") — falls back to just the worktree basename when the worktree isn't
+ * (yet) in herdr state, e.g. a decision from a repo not currently open. */
+function worktreeLabel(repos: Repo[], root: string): string {
+  for (const repo of repos) {
+    const worktree = repo.worktrees.find((w) => w.root === root);
+    if (worktree) return worktree.branch ? `${repo.name} · ${worktree.branch}` : repo.name;
+  }
+  return worktreeBasename(root);
 }
 
 /** `session <先頭4>…<末尾4>` — 名前に Claude を出さない (docs/ui-redesign.md §5.4)。 */
@@ -348,14 +359,16 @@ function DecisionItemForm({
         </div>
       )}
 
-      <input
-        type="text"
-        placeholder="メモ (任意)"
-        className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs"
-        value={answer.note ?? ""}
-        onChange={(e) => setNote(e.target.value)}
-        aria-label={`${item.header} メモ`}
-      />
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-muted-foreground">メモ（任意）</span>
+        <textarea
+          placeholder="エージェントに伝える補足があれば"
+          className="min-h-16 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          value={answer.note ?? ""}
+          onChange={(e) => setNote(e.target.value)}
+          aria-label={`${item.header} メモ`}
+        />
+      </label>
     </fieldset>
   );
 }
@@ -547,19 +560,24 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
         <nav className="flex items-center gap-1">
-          <button type="button" onClick={onClose} className="hover:text-foreground hover:underline">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-1 hover:text-foreground hover:underline"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
             Decisions
           </button>
           <span>/</span>
-          <span>判断依頼 …{id.slice(-4)}</span>
+          <span>…{id.slice(-4)}</span>
         </nav>
         <kbd className="rounded border border-border px-1 py-0.5">Esc で閉じる</kbd>
       </div>
 
-      <header className="flex shrink-0 flex-col gap-1 border-b border-border px-3 py-2">
+      <header className="flex shrink-0 flex-col gap-1.5 border-b border-border px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <KindIcon kind="decision" />
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+          <KindIcon kind="decision" className="size-5 shrink-0" />
+          <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">
             {decision.spec.title ?? decision.spec.items[0]?.header ?? "判断依頼"}
           </h2>
           <StatusChip
@@ -571,17 +589,17 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           {settling ? (
             <AgentStatusDot status="unknown" label="状態を取得中" className="shrink-0" />
           ) : pane ? (
-            <AgentStatusDot
-              status={pane.agentStatus}
-              label={agentLabel(decision.agent, pane)}
-              className="shrink-0"
-            />
+            <span className="flex shrink-0 items-center gap-1">
+              <AgentStatusDot status={pane.agentStatus} className="shrink-0" />
+              <span>{agentLabel(decision.agent, pane)}</span>
+              <span>· {STATUS_META[pane.agentStatus].label}</span>
+            </span>
           ) : (
             <span className="shrink-0">{decision.agent ?? "?"} · pane 消失</span>
           )}
           {decision.worktreeRoot && (
             <span className="min-w-0 shrink truncate" title={decision.worktreeRoot}>
-              {worktreeBasename(decision.worktreeRoot)}
+              {worktreeLabel(state.repos, decision.worktreeRoot)}
             </span>
           )}
           {decision.claudeSessionId && (
@@ -628,9 +646,9 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         </div>
       )}
 
-      {decision.spec.context.length > 0 &&
-        (isOpen ? (
-          <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
+      {isOpen && decision.spec.context.length > 0 && (
+        <div className="shrink-0 px-3 py-2">
+          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <p className="text-xs font-medium text-muted-foreground">コンテキスト</p>
             {decision.spec.context.map((block, i) => (
               <BlockView
@@ -641,24 +659,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
               />
             ))}
           </div>
-        ) : (
-          <details
-            data-testid="decision-context"
-            className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2"
-          >
-            <summary className="cursor-pointer text-xs text-muted-foreground">context</summary>
-            <div className="flex flex-col gap-2 pt-1">
-              {decision.spec.context.map((block, i) => (
-                <BlockView
-                  key={i}
-                  block={block}
-                  worktreeRoot={decision.worktreeRoot}
-                  onOpenLocation={onOpenLocation}
-                />
-              ))}
-            </div>
-          </details>
-        ))}
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col gap-[18px] px-3 py-2">
         {isOpen ? (
@@ -679,33 +681,58 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
             />
           ))
         ) : (
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              確定した回答（読み取り専用）
-            </p>
-            {decision.spec.items.map((item, index) => (
-              <DecisionAnswerView
-                key={item.id}
-                item={item}
-                index={index}
-                answer={decision.answer?.answers[item.id]}
-              />
-            ))}
-          </div>
+          <>
+            <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                確定した回答（読み取り専用）
+              </p>
+              {decision.spec.items.map((item, index) => (
+                <DecisionAnswerView
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  answer={decision.answer?.answers[item.id]}
+                />
+              ))}
+            </div>
+
+            {decision.spec.context.length > 0 && (
+              <details
+                data-testid="decision-context"
+                className="flex flex-col gap-2 rounded-lg border border-border p-3"
+              >
+                <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                  コンテキスト（折りたたみ）
+                </summary>
+                <div className="flex flex-col gap-2 pt-1">
+                  {decision.spec.context.map((block, i) => (
+                    <BlockView
+                      key={i}
+                      block={block}
+                      worktreeRoot={decision.worktreeRoot}
+                      onOpenLocation={onOpenLocation}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
+          </>
         )}
       </div>
 
       {error && <p className="shrink-0 px-3 py-1 text-xs text-destructive">{error}</p>}
 
       {isOpen && (
-        <footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2">
-          <Button type="button" onClick={() => void submit()} disabled={busy}>
-            送信
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => void dismiss()} disabled={busy}>
-            却下
-          </Button>
+        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-2">
           <span className="text-xs text-muted-foreground">1–9 で選択 · ⌘Enter で送信</span>
+          <span className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => void dismiss()} disabled={busy}>
+              却下
+            </Button>
+            <Button type="button" onClick={() => void submit()} disabled={busy}>
+              回答を送信
+            </Button>
+          </span>
         </footer>
       )}
     </div>
