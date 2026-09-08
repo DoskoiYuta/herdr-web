@@ -253,6 +253,14 @@ export function RepoWorkspaceRow({
             />
             {renameError && <p className="text-xs text-destructive">{renameError}</p>}
             <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setRenameOpen(false)}
+                disabled={renameSubmitting}
+              >
+                キャンセル
+              </Button>
               <Button type="submit" disabled={renameSubmitting}>
                 保存
               </Button>
@@ -272,6 +280,14 @@ export function RepoWorkspaceRow({
           </DialogHeader>
           {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
           <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleteSubmitting}
+            >
+              キャンセル
+            </Button>
             <Button
               type="button"
               variant="destructive"
