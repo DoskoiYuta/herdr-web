@@ -82,6 +82,48 @@ describe("createFocusTracker", () => {
     expect(tracker.get().worktreeRoot).toBe(declaredRoot);
   });
 
+  // 無いと壊れる: poll が effectiveCwd（= 宣言済みの root）で前回値と比較すると、
+  // 宣言中は本体が本当に移動しても値が変わって見えず、patchPane が二度と呼ばれない
+  // ため reducer の自動解除が一生発火せず、宣言が永久に残る。
+  test("polling notices the pane's real cwd drifting even while a worktree override is active, and drops the override", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const state = createHerdrState(gw);
+    await settle();
+    const paneId = state.get().focusedPaneId!;
+    const declaredRoot = "/declared/wt";
+    const movedRoot = "/moved/elsewhere";
+    const resolver = fakeResolver({
+      [declaredRoot]: {
+        root: declaredRoot,
+        commonDir: `${declaredRoot}/.git`,
+        branch: "wt",
+        isMain: false,
+      },
+      [movedRoot]: {
+        root: movedRoot,
+        commonDir: `${movedRoot}/.git`,
+        branch: "moved",
+        isMain: false,
+      },
+    });
+    const tracker = createFocusTracker({ state, gateway: gw, resolver, pollMs: 10 });
+    tracker.onChange(() => {});
+    await settle();
+
+    state.setWorktreeOverride(paneId, declaredRoot);
+    await settle();
+    expect(tracker.get().worktreeRoot).toBe(declaredRoot);
+
+    // Mutate the gateway's pane record directly (no pane_updated event), simulating
+    // the agent binary itself really moving while the override is in effect.
+    gw.setForegroundCwdSilently(paneId, movedRoot);
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(state.get().paneWorktreeOverrides.has(paneId)).toBe(false);
+    expect(tracker.get().worktreeRoot).toBe(movedRoot);
+    tracker.stop();
+  });
+
   test("polls the focused pane and re-resolves when foreground_cwd drifts without an event", async () => {
     const gw = createFakeHerdr(snapshot);
     const state = createHerdrState(gw);

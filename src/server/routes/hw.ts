@@ -28,10 +28,23 @@ export function hwRoutes(deps: HwRoutesDeps) {
     })
     .post("/worktree", vValidator("json", SetWorktreeOverrideRequestSchema), async (c) => {
       const { pane, root } = c.req.valid("json");
-      if (!deps.state.get().panes.has(pane))
-        return c.json({ error: "pane not found" as const }, 404);
+      const paneInfo = deps.state.get().panes.get(pane);
+      if (!paneInfo) return c.json({ error: "pane not found" as const }, 404);
       const info = await deps.resolver.resolve(root).catch(() => null);
       if (!info) return c.json({ error: "not a git worktree" as const }, 400);
+
+      // The pane's actual (herdr-reported) worktree already matches — declaring
+      // it again would be a harmless no-op at best, but a wrong 誤宣言 (e.g. a
+      // hook mis-extracting a path) landing here must not create an override
+      // that then has to be manually cleared. Clear any stale override instead.
+      const rawCwd = paneInfo.foreground_cwd ?? paneInfo.cwd ?? null;
+      const rawInfo = rawCwd ? await deps.resolver.resolve(rawCwd).catch(() => null) : null;
+      if (rawInfo && rawInfo.root === info.root) {
+        deps.state.clearWorktreeOverride(pane);
+        const body: WorktreeOverrideResponse = { pane, root: info.root };
+        return c.json(body, 200);
+      }
+
       const result = deps.state.setWorktreeOverride(pane, info.root);
       if (!result.ok) return c.json({ error: "pane not found" as const }, 404);
       const body: WorktreeOverrideResponse = { pane, root: info.root };

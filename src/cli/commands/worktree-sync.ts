@@ -1,4 +1,5 @@
 import { flagString, parseArgs } from "../args";
+import { resolveLocalGit } from "../git";
 import { type CommandDeps, type CommandResult, EXIT_OK } from "./types";
 
 type HookJson = {
@@ -33,11 +34,24 @@ function extractFromToolResponse(response: unknown): string | null {
   return null;
 }
 
-/** Path to declare as the worktree for an `EnterWorktree` hook event, or null if none can be found. */
-export function extractWorktreePath(hook: HookJson): string | null {
-  return (
-    extractFromToolResponse(hook.tool_response) ?? (typeof hook.cwd === "string" ? hook.cwd : null)
-  );
+/**
+ * Path to declare as the worktree for an `EnterWorktree` hook event, or null if
+ * none can be found.
+ *
+ * Claude Code's hook `cwd` DOES follow `EnterWorktree` (unlike a shell hook's
+ * cwd, which historically didn't) — so it's tried first, and only trusted if
+ * it actually resolves as a git repo (`isGitPath`), since a stale or
+ * unrelated `cwd` must not get declared as the worktree. `tool_response` is
+ * the fallback for whichever of its shapes we can find a path in.
+ */
+export async function extractWorktreePath(
+  hook: HookJson,
+  isGitPath: (path: string) => Promise<boolean> = async (path) =>
+    (await resolveLocalGit(path)) !== null,
+): Promise<string | null> {
+  const hookCwd = typeof hook.cwd === "string" ? hook.cwd : null;
+  if (hookCwd && (await isGitPath(hookCwd))) return hookCwd;
+  return extractFromToolResponse(hook.tool_response);
 }
 
 /**
@@ -78,7 +92,7 @@ export async function worktreeSyncCommand(
   }
 
   if (hook.tool_name === "EnterWorktree") {
-    const path = extractWorktreePath(hook);
+    const path = await extractWorktreePath(hook);
     if (!path) return { exitCode: EXIT_OK, stdout: "" };
     const result = await deps.client.setWorktreeOverride(paneId, path);
     if (!result.ok) {

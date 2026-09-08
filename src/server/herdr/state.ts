@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { match } from "ts-pattern";
 import type {
   HerdrEventData,
@@ -78,11 +79,27 @@ export function effectiveCwd(
   return pane.foreground_cwd ?? pane.cwd ?? null;
 }
 
+/**
+ * Normalizes a raw pane cwd before it's stored as (or compared against) an
+ * override's `observedCwd`, so a trailing slash or a `/tmp` vs `/private/tmp`
+ * symlink alias doesn't look like the agent moved when it didn't. Must be the
+ * only place either side of that comparison touches the string.
+ */
+function normalizeCwd(cwd: string | null): string | null {
+  if (cwd == null) return null;
+  const trimmed = cwd.length > 1 && cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
+  try {
+    return realpathSync(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
 /** Drops `pane`'s override once its raw cwd no longer matches what was observed when it was set (auto-clear condition 2). */
 function dropDivergedOverride(state: HerdrState, pane: PaneInfo): HerdrState {
   const override = state.paneWorktreeOverrides.get(pane.pane_id);
   if (!override) return state;
-  const rawCwd = pane.foreground_cwd ?? pane.cwd ?? null;
+  const rawCwd = normalizeCwd(pane.foreground_cwd ?? pane.cwd ?? null);
   if (rawCwd === override.observedCwd) return state;
   const paneWorktreeOverrides = new Map(state.paneWorktreeOverrides);
   paneWorktreeOverrides.delete(pane.pane_id);
@@ -456,7 +473,7 @@ export function createHerdrState(
     const next = new Map(state.paneWorktreeOverrides);
     for (const override of stored) {
       const pane = state.panes.get(override.paneId);
-      const rawCwd = pane ? (pane.foreground_cwd ?? pane.cwd ?? null) : null;
+      const rawCwd = pane ? normalizeCwd(pane.foreground_cwd ?? pane.cwd ?? null) : null;
       if (!pane || rawCwd !== override.observedCwd) {
         void overrides.delete(override.paneId).catch((err) => {
           logger.error(
@@ -552,7 +569,7 @@ export function createHerdrState(
       const override: PaneWorktreeOverride = {
         paneId,
         root,
-        observedCwd: pane.foreground_cwd ?? pane.cwd ?? null,
+        observedCwd: normalizeCwd(pane.foreground_cwd ?? pane.cwd ?? null),
         setAt: new Date().toISOString(),
       };
       const paneWorktreeOverrides = new Map(state.paneWorktreeOverrides);

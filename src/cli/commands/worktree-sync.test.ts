@@ -35,25 +35,50 @@ function depsWithStdin(stdin: string, client: HwClient): CommandDeps {
 }
 
 describe("extractWorktreePath", () => {
-  test("prefers tool_response.path/worktreePath/cwd, in that order, over the hook's own cwd", () => {
-    expect(extractWorktreePath({ tool_response: { path: "/a" }, cwd: "/z" })).toBe("/a");
-    expect(extractWorktreePath({ tool_response: { worktreePath: "/b" }, cwd: "/z" })).toBe("/b");
-    expect(extractWorktreePath({ tool_response: { cwd: "/c" }, cwd: "/z" })).toBe("/c");
-  });
+  const isGitPathTrue = () => Promise.resolve(true);
+  const isGitPathFalse = () => Promise.resolve(false);
 
-  test("extracts an absolute path out of a bare string tool_response", () => {
-    expect(extractWorktreePath({ tool_response: "worktree ready at /some/wt", cwd: "/z" })).toBe(
-      "/some/wt",
+  // Claude Code's hook cwd DOES follow EnterWorktree (unlike a shell hook's
+  // cwd), so it's the first choice — but only once confirmed to actually be a
+  // git path, so a stale/unrelated cwd never wins over a real tool_response.
+  test("prefers hook.cwd over tool_response once it resolves as a git path", async () => {
+    const path = await extractWorktreePath(
+      { cwd: "/repo/wt", tool_response: { path: "/other" } },
+      isGitPathTrue,
     );
+    expect(path).toBe("/repo/wt");
   });
 
-  test("falls back to the hook's own cwd when tool_response has no usable path", () => {
-    expect(extractWorktreePath({ tool_response: {}, cwd: "/z" })).toBe("/z");
-    expect(extractWorktreePath({ cwd: "/z" })).toBe("/z");
+  test("falls back to tool_response.path/worktreePath/cwd, in that order, when hook.cwd isn't a git path", async () => {
+    expect(
+      await extractWorktreePath({ tool_response: { path: "/a" }, cwd: "/z" }, isGitPathFalse),
+    ).toBe("/a");
+    expect(
+      await extractWorktreePath(
+        { tool_response: { worktreePath: "/b" }, cwd: "/z" },
+        isGitPathFalse,
+      ),
+    ).toBe("/b");
+    expect(
+      await extractWorktreePath({ tool_response: { cwd: "/c" }, cwd: "/z" }, isGitPathFalse),
+    ).toBe("/c");
   });
 
-  test("returns null when nothing resolves", () => {
-    expect(extractWorktreePath({})).toBeNull();
+  test("extracts an absolute path out of a bare string tool_response", async () => {
+    const path = await extractWorktreePath(
+      { tool_response: "worktree ready at /some/wt", cwd: "/z" },
+      isGitPathFalse,
+    );
+    expect(path).toBe("/some/wt");
+  });
+
+  // 無いと壊れる: これが無いと本体 cwd（= main のまま）がそのまま宣言されて
+  // しまい、誤宣言はサーバー側 no-op に頼るしかなくなる（route.test.ts 側の
+  // フォールバックであって、ここで拾えるものはここで拾うべき）。
+  test("returns null when hook.cwd isn't a git path and tool_response has no usable path", async () => {
+    expect(await extractWorktreePath({ tool_response: {}, cwd: "/z" }, isGitPathFalse)).toBeNull();
+    expect(await extractWorktreePath({ cwd: "/z" }, isGitPathFalse)).toBeNull();
+    expect(await extractWorktreePath({}, isGitPathFalse)).toBeNull();
   });
 });
 

@@ -674,6 +674,32 @@ describe("createHerdrState: pane worktree overrides", () => {
     expect(effectiveCwd(second.get(), pane)).toBe("/moved/elsewhere");
     expect(repo.rows.has(paneId)).toBe(false);
   });
+
+  // 無いと壊れる: 末尾スラッシュの有無や /tmp ↔ /private/tmp のようなゆらぎだけで
+  // dropDivergedOverride が「本体が移動した」と誤判定し、宣言してすぐ消えてしまう。
+  test.each([
+    ["a trailing slash appears later", "/wt/a", "/wt/a/"],
+    ["a trailing slash disappears later", "/wt/a/", "/wt/a"],
+  ])(
+    "%s: normalizes both sides so it isn't mistaken for a real drift",
+    async (_label, initialCwd, laterCwd) => {
+      const gw = createFakeHerdr(snapshot);
+      const repo = inMemoryOverrideRepo();
+      const store = createHerdrState(gw, undefined, repo);
+      await settle();
+      const paneId = snapshot.panes[0]!.pane_id;
+      gw.updatePane(paneId, { foreground_cwd: initialCwd });
+      await settle();
+
+      store.setWorktreeOverride(paneId, "/declared/wt");
+      await settle();
+
+      gw.updatePane(paneId, { foreground_cwd: laterCwd });
+      await settle();
+
+      expect(store.get().paneWorktreeOverrides.has(paneId)).toBe(true);
+    },
+  );
 });
 
 // subscribe is established before `session.snapshot` is requested (see

@@ -55,6 +55,28 @@ describe("POST /api/hw/worktree", () => {
     expect(state.get().panes.get(pane.pane_id)).toBeDefined();
   });
 
+  // 無いと壊れる: hook が誤って本体の cwd（= 実際の worktree と同じ場所）を
+  // 宣言してしまったとき、無害な no-op ではなく無意味な上書きが残ってしまう。
+  test("no-ops (and clears any stale override) when root resolves to the pane's own raw worktree", async () => {
+    const pane = snapshot.panes[0] as PaneInfo;
+    const rawCwd = pane.foreground_cwd ?? pane.cwd ?? "";
+    const { app, state } = await withState(createFakeHerdr(snapshot), {
+      async resolve(path) {
+        return { root: path, commonDir: `${path}/.git`, branch: "main", isMain: true };
+      },
+    });
+    state.setWorktreeOverride(pane.pane_id, "/declared/wt");
+
+    const res = await app.request("/api/hw/worktree", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pane: pane.pane_id, root: rawCwd }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ pane: pane.pane_id, root: rawCwd });
+    expect(state.get().paneWorktreeOverrides.has(pane.pane_id)).toBe(false);
+  });
+
   // 無いと壊れる: git worktree として解決できない root がそのまま宣言され、
   // 以降そのペインの実効 cwd が存在しないパスに固定されてしまう。
   test("400 when root does not resolve to a git worktree", async () => {
