@@ -5,6 +5,7 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import type { GitStatus } from "@pierre/trees";
 import type { PathTreeDecoration } from "@/components/tree/PathTree";
 import { ADDITIONS_COLOR, DELETIONS_COLOR } from "@/components/tree/decorationColors";
+import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
 import { hunkStats } from "./reconcile.ts";
 
 export type FileStatus = "A" | "M" | "D" | "R" | "U";
@@ -27,6 +28,19 @@ export function statsDecoration(stats: FileStats): PathTreeDecoration {
   const parts: { text: string; color?: string }[] = [];
   if (stats.additions > 0) parts.push({ text: `+${stats.additions}`, color: ADDITIONS_COLOR });
   if (stats.deletions > 0) parts.push({ text: `−${stats.deletions}`, color: DELETIONS_COLOR });
+  return { text: parts.map((p) => p.text).join(" "), parts };
+}
+
+/** Builds a PathTree row decoration combining `statsDecoration`'s "+n −m"
+ * with the trailing colored status letter (kept even when a file has no
+ * stats, e.g. a pure rename, so the status is never silently dropped). */
+export function fileDecoration(status: FileStatus, stats: FileStats): PathTreeDecoration {
+  const gitStatus = toGitStatus(status);
+  const letter = gitStatusLetter(gitStatus);
+  const parts = [
+    ...(statsDecoration(stats).parts ?? []),
+    ...(letter ? [{ text: letter, color: gitStatusLetterColor(gitStatus) }] : []),
+  ];
   return { text: parts.map((p) => p.text).join(" "), parts };
 }
 

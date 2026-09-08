@@ -25,9 +25,9 @@ import {
 } from "@/lib/viewerSettings";
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
 import { annotationSignature, withAnnotationRev, withCollapsedVersion } from "./annotationVersion";
+import { PathTree, type PathTreeDecoration } from "@/components/tree/PathTree";
 import Banners from "./Banners.tsx";
 import { DiffEmptyState } from "./DiffEmptyState.tsx";
-import { DiffFileList } from "./DiffFileList.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
 import { usePatch } from "./hooks/usePatch.ts";
@@ -47,7 +47,7 @@ import {
   useSettings,
 } from "./state.ts";
 import type { BannerState } from "./state.ts";
-import { buildTree, fileStats, fileStatus } from "./tree.ts";
+import { buildTree, fileDecoration, fileStats, fileStatus, toGitStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
 
 const FOR_DIFF_DEBOUNCE_MS = 200;
@@ -285,8 +285,8 @@ export function DiffPanel({
   // Tree order (part 2: right pane follows the FileTree, not git's patch
   // order). Built here — ahead of selection/j-k-nav — because those need to
   // walk items in the same order the tree and the rendered panes use.
-  const treeNodes = useMemo(() => {
-    const entries = items.map((item) => {
+  const treeEntries = useMemo(() => {
+    return items.map((item) => {
       const fileDiff = item.fileDiff;
       const untracked = !!untrackedByName.get(fileDiff.name);
       const stats = fileStats(fileDiff);
@@ -298,8 +298,23 @@ export function DiffPanel({
         deletions: stats.deletions,
       };
     });
-    return buildTree(entries);
   }, [items, untrackedByName]);
+  const treeNodes = useMemo(() => buildTree(treeEntries), [treeEntries]);
+
+  // PathTree props (Files/Graph's shared component — ui-redesign.md §9):
+  // flat paths, per-file git status and a "+n −m <letter>" row decoration.
+  const treePaths = useMemo(() => treeEntries.map((e) => e.name), [treeEntries]);
+  const treeGitStatus = useMemo(
+    () => treeEntries.map((e) => ({ path: e.name, status: toGitStatus(e.status) })),
+    [treeEntries],
+  );
+  const treeDecorations = useMemo(() => {
+    const map = new Map<string, PathTreeDecoration>();
+    for (const e of treeEntries) {
+      map.set(e.name, fileDecoration(e.status, { additions: e.additions, deletions: e.deletions }));
+    }
+    return map;
+  }, [treeEntries]);
 
   // reconcile() (above) preserves object identity for unchanged files —
   // reordering here must not disturb that, so this only permutes the array,
@@ -787,8 +802,12 @@ export function DiffPanel({
       <div className="flex min-h-0 flex-1">
         {viewerSettings.showTree && (
           <>
-            <DiffFileList
-              nodes={treeNodes}
+            <PathTree
+              paths={treePaths}
+              gitStatus={treeGitStatus}
+              decorations={treeDecorations}
+              initialExpansion="open"
+              fontSize={viewerSettings.fontSize}
               selectedPath={selectedPath}
               onSelectFile={handleTreeSelectFile}
               style={{ width: treeWidth }}

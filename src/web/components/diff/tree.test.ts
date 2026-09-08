@@ -1,6 +1,13 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { fileStatus, fileStats, buildTree, toGitStatus, statsDecoration } from "./tree.ts";
+import {
+  fileStatus,
+  fileStats,
+  buildTree,
+  toGitStatus,
+  statsDecoration,
+  fileDecoration,
+} from "./tree.ts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 
 function fileDiff(overrides: Partial<FileDiffMetadata> = {}): FileDiffMetadata {
@@ -61,6 +68,20 @@ test("statsDecoration: shows +additions/-deletions, omitting zero parts", () => 
   assert.equal(statsDecoration({ additions: 5, deletions: 0 }).text, "+5");
   assert.equal(statsDecoration({ additions: 0, deletions: 8 }).text, "−8");
   assert.equal(statsDecoration({ additions: 0, deletions: 0 }).text, "");
+});
+
+// ---------------------------------------------------------------------------
+// fileDecoration
+// ---------------------------------------------------------------------------
+
+// 無いと壊れる: stats と status letter をマージする際にどちらかを取りこぼす
+// (例: 文字列連結の順序ミスで letter が欠ける)。
+test("fileDecoration: keeps the status letter even when a file has no stat changes (e.g. a pure rename)", () => {
+  assert.equal(fileDecoration("R", { additions: 0, deletions: 0 }).text, "R");
+});
+
+test("fileDecoration: combines stats and the trailing status letter", () => {
+  assert.equal(fileDecoration("M", { additions: 3, deletions: 1 }).text, "+3 −1 M");
 });
 
 // ---------------------------------------------------------------------------
