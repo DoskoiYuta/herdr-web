@@ -151,6 +151,14 @@ export function AskSessionRow({
           </DialogHeader>
           {resolveError && <p className="text-xs text-destructive">{resolveError}</p>}
           <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setResolveOpen(false)}
+              disabled={resolveSubmitting}
+            >
+              キャンセル
+            </Button>
             <Button type="button" onClick={handleResolveConfirm} disabled={resolveSubmitting}>
               解決
             </Button>
