@@ -470,4 +470,88 @@ describe("worktree filter", () => {
 
     await waitFor(() => expect(inboxGetMock).toHaveBeenCalledWith({ worktree: "/repo-a" }));
   });
+
+  // 無いと壊れる: basename が衝突する 2 リポジトリの main worktree が両方
+  // "main" だけになり、Select でどちらを選んでいるか分からなくなる。
+  test("select options disambiguate repos whose main worktree basename collides", async () => {
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/work/foo/.git",
+          name: "foo",
+          worktrees: [{ root: "/work/foo", branch: "main", isMain: true, panes: [] }],
+          counts: { blocked: 0, done: 0 },
+        },
+        {
+          key: "/side/foo/.git",
+          name: "foo",
+          worktrees: [{ root: "/side/foo", branch: "main", isMain: true, panes: [] }],
+          counts: { blocked: 0, done: 0 },
+        },
+      ],
+    });
+    await renderDialog({ store });
+
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(expect.arrayContaining(["side/foo › main", "work/foo › main"]));
+  });
+});
+
+describe("row location", () => {
+  // 無いと壊れる: basename が衝突する main worktree を持つ 2 リポジトリの行が
+  // メタ行では区別できず、どちらのリポジトリの通知か分からない。
+  test("rows for repos whose main worktree basename collides show distinct repo names", async () => {
+    const store = makeFakeStore({
+      repos: [
+        {
+          key: "/work/foo/.git",
+          name: "foo",
+          worktrees: [{ root: "/work/foo", branch: "main", isMain: true, panes: [pane()] }],
+          counts: { blocked: 0, done: 0 },
+        },
+        {
+          key: "/side/foo/.git",
+          name: "foo",
+          worktrees: [{ root: "/side/foo", branch: "main", isMain: true, panes: [] }],
+          counts: { blocked: 0, done: 0 },
+        },
+      ],
+    });
+    inboxGetMock.mockResolvedValue({
+      items: [
+        {
+          section: "replied",
+          kind: "review",
+          id: "r1",
+          title: "a.ts:L10",
+          excerpt: "because x",
+          worktreeRoot: "/work/foo",
+          repoKey: "/work/foo/.git",
+          agent: "claude",
+          at: "2026-01-01T00:00:00.000Z",
+          location: { path: "a.ts", line: 10 },
+        },
+        {
+          section: "replied",
+          kind: "review",
+          id: "r2",
+          title: "b.ts:L1",
+          excerpt: "because y",
+          worktreeRoot: "/side/foo",
+          repoKey: "/side/foo/.git",
+          agent: "claude",
+          at: "2026-01-01T00:00:00.000Z",
+          location: { path: "b.ts", line: 1 },
+        },
+      ],
+      counts: { total: 2, bySection: { replied: 2 } } as never,
+    });
+    await renderDialog({ store });
+
+    const rows = await screen.findAllByTestId("inbox-row");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("work/foo"),
+      expect.stringContaining("side/foo"),
+    ]);
+  });
 });
