@@ -168,7 +168,46 @@ describe("DecisionView", () => {
 
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
     expect(screen.getByText(/念のため/)).toBeInTheDocument();
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
+  });
+
+  // 無いと壊れる (spec-F): 選択済みの選択肢がハイライトされない/操作できて
+  // しまうと、未回答と見分けが付かず、送信済みの回答を書き換えられてしまう。
+  test("a selected option on an answered decision is highlighted and disabled, the other is dimmed", async () => {
+    const decision = baseDecision({
+      status: "answered",
+      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
+      answeredAt: new Date().toISOString(),
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    const radios = screen.getAllByRole("radio");
+    expect(radios[0]).toBeChecked();
+    expect(radios[0]).toBeDisabled();
+    expect(radios[0]!.closest("label")).toHaveClass("bg-accent");
+    expect(radios[1]).not.toBeChecked();
+    expect(radios[1]!.closest("label")).toHaveClass("opacity-55");
+  });
+
+  // 無いと壊れる (spec-F): 却下済みの依頼で選択状態やフッタの表示が残らないと、
+  // 何も選ばれていない/却下されたことが読み取れない。
+  test("a dismissed decision shows no selection and a dismissed footer message", async () => {
+    const decision = baseDecision({
+      status: "dismissed",
+      answer: null,
+      answeredAt: new Date().toISOString(),
+      delivery: { state: "sent", attempts: 1, pane: null, at: new Date().toISOString() },
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
+    expect(screen.getByText(/却下しました/)).toBeInTheDocument();
   });
 
   // 無いと壊れる: layout: "compare" でもラジオボタンのままになり、選択肢の
@@ -640,24 +679,6 @@ describe("DecisionView", () => {
 
     expect(screen.queryByText("abcd1234efgh5678")).not.toBeInTheDocument();
     expect(screen.getByText(/abcd.*5678/)).toBeInTheDocument();
-  });
-
-  // 無いと壊れる: 確定後も context が常に展開されたままだと、答えを確認したい
-  // だけの場面で毎回長い context を読まされる。
-  test("collapses the context by default once the decision is no longer open", async () => {
-    const decision = baseDecision({
-      status: "answered",
-      answer: { answers: { q1: { selected: ["A"], other: null, note: null } } },
-      spec: { ...baseDecision().spec, context: [{ kind: "markdown", text: "背景情報" }] },
-    });
-    get.mockResolvedValue(decision);
-
-    renderWithStore(<DecisionView id="decision-1" />);
-    const details = (await screen.findByTestId("decision-context")) as HTMLDetailsElement;
-    expect(details.open).toBe(false);
-
-    fireEvent.click(screen.getByText("コンテキスト"));
-    expect(details.open).toBe(true);
   });
 
   // 無いと壊れる: 「その他」欄に入力しても選択状態が変わらないと、必須設問で

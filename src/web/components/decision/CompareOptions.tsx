@@ -15,12 +15,16 @@ export function CompareOptions({
   onChange,
   worktreeRoot,
   onOpenLocation,
+  readOnly = false,
 }: {
   item: DecisionItem;
   answer: DecisionItemAnswer;
   onChange: (next: DecisionItemAnswer) => void;
   worktreeRoot: string | null;
   onOpenLocation?: OpenLocation;
+  /** 確定済みの依頼を開いたときの表示 (spec-F): 選ばれたカードだけ
+   * `bg-accent`、他は薄く表示しクリックできない。 */
+  readOnly?: boolean;
 }) {
   function toggle(label: string) {
     if (item.kind === "single") {
@@ -42,22 +46,32 @@ export function CompareOptions({
         return (
           <div
             key={opt.label}
-            role="button"
-            tabIndex={0}
-            aria-pressed={checked}
-            onClick={(e) => {
-              if (e.target instanceof Element && e.target.closest(INTERACTIVE_SELECTOR)) return;
-              toggle(opt.label);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                toggle(opt.label);
-              }
-            }}
-            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border border-border p-3 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
-              checked ? "bg-accent" : ""
-            }`}
+            role={readOnly ? undefined : "button"}
+            tabIndex={readOnly ? undefined : 0}
+            aria-pressed={readOnly ? undefined : checked}
+            onClick={
+              readOnly
+                ? undefined
+                : (e) => {
+                    if (e.target instanceof Element && e.target.closest(INTERACTIVE_SELECTOR)) {
+                      return;
+                    }
+                    toggle(opt.label);
+                  }
+            }
+            onKeyDown={
+              readOnly
+                ? undefined
+                : (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggle(opt.label);
+                    }
+                  }
+            }
+            className={`flex flex-col gap-1.5 rounded-md border border-border p-3 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+              readOnly ? (checked ? "bg-accent" : "opacity-55") : "cursor-pointer"
+            } ${!readOnly && checked ? "bg-accent" : ""}`}
           >
             <div className="flex items-center gap-1.5 text-sm font-medium">
               <span
