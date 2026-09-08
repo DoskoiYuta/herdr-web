@@ -1,10 +1,12 @@
 import type {
   Decision,
   DecisionAnswer,
+  DecisionDeliveryState,
   DecisionItem,
   DecisionItemAnswer,
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { PaneRow, Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
@@ -39,6 +41,30 @@ export type DecisionViewProps = {
 
 function emptyAnswer(): DecisionItemAnswer {
   return { selected: [], other: null, note: null };
+}
+
+const DELIVERY_PROBLEM_HEADING: Record<DecisionDeliveryState, string> = {
+  agent_blocked: "回答はエージェントに届いていません",
+  gone: "回答の送り先が見つかりません",
+  pending: "配達を再試行しています",
+  sent: "回答は届いています",
+  unknown: "配達状況を確認できません",
+};
+
+/** 未達アラート本文 (design.pen P13)。理由 + 試行回数 + 直近の試行からの経過分。 */
+function deliveryProblemDescription(decision: Decision, elapsedMin: number): string {
+  const attempts = decision.delivery?.attempts ?? 0;
+  const suffix = `試行 ${attempts} 回・${elapsedMin} 分前`;
+  switch (decision.delivery?.state) {
+    case "agent_blocked":
+      return `${decision.agent ?? "エージェント"} が入力待ち（blocked）のため agent.prompt を受け付けませんでした。ターミナルで入力待ちを解消してから再送してください。${suffix}`;
+    case "gone":
+      return `pane が見つかりませんでした。エージェントが終了したか pane が閉じられている可能性があります。${suffix}`;
+    case "pending":
+      return `herdr の再接続または再試行を待っています。${suffix}`;
+    default:
+      return `配達状況を確認できませんでした。${suffix}`;
+  }
 }
 
 /** `Date.now()` はレンダー本体で直接呼べない (impure) ので、初期値は lazy
@@ -131,16 +157,18 @@ function DecisionAnswerView({
           .join(" / ") || "(未回答)";
 
   return (
-    <div
-      className="flex flex-col gap-1 border-b border-border pb-3"
-      data-testid={`decision-answer-${item.id}`}
-    >
+    <div className="flex flex-col gap-1" data-testid={`decision-answer-${item.id}`}>
       <div className="flex items-center gap-1.5 text-sm font-medium">
         <ItemNumberBadge index={index} />
         {item.header}
       </div>
       <p className="text-sm text-muted-foreground">{item.question}</p>
-      <p className="text-sm">{value}</p>
+      <p className="flex items-center gap-1 text-sm">
+        {isAnswered(answer) && (
+          <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        )}
+        {value}
+      </p>
       {note && <p className="text-xs text-muted-foreground">メモ: {note}</p>}
     </div>
   );
@@ -432,6 +460,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
 
   // フックはここまでで全て呼び終える（早期 return の後には置けない）。
   const elapsedMin = useElapsedMinutes(decision?.createdAt ?? null);
+  const answeredElapsedMin = useElapsedMinutes(decision?.answeredAt ?? null);
+  const deliveryElapsedMin = useElapsedMinutes(decision?.delivery?.at ?? null);
 
   if (query.isLoading) return <div className="p-4 text-sm text-muted-foreground">読み込み中…</div>;
   if (!decision) return <div className="p-4 text-sm text-destructive">依頼が見つかりません</div>;
@@ -521,7 +551,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
             Decisions
           </button>
           <span>/</span>
-          <span>…{id.slice(-4)}</span>
+          <span>判断依頼 …{id.slice(-4)}</span>
         </nav>
         <kbd className="rounded border border-border px-1 py-0.5">Esc で閉じる</kbd>
       </div>
@@ -557,7 +587,11 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           {decision.claudeSessionId && (
             <span className="shrink-0">session {truncateSessionId(decision.claudeSessionId)}</span>
           )}
-          <span className="shrink-0">{elapsedMin} 分前</span>
+          <span className="shrink-0">
+            {decision.answeredAt
+              ? `${elapsedMin} 分前に依頼・${answeredElapsedMin} 分前に回答`
+              : `${elapsedMin} 分前に依頼`}
+          </span>
           <span className="flex-1" />
           {decision.paneId && onFocusPane && (
             <Button
@@ -573,17 +607,24 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         </div>
       </header>
 
-      {hasDeliveryProblem && (
+      {hasDeliveryProblem && decision.delivery && (
         <div
           data-testid="decision-delivery-warning"
-          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-amber-500/10 px-3 py-2 text-xs"
+          className="flex shrink-0 flex-col gap-1 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs"
         >
-          <DeliveryChip
-            delivery={{ ...delivery, canResend }}
-            onResend={() => void resend()}
-            busy={busy}
-          />
-          <span>回答が相手に届いていません（試行 {decision.delivery?.attempts} 回）</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium text-amber-700 dark:text-amber-400">
+              {DELIVERY_PROBLEM_HEADING[decision.delivery.state]}
+            </span>
+            <DeliveryChip
+              delivery={{ ...delivery, canResend }}
+              onResend={() => void resend()}
+              busy={busy}
+            />
+          </div>
+          <p className="text-muted-foreground">
+            {deliveryProblemDescription(decision, deliveryElapsedMin)}
+          </p>
         </div>
       )}
 
@@ -620,8 +661,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         ))}
 
       <div className="flex flex-1 flex-col gap-[18px] px-3 py-2">
-        {decision.spec.items.map((item, index) =>
-          isOpen ? (
+        {isOpen ? (
+          decision.spec.items.map((item, index) => (
             <DecisionItemForm
               key={item.id}
               item={item}
@@ -636,14 +677,21 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
               worktreeRoot={decision.worktreeRoot}
               onOpenLocation={onOpenLocation}
             />
-          ) : (
-            <DecisionAnswerView
-              key={item.id}
-              item={item}
-              index={index}
-              answer={decision.answer?.answers[item.id]}
-            />
-          ),
+          ))
+        ) : (
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              確定した回答（読み取り専用）
+            </p>
+            {decision.spec.items.map((item, index) => (
+              <DecisionAnswerView
+                key={item.id}
+                item={item}
+                index={index}
+                answer={decision.answer?.answers[item.id]}
+              />
+            ))}
+          </div>
         )}
       </div>
 
