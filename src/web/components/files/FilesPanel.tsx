@@ -171,11 +171,18 @@ export function FilesPanel({
   // が別 worktree へのジャンプ待ち・search クリアの navigate 未 commit）は
   // 書き戻さない。
   const [tabs, tabActions] = useFileTabs(repoKey);
+  // Split into two effects so that closing a tab (which updates `tabs.active`
+  // via the store) can never re-trigger `open` before the resulting navigate
+  // has landed on `selectedPath` — `path` comes from the URL, so a close can
+  // leave `selectedPath` pointing at the just-closed tab for a render or two.
+  // A single effect keyed on both `selectedPath` and `tabs.active` would fire
+  // in that gap and reopen the tab it was supposed to close.
   useEffect(() => {
-    if (selectedPath !== null) {
-      tabActions.open(selectedPath);
-      return;
-    }
+    if (selectedPath !== null) tabActions.open(selectedPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPath, repoKey]);
+  useEffect(() => {
+    if (selectedPath !== null) return;
     if (restoreSuppressed) return;
     if (tabs.active !== null) onSelectedPathChange(tabs.active);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -609,6 +616,7 @@ export function FilesPanel({
         onClose={handleTabClose}
         onCloseOthers={handleTabCloseOthers}
         onCloseAll={handleTabCloseAll}
+        onReorder={tabActions.reorder}
         onCopyPath={(path) => void copyToClipboard(path)}
       />
       <div className="flex items-center gap-1 border-b border-border p-1">

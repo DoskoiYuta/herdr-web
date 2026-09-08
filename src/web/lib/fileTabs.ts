@@ -77,6 +77,18 @@ export function closeTab(state: FileTabsState, path: string): FileTabsState {
   return { paths, active };
 }
 
+/** ドラッグ並べ替え（`arrayMove` 相当）。`active` は変えない — 並べ替え自体は
+ * 選択を動かす操作ではない。範囲外の index はそのまま返す。 */
+export function reorderTabs(state: FileTabsState, from: number, to: number): FileTabsState {
+  if (from === to || from < 0 || to < 0 || from >= state.paths.length || to >= state.paths.length) {
+    return state;
+  }
+  const paths = [...state.paths];
+  const [moved] = paths.splice(from, 1);
+  paths.splice(to, 0, moved as string);
+  return { ...state, paths };
+}
+
 export function closeOtherTabs(state: FileTabsState, path: string): FileTabsState {
   if (!state.paths.includes(path)) return state;
   return { paths: [path], active: path };
@@ -100,6 +112,7 @@ export interface FileTabsActions {
   close(path: string): void;
   closeOthers(path: string): void;
   closeAll(): void;
+  reorder(from: number, to: number): void;
 }
 
 /** `repoKey` が null（herdr 未接続などでまだ解決できていない）の間はタブ列を
@@ -123,6 +136,10 @@ export function useFileTabs(repoKey: string | null): [FileTabsState, FileTabsAct
     close: useCallback((path: string) => update((s) => closeTab(s, path)), [update]),
     closeOthers: useCallback((path: string) => update((s) => closeOtherTabs(s, path)), [update]),
     closeAll: useCallback(() => update(() => closeAllTabs()), [update]),
+    reorder: useCallback(
+      (from: number, to: number) => update((s) => reorderTabs(s, from, to)),
+      [update],
+    ),
   };
 
   return [state, actions];
