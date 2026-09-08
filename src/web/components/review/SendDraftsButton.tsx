@@ -6,7 +6,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaneRow } from "@contract/events";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import { reviewApi, SendTargetError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -54,7 +60,14 @@ export function SendTargetCard({
         <span className="truncate">
           {workspaceLabel ?? "?"} › {tabLabel ?? "?"}
         </span>
-        {sessionId && <span className="shrink-0 font-mono">{sessionId}</span>}
+        <span className="flex shrink-0 items-center gap-2">
+          {sessionId && <span className="font-mono">{sessionId}</span>}
+          {pane.focused && (
+            <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary">
+              フォーカス中
+            </span>
+          )}
+        </span>
       </div>
       <div className="flex items-center gap-2">
         {preview?.layout && (
@@ -181,6 +194,10 @@ export function SendDraftsButton({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>送信先を選択</DialogTitle>
+            <DialogDescription>
+              この worktree に {agentPanes.length} つのエージェント pane があります。下書き{" "}
+              {pendingDrafts} 件をどちらに通知しますか。
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
             {agentPanes.map((pane) => (
