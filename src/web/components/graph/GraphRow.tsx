@@ -1,6 +1,6 @@
 import { MessageSquare } from "lucide-react";
 import type { LayoutRow } from "./layout/layout";
-import { GEOM, nodeCenter, segmentPath } from "./layout/path";
+import { GEOM, gutterGeom, nodeCenter, segmentPath } from "./layout/path";
 import { PALETTE } from "./layout/colors";
 import type { Commit, Ref } from "@contract/git";
 import type { ReviewCount } from "@contract/review";
@@ -100,8 +100,10 @@ export default function GraphRow({
 }: GraphRowProps) {
   const isUncommitted = row.hash === UNCOMMITTED_HASH;
   const isMerge = commit.parents.length > 1;
-  const { cx, cy } = nodeCenter(row);
-  const width = Math.max(1, laneCount) * GEOM.laneWidth;
+  const { laneWidth, width } = gutterGeom(laneCount);
+  const geom = { ...GEOM, laneWidth };
+  const { cx, cy } = nodeCenter(row, geom);
+  const nodeRadius = laneWidth < 10 ? 2.5 : NODE_RADIUS;
   const nodeColor = PALETTE[row.color % PALETTE.length];
   // Shared by the row's double-click and its review-count badge (「行の
   // ダブルクリックと同じ挙動」) — a root/uncommitted row has no valid diff to open.
@@ -123,6 +125,7 @@ export default function GraphRow({
       >
         <svg
           className="shrink-0"
+          style={{ overflow: "hidden" }}
           width={width}
           height={GEOM.rowHeight}
           viewBox={`0 0 ${width} ${GEOM.rowHeight}`}
@@ -130,7 +133,7 @@ export default function GraphRow({
           {row.segments.map((seg, i) => (
             <path
               key={i}
-              d={segmentPath(seg)}
+              d={segmentPath(seg, geom)}
               stroke={PALETTE[seg.color % PALETTE.length]}
               strokeWidth={2}
               fill="none"
@@ -140,13 +143,13 @@ export default function GraphRow({
           <circle
             cx={cx}
             cy={cy}
-            r={NODE_RADIUS}
+            r={nodeRadius}
             fill={isUncommitted ? "var(--card)" : nodeColor}
             stroke={isUncommitted ? nodeColor : isHead ? "var(--foreground)" : "none"}
             strokeWidth={isUncommitted ? 2 : isHead ? 1.5 : 0}
             strokeDasharray={isUncommitted ? "2,2" : undefined}
           />
-          {isMerge && <circle cx={cx} cy={cy} r={NODE_RADIUS - 2} fill={nodeColor} stroke="none" />}
+          {isMerge && <circle cx={cx} cy={cy} r={nodeRadius - 2} fill={nodeColor} stroke="none" />}
         </svg>
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           {refs.map((r) => (
@@ -170,7 +173,7 @@ export default function GraphRow({
       </div>
       {expanded && (
         <div className="graph-row-detail flex items-stretch pl-2" data-hash={row.hash}>
-          <div className="relative shrink-0" style={{ width }}>
+          <div className="relative shrink-0 overflow-hidden" style={{ width }}>
             {/* Continues each segment's line straight down through the
                expanded block at its `toLane` x position, so the lane the
                line lands in visually connects to the same lane at the top
@@ -181,7 +184,7 @@ export default function GraphRow({
               height="100%"
             >
               {row.segments.map((seg, i) => {
-                const x = (seg.toLane + 0.5) * GEOM.laneWidth;
+                const x = (seg.toLane + 0.5) * laneWidth;
                 return (
                   <line
                     key={i}

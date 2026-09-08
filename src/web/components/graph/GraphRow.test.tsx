@@ -3,6 +3,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import GraphRow from "./GraphRow";
 import { layoutGraph } from "./layout/layout";
+import { MAX_GUTTER_PX } from "./layout/path";
 import type { Commit, Ref } from "@contract/git";
 
 function queryWrapper({ children }: { children: React.ReactNode }) {
@@ -254,6 +255,31 @@ describe("GraphRow", () => {
       />,
     );
     expect(getByText("main")).toBeInTheDocument();
+  });
+
+  // 無いと壊れる: ブランチが多いリポジトリで gutter が無制限に広がり、subject
+  // 列が潰れて見えなくなる。
+  test("with many lanes, the gutter width stays capped and the subject still renders", () => {
+    const commits = Array.from({ length: 60 }, (_, i) => ({
+      hash: `c${i}`,
+      parents: i === 0 ? [] : [`c${i - 1}`],
+    }));
+    const { rows } = layoutGraph({ commits });
+    const row = rows[0]!;
+    const { container, getByText } = render(
+      <GraphRow
+        row={row}
+        laneCount={60}
+        commit={makeCommit({ hash: row.hash, parents: [], subject: "Deep in the lanes" })}
+        refs={[]}
+        isHead={false}
+        selected={false}
+        onSelect={() => {}}
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    expect(Number(svg.getAttribute("width"))).toBeLessThanOrEqual(MAX_GUTTER_PX);
+    expect(getByText("Deep in the lanes")).toBeInTheDocument();
   });
 
   // 無いと壊れる: uncommitted 行に変更件数と相対時刻が出ず、コミット済み行と
