@@ -764,7 +764,7 @@ function FileViewerBody({
           onLoad={(e) => onImageLoad(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
           onError={onPreviewError}
         />
-        <p className="text-xs text-muted-foreground">{selectedPath}</p>
+        <p className="text-xs text-muted-foreground">/api/fs/raw から直接表示 · クリックで実寸</p>
       </div>
     );
   }
@@ -805,7 +805,7 @@ function FileViewerBody({
       <PanelState
         icon={FileQuestion}
         title="バイナリファイル"
-        description={`${data.size} bytes`}
+        description="内容は表示しません。テキストでも 2 MiB を超えるファイルは同様に種別とサイズだけを表示します。"
         action={{ label: "絶対パスをコピー", onClick: onCopyAbsolutePath }}
       />
     );
@@ -823,7 +823,16 @@ function FileViewerBody({
   }
 
   if (isMarkdownPath(data.path) && mdMode === "preview") {
-    return <MarkdownView contents={data.contents} />;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <MarkdownView contents={data.contents} />
+        </div>
+        <p className="shrink-0 border-t border-border px-2 py-1 text-xs text-muted-foreground">
+          プレビューは読み取り専用。質問を付けるにはソース表示に切り替えて行を選択します。
+        </p>
+      </div>
+    );
   }
 
   const annotations = buildAskAnnotations(matches, composerLine);
