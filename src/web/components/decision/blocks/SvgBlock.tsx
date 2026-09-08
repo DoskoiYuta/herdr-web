@@ -5,5 +5,5 @@
 // mermaid's own strict-mode output and safe to insert directly).
 export function SvgBlock({ markup }: { markup: string }) {
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
-  return <img src={src} alt="" className="max-w-full" />;
+  return <img src={src} alt="" className="h-auto w-auto max-w-full shrink-0 self-start" />;
 }

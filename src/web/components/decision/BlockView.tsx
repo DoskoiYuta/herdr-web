@@ -25,8 +25,20 @@ export interface BlockViewProps {
 }
 
 /** Renders one Block by `kind`. Shared by `context` and option `preview` —
- * both are plain `Block[]` arrays. */
+ * both are plain `Block[]` arrays. Wrapped in a `shrink-0` div: both callers
+ * lay Blocks out in a `flex-col`, where a plain block-level child is also a
+ * flex item and gets compressed below its content size (`flex-shrink: 1`
+ * default) whenever the column itself is height-constrained — table/mermaid
+ * would render clipped instead of at full size. */
 export function BlockView({ block, worktreeRoot = null, onOpenLocation }: BlockViewProps) {
+  return <div className="shrink-0">{renderBlock(block, worktreeRoot, onOpenLocation)}</div>;
+}
+
+function renderBlock(
+  block: Block,
+  worktreeRoot: string | null,
+  onOpenLocation: OpenLocation | undefined,
+) {
   switch (block.kind) {
     case "markdown":
       return <MarkdownView contents={block.text} compact />;
@@ -41,7 +53,10 @@ export function BlockView({ block, worktreeRoot = null, onOpenLocation }: BlockV
     case "html":
       return <HtmlBlock html={block.html} allowScripts={block.allowScripts} />;
     case "image":
-      return <ImageBlock path={block.path} worktreeRoot={worktreeRoot} />;
+      // Keyed by `path`: a context/preview swap keeps this element's
+      // position in the tree, so without a per-path key React would reuse
+      // the previous ImageBlock instance and its error/dims/zoomed state.
+      return <ImageBlock key={block.path} path={block.path} worktreeRoot={worktreeRoot} />;
     case "location":
       return (
         <LocationBlock

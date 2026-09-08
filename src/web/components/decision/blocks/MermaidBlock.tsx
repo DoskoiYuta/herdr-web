@@ -69,5 +69,9 @@ export function MermaidBlock({ text }: { text: string }) {
     );
   }
 
-  return <div ref={containerRef} data-testid="mermaid-block" />;
+  return (
+    <div className="w-full max-w-full overflow-auto rounded-md bg-muted p-2">
+      <div ref={containerRef} data-testid="mermaid-block" />
+    </div>
+  );
 }
