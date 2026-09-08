@@ -611,16 +611,6 @@ export function ToolPane() {
         <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
           {worktreeRoot ? (
             <>
-              {comparison && (
-                <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-                  <span>
-                    {comparison.from.slice(0, 7)} vs {comparison.to.slice(0, 7)}
-                  </span>
-                  <Button type="button" size="sm" variant="ghost" onClick={resetToWorktree}>
-                    作業ツリーに戻る
-                  </Button>
-                </div>
-              )}
               <DiffPanel
                 key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
                 repo={subRepoRoot}
@@ -632,6 +622,8 @@ export function ToolPane() {
                 initialLocation={initialLocation}
                 onInitialLocationConsumed={handleInitialLocationConsumed}
                 onOpenGraph={() => handleTabChange("graph")}
+                compareRangeActive={!!comparison}
+                onResetToWorktree={resetToWorktree}
                 sendButton={
                   <SendDraftsButton
                     repoKey={resolvedRepoKey}

@@ -84,6 +84,21 @@ describe("CommitDetail", () => {
     await waitFor(() => expect(screen.getByText(/404/)).toBeInTheDocument());
   });
 
+  // 無いと壊れる: エラー時の見出しに 40 文字のフルハッシュがそのまま出て、
+  // 他行の 12 文字表記と揃わない。
+  test("truncates the hash to 12 characters in the error-state heading", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CommitDetail repo="/repo" hash={detail.hash} />, {
+      wrapper: wrapper(),
+    });
+
+    await waitFor(() => expect(screen.getByText(/404/)).toBeInTheDocument());
+    expect(screen.getByText(detail.hash.slice(0, 12))).toBeInTheDocument();
+    expect(screen.queryByText(detail.hash)).not.toBeInTheDocument();
+  });
+
   test("shows the inline root-commit note when passed", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => detail });
     vi.stubGlobal("fetch", fetchMock);

@@ -24,6 +24,8 @@ export interface GraphViewProps {
   detailNote?: string;
   /** F5-10: git-graph の review 件数バッジ用集計。 */
   reviewCounts?: ReviewCountsResponse | null;
+  /** uncommitted 行の「N files」用（git status の件数）。 */
+  uncommittedFileCount?: number;
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
@@ -48,6 +50,7 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
     repo = "",
     detailNote,
     reviewCounts = null,
+    uncommittedFileCount,
     onSelect,
     onCloseDetail,
     onOpenDiff,
@@ -136,6 +139,9 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
                   (row.hash === UNCOMMITTED_HASH
                     ? reviewCounts?.worktree
                     : reviewCounts?.byCommit[row.hash]) ?? undefined
+                }
+                uncommittedFileCount={
+                  row.hash === UNCOMMITTED_HASH ? uncommittedFileCount : undefined
                 }
                 onSelect={onSelect}
                 onCloseDetail={onCloseDetail}

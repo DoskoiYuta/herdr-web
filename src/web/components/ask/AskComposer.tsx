@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { KindIcon } from "@/components/ui/status/KindIcon";
 
 export interface AskComposerProps {
   onCancel: () => void;
@@ -13,9 +14,25 @@ export interface AskComposerProps {
   /** `createdAtHead`/repo not yet resolved — disable submit (same pattern as
    * review's ComposerAnnotation `disabled`). */
   disabled?: boolean;
+  /** 見出し「質問 path:L10–12」用（design.pen P4）。省略時は見出しを出さない。 */
+  path?: string;
+  startLine?: number;
+  endLine?: number;
 }
 
-export function AskComposer({ onCancel, onOpenTargetDialog, disabled = false }: AskComposerProps) {
+function rangeLabel(path: string, startLine: number, endLine: number): string {
+  const range = startLine === endLine ? `L${startLine}` : `L${startLine}–${endLine}`;
+  return `${path}:${range}`;
+}
+
+export function AskComposer({
+  onCancel,
+  onOpenTargetDialog,
+  disabled = false,
+  path,
+  startLine,
+  endLine,
+}: AskComposerProps) {
   const [body, setBody] = useState("");
 
   const openDialog = () => {
@@ -28,6 +45,18 @@ export function AskComposer({ onCancel, onOpenTargetDialog, disabled = false }: 
       className="my-1 flex flex-col gap-2 rounded-md border border-border bg-popover p-2 shadow-sm"
       data-testid="ask-composer"
     >
+      {path !== undefined && startLine !== undefined && endLine !== undefined && (
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="flex items-center gap-1.5 font-medium">
+            <KindIcon kind="ask" />
+            質問{" "}
+            <span className="font-mono text-muted-foreground">
+              {rangeLabel(path, startLine, endLine)}
+            </span>
+          </span>
+          <span className="text-muted-foreground">作成すると即送信</span>
+        </div>
+      )}
       <Textarea
         autoFocus
         placeholder="質問を入力"

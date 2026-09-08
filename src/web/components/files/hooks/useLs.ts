@@ -55,6 +55,7 @@ export function useLs(
       }
       if (!result.data) return;
       for (const entry of result.data.entries) {
+        if (dir === "" && entry.name === ".git") continue;
         const name = dir === "" ? entry.name : `${dir}/${entry.name}`;
         paths.push(entry.kind === "dir" ? `${name}/` : name);
       }

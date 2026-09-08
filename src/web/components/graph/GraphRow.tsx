@@ -4,6 +4,7 @@ import { GEOM, nodeCenter, segmentPath } from "./layout/path";
 import { PALETTE } from "./layout/colors";
 import type { Commit, Ref } from "@contract/git";
 import type { ReviewCount } from "@contract/review";
+import { relativeTime } from "@/lib/relativeTime";
 import RefBadge from "./RefBadge";
 import CommitDetail from "./CommitDetail";
 
@@ -13,19 +14,7 @@ const NODE_RADIUS = 4;
 
 function formatRelative(epochSeconds: number, now: number = Date.now()): string {
   if (!epochSeconds) return "";
-  const diffMs = now - epochSeconds * 1000;
-  const diffSec = Math.max(0, Math.floor(diffMs / 1000));
-  if (diffSec < 60) return `${diffSec}s ago`;
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}h ago`;
-  const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  const diffMonth = Math.floor(diffDay / 30);
-  if (diffMonth < 12) return `${diffMonth}mo ago`;
-  const diffYear = Math.floor(diffDay / 365);
-  return `${diffYear}y ago`;
+  return relativeTime(new Date(epochSeconds * 1000).toISOString(), now);
 }
 
 export interface GraphRowProps {
@@ -44,6 +33,8 @@ export interface GraphRowProps {
   now?: number;
   /** review 件数バッジ用（F5-10）。unresolved/drafts が両方 0 なら何も出さない。 */
   reviewCount?: ReviewCount;
+  /** uncommitted 行だけに出す変更ファイル数（git status の件数）。 */
+  uncommittedFileCount?: number;
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
@@ -102,6 +93,7 @@ export default function GraphRow({
   detailNote,
   now,
   reviewCount,
+  uncommittedFileCount,
   onSelect,
   onOpenDiff,
   onOpenFile,
@@ -149,9 +141,9 @@ export default function GraphRow({
             cx={cx}
             cy={cy}
             r={NODE_RADIUS}
-            fill={isHead ? nodeColor : "var(--card)"}
-            stroke={nodeColor}
-            strokeWidth={isHead ? 3 : 2}
+            fill={isUncommitted ? "var(--card)" : nodeColor}
+            stroke={isUncommitted ? nodeColor : isHead ? "var(--foreground)" : "none"}
+            strokeWidth={isUncommitted ? 2 : isHead ? 1.5 : 0}
             strokeDasharray={isUncommitted ? "2,2" : undefined}
           />
           {isMerge && <circle cx={cx} cy={cy} r={NODE_RADIUS - 2} fill={nodeColor} stroke="none" />}
@@ -163,11 +155,14 @@ export default function GraphRow({
           <span className="truncate font-sans">
             {isUncommitted ? "(uncommitted changes)" : commit.subject}
           </span>
+          {isUncommitted && uncommittedFileCount !== undefined && (
+            <span className="shrink-0 text-muted-foreground">{uncommittedFileCount} files</span>
+          )}
         </div>
         {reviewCount && <ReviewCountBadge count={reviewCount} onOpenDiff={triggerOpenDiff} />}
         <div className="w-24 shrink-0 truncate text-muted-foreground">{commit.author}</div>
         <div className="w-16 shrink-0 text-right text-muted-foreground">
-          {isUncommitted ? "" : formatRelative(commit.authorDate, now)}
+          {isUncommitted ? "いま" : formatRelative(commit.authorDate, now)}
         </div>
         <div className="w-16 shrink-0 text-right text-muted-foreground">
           {isUncommitted ? "" : row.hash.slice(0, 7)}

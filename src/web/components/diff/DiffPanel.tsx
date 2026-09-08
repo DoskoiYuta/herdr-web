@@ -9,7 +9,6 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
-import { PathTree } from "@/components/tree/PathTree";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import type { PatchResponse } from "@contract/git";
 import type { ReviewTarget, Side } from "@contract/review";
@@ -28,6 +27,7 @@ import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/Revie
 import { annotationSignature, withAnnotationRev, withCollapsedVersion } from "./annotationVersion";
 import Banners from "./Banners.tsx";
 import { DiffEmptyState } from "./DiffEmptyState.tsx";
+import { DiffFileList } from "./DiffFileList.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
 import { usePatch } from "./hooks/usePatch.ts";
@@ -47,8 +47,7 @@ import {
   useSettings,
 } from "./state.ts";
 import type { BannerState } from "./state.ts";
-import StatusLine from "./StatusLine.tsx";
-import { buildTree, fileStats, fileStatus, statsDecoration, toGitStatus } from "./tree.ts";
+import { buildTree, fileStats, fileStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
 
 const FOR_DIFF_DEBOUNCE_MS = 200;
@@ -79,13 +78,19 @@ function isTypingTarget(el: Element | null): boolean {
   );
 }
 
-/** Renders "WORKTREE vs HEAD" / "INDEX vs HEAD" / "<hash7> vs <hash7>" from the from/to props. */
-export function comparisonLabel(from: string | undefined, to: string | undefined): string {
+/** Renders "WORKTREE vs HEAD" / "INDEX vs HEAD" / "<hash7> vs <hash7>" from
+ * the from/to props. An explicit Graph-picked commit range reads with `→`
+ * instead of `vs` (design.pen P11) via `separator`. */
+export function comparisonLabel(
+  from: string | undefined,
+  to: string | undefined,
+  separator = "vs",
+): string {
   const fromLabel = from ?? "HEAD";
   const toLabel = to ?? "WORKTREE";
   const shorten = (x: string) =>
     x === "HEAD" || x === "WORKTREE" || x === "INDEX" ? x : x.slice(0, 7);
-  return `${shorten(toLabel)} vs ${shorten(fromLabel)}`;
+  return `${shorten(toLabel)} ${separator} ${shorten(fromLabel)}`;
 }
 
 /** Where the Review タブ / Graph のファイル行が DiffPanel に飛ばす先（plan.md
@@ -118,6 +123,12 @@ export interface DiffPanelProps {
   sendButton?: ReactNode;
   /** 空状態（ui-redesign.md §5.4 / design.pen P11）の「Graph を開く」。 */
   onOpenGraph?: () => void;
+  /** `from`/`to` が Graph で選んだ明示的な比較範囲かどうか（既定の
+   * WORKTREE/INDEX vs HEAD とは toolbar の見た目・右端の操作が異なる）。 */
+  compareRangeActive?: boolean;
+  /** 比較範囲 chip の解除 / 「作業ツリーに戻る」。`compareRangeActive` の
+   * ときだけ toolbar に出る。 */
+  onResetToWorktree?: () => void;
 }
 
 export function DiffPanel({
@@ -131,6 +142,8 @@ export function DiffPanel({
   onInitialLocationConsumed,
   sendButton,
   onOpenGraph = () => {},
+  compareRangeActive = false,
+  onResetToWorktree,
 }: DiffPanelProps) {
   const [settings, setDiffSettings] = useSettings();
 
@@ -192,6 +205,16 @@ export function DiffPanel({
   const expandAll = useCallback(() => {
     setCollapsedNames(new Set());
   }, []);
+
+  // design.pen shows one collapse/expand toggle rather than two separate
+  // buttons — a file added mid-session (not yet in collapsedNames) counts
+  // as "not all collapsed" so the toggle offers to collapse it too.
+  const allCollapsed =
+    items.length > 0 && items.every((item) => collapsedNames.has(item.fileDiff.name));
+  const toggleCollapseAll = useCallback(() => {
+    if (allCollapsed) expandAll();
+    else collapseAll();
+  }, [allCollapsed, collapseAll, expandAll]);
 
   const showToast = useCallback(
     (message: string) => toastFn({ kind: "error", message }),
@@ -282,29 +305,6 @@ export function DiffPanel({
   // reordering here must not disturb that, so this only permutes the array,
   // never clones items (see order.ts).
   const orderedItems = useMemo(() => orderItemsByTree(items, treeNodes), [items, treeNodes]);
-
-  // PathTree inputs: a flat list of changed file paths plus their status/
-  // stats, keyed by name — PathTree infers the directory nesting itself
-  // from the paths' `/` segments (unlike buildTree above, which this
-  // component still needs for the right pane's display order).
-  const treePaths = useMemo(() => items.map((item) => item.fileDiff.name), [items]);
-  const treeGitStatus = useMemo(
-    () =>
-      items.map((item) => {
-        const untracked = !!untrackedByName.get(item.fileDiff.name);
-        return {
-          path: item.fileDiff.name,
-          status: toGitStatus(fileStatus(item.fileDiff, untracked)),
-        };
-      }),
-    [items, untrackedByName],
-  );
-  const treeDecorations = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof statsDecoration>>();
-    for (const item of items)
-      map.set(item.fileDiff.name, statsDecoration(fileStats(item.fileDiff)));
-    return map;
-  }, [items]);
 
   // -------------------------------------------------------------------
   // File selection follows the rendered items. Adjusted during render
@@ -417,7 +417,7 @@ export function DiffPanel({
         : String(patchQuery.error)
       : null;
   const summary = useMemo(() => summarize(parsedFiles), [parsedFiles]);
-  const label = comparisonLabel(from, to);
+  const label = comparisonLabel(from, to, compareRangeActive ? "→" : "vs");
   // 「作業ツリーは HEAD と同じです」— 読み込み中 (hasEverApplied === false) とは
   // 区別し、変更ファイル・untracked がともに 0 件だと確定してから描く。
   const isEmptyDiff = hasEverApplied && items.length === 0 && untrackedCount === 0;
@@ -772,25 +772,27 @@ export function DiffPanel({
           updateViewerSettings({ fontSize: Math.min(MAX_FONT_SIZE, viewerSettings.fontSize + 1) })
         }
         onRefresh={applyPending}
-        onCollapseAll={collapseAll}
-        onExpandAll={expandAll}
+        allCollapsed={allCollapsed}
+        onToggleCollapseAll={toggleCollapseAll}
         disabled={false}
+        compareLabel={label}
+        compareRangeActive={compareRangeActive}
+        onResetToWorktree={onResetToWorktree}
+        summary={summary}
+        generatedAt={generatedAt}
+        untrackedCount={untrackedCount}
+        untrackedErrors={untrackedErrors}
         sendButton={sendButton}
       />
-      <div className="border-b border-border px-2 py-1 text-xs text-muted-foreground">{label}</div>
       <div className="flex min-h-0 flex-1">
         {viewerSettings.showTree && (
           <>
-            <PathTree
-              paths={treePaths}
-              gitStatus={treeGitStatus}
-              decorations={treeDecorations}
-              initialExpansion="open"
-              fontSize={viewerSettings.fontSize}
+            <DiffFileList
+              nodes={treeNodes}
               selectedPath={selectedPath}
               onSelectFile={handleTreeSelectFile}
               style={{ width: treeWidth }}
-              className="h-full min-h-0 shrink-0"
+              className="shrink-0 border-r border-border"
             />
             <ResizeHandle
               width={treeWidth}
@@ -808,12 +810,6 @@ export function DiffPanel({
             errorText={errorText}
             untrackedTruncated={untrackedTruncated}
             onUpdate={applyPending}
-          />
-          <StatusLine
-            summary={summary}
-            generatedAt={generatedAt}
-            untrackedCount={untrackedCount}
-            untrackedErrors={untrackedErrors}
           />
           <div className="min-h-0 flex-1">
             {isEmptyDiff ? (

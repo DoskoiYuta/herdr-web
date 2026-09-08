@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PathTree } from "@/components/tree/PathTree";
+import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
 import { ViewerControls } from "@/components/tool/ViewerControls";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelState } from "@/components/ui/status/PanelState";
@@ -44,6 +45,9 @@ import { agentPanesAt, liveAskSessionCount } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import { collectDroppedFiles } from "@/lib/dropEntries";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
+import { formatBytes } from "@/lib/formatBytes";
+import { languageLabel } from "@/lib/languageLabel";
+import { Badge } from "@/components/ui/badge";
 import { AskComposer } from "@/components/ask/AskComposer";
 import { AskMismatchStrip } from "@/components/ask/AskMismatchStrip";
 import { AskTargetDialog } from "@/components/ask/AskTargetDialog";
@@ -193,7 +197,16 @@ export function FilesPanel({
   }
 
   const paths = ls.paths;
-  const status = statusQuery.data?.status ?? [];
+  const status = useMemo(() => statusQuery.data?.status ?? [], [statusQuery.data]);
+  const statusDecorations = useMemo(() => {
+    const map = new Map<string, { text: string; parts: { text: string; color: string }[] }>();
+    for (const entry of status) {
+      const text = gitStatusLetter(entry.status);
+      if (!text) continue;
+      map.set(entry.path, { text, parts: [{ text, color: gitStatusLetterColor(entry.status) }] });
+    }
+    return map;
+  }, [status]);
   const rootError = ls.errors.find((e) => e.dir === "")?.error;
 
   const queryClient = useQueryClient();
@@ -588,6 +601,7 @@ export function FilesPanel({
                 <PathTree
                   paths={paths}
                   gitStatus={status}
+                  decorations={statusDecorations}
                   initialExpansion="closed"
                   fontSize={settings.fontSize}
                   selectedPath={selectedPath}
@@ -622,8 +636,23 @@ export function FilesPanel({
           )}
           {selectedPath !== null && (
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-              <span className="truncate">{selectedPath}</span>
+              <span className="truncate">
+                {[
+                  selectedPath,
+                  fileQuery.data && "size" in fileQuery.data
+                    ? formatBytes(fileQuery.data.size)
+                    : null,
+                  languageLabel(selectedPath),
+                ]
+                  .filter((part): part is string => part !== null)
+                  .join(" · ")}
+              </span>
               <div className="flex shrink-0 items-center gap-2">
+                {matches.length > 0 && (
+                  <Badge variant="secondary" className="shrink-0">
+                    質問 {matches.length}
+                  </Badge>
+                )}
                 {previewKind === null && isMarkdownPath(selectedPath) && (
                   <Tabs value={mdMode} onValueChange={(v) => onMdModeChange(v as typeof mdMode)}>
                     <TabsList>
@@ -636,9 +665,6 @@ export function FilesPanel({
                   <span>
                     {imageDims.width}×{imageDims.height}
                   </span>
-                )}
-                {fileQuery.data && "size" in fileQuery.data && (
-                  <span>{fileQuery.data.size} bytes</span>
                 )}
               </div>
             </div>
@@ -765,7 +791,7 @@ function FileViewerBody({
           onLoad={(e) => onImageLoad(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
           onError={onPreviewError}
         />
-        <p className="text-xs text-muted-foreground">{selectedPath}</p>
+        <p className="text-xs text-muted-foreground">/api/fs/raw から直接表示 · クリックで実寸</p>
       </div>
     );
   }
@@ -806,7 +832,7 @@ function FileViewerBody({
       <PanelState
         icon={FileQuestion}
         title="バイナリファイル"
-        description={`${data.size} bytes`}
+        description="内容は表示しません。テキストでも 2 MiB を超えるファイルは同様に種別とサイズだけを表示します。"
         action={{ label: "絶対パスをコピー", onClick: onCopyAbsolutePath }}
       />
     );
@@ -824,7 +850,16 @@ function FileViewerBody({
   }
 
   if (isMarkdownPath(data.path) && mdMode === "preview") {
-    return <MarkdownView contents={data.contents} />;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <MarkdownView contents={data.contents} />
+        </div>
+        <p className="shrink-0 border-t border-border px-2 py-1 text-xs text-muted-foreground">
+          プレビューは読み取り専用。質問を付けるにはソース表示に切り替えて行を選択します。
+        </p>
+      </div>
+    );
   }
 
   const annotations = buildAskAnnotations(matches, composerLine);
@@ -837,6 +872,9 @@ function FileViewerBody({
           disabled={askDisabled}
           onCancel={onCancelComposer}
           onOpenTargetDialog={onOpenTargetDialog}
+          path={selectedPath ?? undefined}
+          startLine={selection ? Math.min(selection.range.start, selection.range.end) : undefined}
+          endLine={selection ? Math.max(selection.range.start, selection.range.end) : undefined}
         />
       );
     }

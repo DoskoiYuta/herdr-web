@@ -19,6 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { CSSProperties, ReactNode } from "react";
 import type { ContextMenuItem, ContextMenuOpenContext, GitStatus } from "@pierre/trees";
 import { cn } from "@/lib/utils";
+import { HIDE_BUILT_IN_FILE_GIT_STATUS_CSS } from "./gitStatusDecoration";
 import { diffPaths } from "./treeDiff";
 
 export interface PathTreeDecoration {
@@ -138,6 +139,13 @@ export function PathTree({
     flattenEmptyDirectories,
     search,
     gitStatus,
+    // design.pen: monochrome folder/file outlines, not per-language colored icons.
+    icons: { set: "minimal", colored: false },
+    // design.pen colors the trailing git-status letter per status and spells
+    // untracked "?" rather than the library's fixed, uncolored "U" — hide
+    // its built-in letter (directories' "contains a change" dot is
+    // untouched) and show our own via `decorations` instead.
+    unsafeCSS: HIDE_BUILT_IN_FILE_GIT_STATUS_CSS,
     // Read once at construction (module comment) — a plain-button trigger
     // lane would otherwise appear on hover even before any menu content is
     // supplied. `enabled` itself is set by the React wrapper (FileTree.js)

@@ -5,6 +5,7 @@ import type { CommitFile, FileStatus } from "@contract/git";
 import type { GitStatus } from "@pierre/trees";
 import type { PathTreeDecoration } from "@/components/tree/PathTree";
 import { ADDITIONS_COLOR, DELETIONS_COLOR } from "@/components/tree/decorationColors";
+import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
 
 // C(opied)/T(ype-changed)/U(nmerged) have no direct GitStatus equivalent;
 // mapped to the closest existing status (added/modified/modified) rather
@@ -30,12 +31,17 @@ export function buildGitStatus(
 }
 
 export function fileDecoration(file: CommitFile): PathTreeDecoration {
+  const gitStatus = toGitStatus(file.status);
+  const letter = gitStatusLetter(gitStatus);
+  const letterPart = letter ? [{ text: letter, color: gitStatusLetterColor(gitStatus) }] : [];
   if (file.additions === null || file.deletions === null) {
-    return { text: "bin" };
+    const parts = [{ text: "bin" }, ...letterPart];
+    return { text: parts.map((p) => p.text).join(" "), parts };
   }
   const parts: { text: string; color?: string }[] = [];
   if (file.additions > 0) parts.push({ text: `+${file.additions}`, color: ADDITIONS_COLOR });
   if (file.deletions > 0) parts.push({ text: `−${file.deletions}`, color: DELETIONS_COLOR });
+  parts.push(...letterPart);
   return { text: parts.map((p) => p.text).join(" "), parts };
 }
 

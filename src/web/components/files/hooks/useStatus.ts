@@ -8,12 +8,13 @@ export function statusQueryKey(repo: string, repoChangedTick: number) {
   return ["status", repo, repoChangedTick] as const;
 }
 
-export function useStatus(repo: string, repoChangedTick: number, pollMs?: number) {
+export function useStatus(repo: string, repoChangedTick: number, pollMs?: number, enabled = true) {
   return useQuery({
     queryKey: statusQueryKey(repo, repoChangedTick),
     queryFn: () => gitApi.status(repo),
     staleTime: Infinity,
     refetchInterval: pollMs,
     retry: false,
+    enabled,
   });
 }

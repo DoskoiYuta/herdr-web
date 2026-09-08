@@ -233,6 +233,15 @@ async function selectFileAndDragLines23() {
   screen.getByText("end-selection").click();
 }
 
+// 無いと壊れる: どのファイルの何行目に質問しようとしているかがコンポーザー
+// 自身に出ず、隣に別の質問スレッドが並んでいると取り違えかねない
+// （design.pen P4: 見出し「質問 path:L10–12」）。
+test("the composer shows a 質問 path:L2–3 heading for the dragged range", async () => {
+  render(renderPanel());
+  await selectFileAndDragLines23();
+  expect(await screen.findByText("a.ts:L2–3")).toBeInTheDocument();
+});
+
 test("selecting lines opens the composer; opening the target dialog and submitting the default target creates an ask anchored to those lines", async () => {
   createMock.mockResolvedValue(makeAsk());
   render(renderPanel());
@@ -309,6 +318,18 @@ test("choosing a pane target in the dialog sends { kind: 'pane', paneId }", asyn
   );
 });
 
+// 無いと壊れる: ファイルヘッダに質問件数が出ないと、コードビューをスクロール
+// して探すまでこのファイルに質問が付いているか分からない。
+test("the file header shows a 質問 N badge counting all for-file matches", async () => {
+  forFileMock.mockResolvedValue([
+    { ask: makeAsk({ id: "anchored-1" }), startLine: 2, endLine: 2 },
+    { ask: makeAsk({ id: "outdated-1" }), startLine: null, endLine: null },
+  ] satisfies ForFileMatch[]);
+  render(renderPanel());
+  (await screen.findByText("a.ts")).click();
+  expect(await screen.findByText("質問 2")).toBeInTheDocument();
+});
+
 test("anchored for-file matches render inline as ask threads", async () => {
   forFileMock.mockResolvedValue([
     { ask: makeAsk({ id: "anchored-1" }), startLine: 2, endLine: 2 },
@@ -328,7 +349,7 @@ test("outdated (unanchored) for-file matches render in the mismatch strip, not i
   ] satisfies ForFileMatch[]);
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  expect(await screen.findByTestId("ask-mismatch-strip")).toHaveTextContent("一致しない質問 1 件");
+  expect(await screen.findByTestId("ask-mismatch-strip")).toHaveTextContent("1 件あります");
   expect(screen.queryByTestId("thread-card")).not.toBeInTheDocument();
 });
 

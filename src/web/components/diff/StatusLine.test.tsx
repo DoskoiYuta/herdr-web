@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import StatusLine from "./StatusLine.tsx";
 
-test("renders file/addition/deletion summary and formatted time", () => {
+test("renders file/addition/deletion summary", () => {
   render(
     <StatusLine
       summary={{ files: 3, additions: 10, deletions: 2 }}
@@ -14,7 +14,9 @@ test("renders file/addition/deletion summary and formatted time", () => {
   expect(screen.getByText(/3 files \+10 -2/)).toBeInTheDocument();
 });
 
-test("shows -- when generatedAt is null", () => {
+// 無いと壊れる: title のツールチップが外れると、更新時刻が画面のどこからも
+// 確認できなくなる（本文には出さない設計のため）。
+test("puts the fetch time in a tooltip, showing -- when generatedAt is null", () => {
   render(
     <StatusLine
       summary={{ files: 0, additions: 0, deletions: 0 }}
@@ -23,7 +25,7 @@ test("shows -- when generatedAt is null", () => {
       untrackedErrors={0}
     />,
   );
-  expect(screen.getByText(/--:--:--/)).toBeInTheDocument();
+  expect(screen.getByText(/0 files/)).toHaveAttribute("title", "更新 --:--:--");
 });
 
 test("appends untracked count and untracked-error count when present", () => {
@@ -35,8 +37,8 @@ test("appends untracked count and untracked-error count when present", () => {
       untrackedErrors={2}
     />,
   );
-  expect(screen.getByText(/未追跡 4/)).toBeInTheDocument();
-  expect(screen.getByText(/未追跡エラー 2/)).toBeInTheDocument();
+  expect(screen.getByText(/untracked 4/)).toBeInTheDocument();
+  expect(screen.getByText(/untracked errors 2/)).toBeInTheDocument();
 });
 
 test("omits untracked parts when zero", () => {
@@ -48,5 +50,5 @@ test("omits untracked parts when zero", () => {
       untrackedErrors={0}
     />,
   );
-  expect(screen.queryByText(/未追跡/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/untracked/)).not.toBeInTheDocument();
 });

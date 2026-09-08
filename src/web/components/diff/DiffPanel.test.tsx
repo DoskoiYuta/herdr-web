@@ -135,6 +135,12 @@ test("comparisonLabel: two commit hashes are shortened to 7 chars", () => {
   expect(comparisonLabel("abcdef1234567890", "0123456789abcdef")).toBe("0123456 vs abcdef1");
 });
 
+// 無いと壊れる: Graph で選んだ明示的な範囲の表示が既定の "vs" 表記のままになり、
+// design.pen の "→" 表記（比較範囲 chip）と揃わない。
+test("comparisonLabel: an explicit separator replaces 'vs'", () => {
+  expect(comparisonLabel("abcdef1234567890", "0123456789abcdef", "→")).toBe("0123456 → abcdef1");
+});
+
 test("renders the comparison label from from/to props", () => {
   renderPanel({ repo: "/repo", repoChangedTick: 0 });
   expect(screen.getByText("WORKTREE vs HEAD")).toBeInTheDocument();
@@ -261,11 +267,11 @@ test("toolbar すべて折りたたむ/すべて展開 collapse and expand every
   expect(collapsedOf("a.txt")).toBe("false");
   expect(collapsedOf("b.txt")).toBe("false");
 
-  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  fireEvent.click(screen.getByTitle("すべて折りたたむ"));
   expect(collapsedOf("a.txt")).toBe("true");
   expect(collapsedOf("b.txt")).toBe("true");
 
-  fireEvent.click(screen.getByText("すべて展開"));
+  fireEvent.click(screen.getByTitle("すべて展開"));
   expect(collapsedOf("a.txt")).toBe("false");
   expect(collapsedOf("b.txt")).toBe("false");
 });
@@ -277,7 +283,7 @@ test("clicking a file in the PathTree expands it (if collapsed) and scrolls to i
   const collapsedOfA = () =>
     document.querySelector('[data-name="a.txt"]')?.getAttribute("data-collapsed");
 
-  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  fireEvent.click(screen.getByTitle("すべて折りたたむ"));
   expect(collapsedOfA()).toBe("true");
 
   fireEvent.click(screen.getByRole("button", { name: "a.txt" }));

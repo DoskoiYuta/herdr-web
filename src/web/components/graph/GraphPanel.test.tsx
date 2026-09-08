@@ -53,6 +53,9 @@ function setupFetchMock(graph: GraphResponse) {
       const found = graph.commits.find((c) => url.includes(c.hash));
       return { ok: true, json: async () => ({ ...found, files: [] }) } as Response;
     }
+    if (url.includes("/api/git/status")) {
+      return { ok: true, json: async () => ({ status: [] }) } as Response;
+    }
     return { ok: false, status: 404, json: async () => ({}) } as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -190,5 +193,65 @@ describe("GraphPanel commit selection", () => {
     await screen.findByText("commit 0");
     await screen.findByText("commit 1");
     await screen.findByText("commit 2");
+  });
+
+  // 無いと壊れる: ツールバーに読み込み済みコミット数・stash 数が出ず、
+  // 「さらに読み込む」が必要かの判断材料が無くなる（design.pen P5）。
+  test("shows the loaded commit count and stash count in the toolbar", async () => {
+    const graph = makeGraph();
+    graph.stashes = [{ hash: hash(9), selector: "stash@{0}", subject: "WIP" }];
+    setupFetchMock(graph);
+    render(
+      <GraphPanel
+        repo="/repo"
+        repoChangedTick={0}
+        onSelectCommit={() => {}}
+        virtualizerOptions={virtualizerOptions}
+      />,
+      { wrapper },
+    );
+    expect(await screen.findByText("3 commits · 1 stash")).toBeInTheDocument();
+  });
+
+  // 無いと壊れる: uncommitted 行が無いのに status を取り続け、無駄なポーリング
+  // が repoChangedTick ごとに走る。
+  test("does not fetch git status when the graph has no uncommitted changes", async () => {
+    const graph = makeGraph();
+    graph.hasUncommitted = false;
+    const fetchMock = setupFetchMock(graph);
+    render(
+      <GraphPanel
+        repo="/repo"
+        repoChangedTick={0}
+        onSelectCommit={() => {}}
+        virtualizerOptions={virtualizerOptions}
+      />,
+      { wrapper },
+    );
+    await screen.findByText("commit 0");
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/git/status"))).toBe(
+      false,
+    );
+  });
+
+  test("fetches git status when the graph has uncommitted changes", async () => {
+    const graph = makeGraph();
+    graph.hasUncommitted = true;
+    const fetchMock = setupFetchMock(graph);
+    render(
+      <GraphPanel
+        repo="/repo"
+        repoChangedTick={0}
+        onSelectCommit={() => {}}
+        virtualizerOptions={virtualizerOptions}
+      />,
+      { wrapper },
+    );
+    await screen.findByText("commit 0");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).includes("/api/git/status")),
+      ).toBe(true),
+    );
   });
 });
