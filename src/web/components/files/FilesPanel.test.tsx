@@ -691,6 +691,55 @@ test("closing the only open tab clears the selection back to the placeholder", a
   expect(await screen.findByText("ファイルを選択してください")).toBeInTheDocument();
 });
 
+// ToolPane owns `selectedPath` via a router navigate, which lands a render
+// (or more) after the tab store already updated — TestFilesPanel above
+// applies `onSelectedPathChange` synchronously in the same tick, which
+// doesn't exercise that gap. This harness defers it like the real navigate
+// does, to catch the effect-scheduling bug: an effect keyed on `tabs.active`
+// firing before `selectedPath` catches up, re-opening the tab that was just
+// closed.
+function DeferredTestFilesPanel(props: FilesPanelTestProps) {
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const onSelectedPathChange = (path: string | null) => {
+    setTimeout(() => setSelectedPath(path), 0);
+  };
+  const [mdMode, setMdMode] = useState<"source" | "preview">("preview");
+  return (
+    <FilesPanel
+      repo="/repo"
+      repoChangedTick={0}
+      repoKey="/repo"
+      selectedPath={selectedPath}
+      onSelectedPathChange={onSelectedPathChange}
+      mdMode={mdMode}
+      onMdModeChange={setMdMode}
+      {...props}
+    />
+  );
+}
+
+test("closing the only open tab still removes it when the URL update lands a tick later", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  const client = new QueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <HerdrStoreProvider store={makeFakeStore()}>
+          <DeferredTestFilesPanel />
+        </HerdrStoreProvider>
+      </ToastProvider>
+    </QueryClientProvider>,
+  );
+
+  (await screen.findByText("a.ts")).click();
+  await screen.findByRole("tab", { name: /a\.ts/ });
+
+  fireEvent.click(screen.getByRole("button", { name: "a.ts を閉じる" }));
+  await waitFor(() => expect(screen.queryByRole("tab")).not.toBeInTheDocument());
+  expect(await screen.findByText("ファイルを選択してください")).toBeInTheDocument();
+});
+
 test("a tab whose path doesn't exist in this worktree is marked missing via the bulk stat check", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
   statMock.mockResolvedValue({ "a.ts": false });

@@ -169,7 +169,12 @@ export function PathTree({
     search,
     gitStatus,
     // VS Code style: colored, per-filetype icons (design.pen updated to match).
-    icons: { set: "standard", colored: true },
+    // Must be "complete" — @pierre/trees only stamps the
+    // `data-file-tree-colored-icons` attribute its per-filetype color rules
+    // key off of for that set (dist/builtInIcons.js `COLORED_SETS`); "standard"
+    // still resolves the right icon *shape* per file type but never colors it,
+    // so every row (outside a git-status tint) rendered in the same muted gray.
+    icons: { set: "complete", colored: true },
     // design.pen colors the trailing git-status letter per status and spells
     // untracked "?" rather than the library's fixed, uncolored "U" — hide
     // its built-in letter (directories' "contains a change" dot is

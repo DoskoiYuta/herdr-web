@@ -6,6 +6,7 @@ import {
   closeTab,
   MAX_TABS_PER_REPO,
   openTab,
+  reorderTabs,
   setActiveTab,
   validateFileTabsMap,
   type FileTabsState,
@@ -67,6 +68,24 @@ test("closeOtherTabs: keeps only the given path and activates it", () => {
 
 test("closeAllTabs: clears the tab list and active path", () => {
   assert.deepEqual(closeAllTabs(), { paths: [], active: null });
+});
+
+test.each([
+  {
+    name: "moving a tab forward shifts the ones between it and the target left",
+    from: 0,
+    to: 2,
+    want: ["b.ts", "c.ts", "a.ts"],
+  },
+  {
+    name: "moving a tab backward shifts the ones between it and the target right",
+    from: 2,
+    to: 0,
+    want: ["c.ts", "a.ts", "b.ts"],
+  },
+])("reorderTabs: $name", ({ from, to, want }) => {
+  const state: FileTabsState = { paths: ["a.ts", "b.ts", "c.ts"], active: "b.ts" };
+  assert.deepEqual(reorderTabs(state, from, to), { paths: want, active: "b.ts" });
 });
 
 test("setActiveTab: ignores a path that isn't in the open tab list", () => {

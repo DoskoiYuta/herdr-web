@@ -8,6 +8,7 @@ function renderBar(props: Partial<React.ComponentProps<typeof FileTabBar>> = {})
   const onCloseOthers = vi.fn();
   const onCloseAll = vi.fn();
   const onCopyPath = vi.fn();
+  const onReorder = vi.fn();
   render(
     <FileTabBar
       paths={["a.ts", "b.ts"]}
@@ -18,10 +19,11 @@ function renderBar(props: Partial<React.ComponentProps<typeof FileTabBar>> = {})
       onCloseOthers={onCloseOthers}
       onCloseAll={onCloseAll}
       onCopyPath={onCopyPath}
+      onReorder={onReorder}
       {...props}
     />,
   );
-  return { onSelect, onClose, onCloseOthers, onCloseAll, onCopyPath };
+  return { onSelect, onClose, onCloseOthers, onCloseAll, onCopyPath, onReorder };
 }
 
 test("renders nothing when no tabs are open", () => {
@@ -35,6 +37,7 @@ test("renders nothing when no tabs are open", () => {
       onCloseOthers={vi.fn()}
       onCloseAll={vi.fn()}
       onCopyPath={vi.fn()}
+      onReorder={vi.fn()}
     />,
   );
   expect(container).toBeEmptyDOMElement();
