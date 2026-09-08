@@ -27,7 +27,7 @@ function noop() {
 }
 
 export function MarkdownView({ contents, compact = false }: MarkdownViewProps) {
-  const editor = useEditor({ height: "100%" });
+  const editor = useEditor({ height: compact ? "auto" : "100%" });
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -42,7 +42,11 @@ export function MarkdownView({ contents, compact = false }: MarkdownViewProps) {
   return (
     <div
       ref={containerRef}
-      className={cn("md-readonly h-full min-h-0 overflow-auto", compact && "md-readonly-compact")}
+      className={cn(
+        "md-readonly overflow-auto",
+        compact ? "h-auto" : "h-full min-h-0",
+        compact && "md-readonly-compact",
+      )}
     >
       <Editable editor={editor} value={contents} onChange={noop} />
     </div>
