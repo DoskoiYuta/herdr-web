@@ -1,8 +1,6 @@
-// Ported from terminal-diff's src/client/components/StatusLine.tsx,
-// restyled with Tailwind utility classes instead of raw CSS. design.pen
-// (P8/P11) folds this into the toolbar's single row and drops the visible
-// "更新 hh:mm:ss" timestamp — it's kept as a hover tooltip instead of a
-// removed feature.
+// Compact "N files +A -D · untracked U" summary rendered inline in the
+// toolbar (design.pen P8/P11). The fetch time isn't shown in the row text —
+// it's on the element's `title` tooltip instead.
 
 import type { Summary } from "./reconcile.ts";
 

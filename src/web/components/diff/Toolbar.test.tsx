@@ -78,9 +78,9 @@ test("renders nothing extra when sendButton is omitted", () => {
   expect(screen.queryByText(/^送信/)).not.toBeInTheDocument();
 });
 
-// 無いと壊れる: 比較範囲 chip の解除操作が消え、Graph から選んだコミット範囲
-// から作業ツリー表示に戻る手段が toolbar から無くなる。
-test("an active compare range shows a clear button and a reset-to-worktree button instead of sendButton", () => {
+// 無いと壊れる: 比較範囲表示中に送信ボタンが消え、その diff で作った下書きを
+// 送れなくなる。作業ツリーに戻る手段は chip の × クリックで足りる。
+test("an active compare range still shows sendButton; the chip's × resets to the worktree", () => {
   const onResetToWorktree = vi.fn();
   render(
     <Toolbar
@@ -91,9 +91,7 @@ test("an active compare range shows a clear button and a reset-to-worktree butto
       sendButton={<button type="button">送信 (2)</button>}
     />,
   );
-  expect(screen.queryByRole("button", { name: "送信 (2)" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "作業ツリーに戻る" }));
-  expect(onResetToWorktree).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "送信 (2)" })).toBeInTheDocument();
   fireEvent.click(screen.getByTitle("比較範囲を解除"));
-  expect(onResetToWorktree).toHaveBeenCalledTimes(2);
+  expect(onResetToWorktree).toHaveBeenCalledOnce();
 });

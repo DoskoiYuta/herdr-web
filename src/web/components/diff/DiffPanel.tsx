@@ -78,13 +78,19 @@ function isTypingTarget(el: Element | null): boolean {
   );
 }
 
-/** Renders "WORKTREE vs HEAD" / "INDEX vs HEAD" / "<hash7> vs <hash7>" from the from/to props. */
-export function comparisonLabel(from: string | undefined, to: string | undefined): string {
+/** Renders "WORKTREE vs HEAD" / "INDEX vs HEAD" / "<hash7> vs <hash7>" from
+ * the from/to props. An explicit Graph-picked commit range reads with `→`
+ * instead of `vs` (design.pen P11) via `separator`. */
+export function comparisonLabel(
+  from: string | undefined,
+  to: string | undefined,
+  separator = "vs",
+): string {
   const fromLabel = from ?? "HEAD";
   const toLabel = to ?? "WORKTREE";
   const shorten = (x: string) =>
     x === "HEAD" || x === "WORKTREE" || x === "INDEX" ? x : x.slice(0, 7);
-  return `${shorten(toLabel)} vs ${shorten(fromLabel)}`;
+  return `${shorten(toLabel)} ${separator} ${shorten(fromLabel)}`;
 }
 
 /** Where the Review タブ / Graph のファイル行が DiffPanel に飛ばす先（plan.md
@@ -411,13 +417,7 @@ export function DiffPanel({
         : String(patchQuery.error)
       : null;
   const summary = useMemo(() => summarize(parsedFiles), [parsedFiles]);
-  // design.pen (P11): an explicit Graph-picked range reads "abc1234 → def5678"
-  // rather than comparisonLabel's "abc1234 vs def5678" — comparisonLabel
-  // itself keeps the "vs" wording (its own tests pin it) since it's also
-  // used for the default WORKTREE/INDEX/HEAD labels.
-  const label = compareRangeActive
-    ? comparisonLabel(from, to).replace(" vs ", " → ")
-    : comparisonLabel(from, to);
+  const label = comparisonLabel(from, to, compareRangeActive ? "→" : "vs");
   // 「作業ツリーは HEAD と同じです」— 読み込み中 (hasEverApplied === false) とは
   // 区別し、変更ファイル・untracked がともに 0 件だと確定してから描く。
   const isEmptyDiff = hasEverApplied && items.length === 0 && untrackedCount === 0;

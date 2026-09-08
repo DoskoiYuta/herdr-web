@@ -1,7 +1,5 @@
 // Single-row toolbar (design.pen P8/P11): a compare-range chip + stats on
-// the left, icon buttons + the send/reset slot on the right. Replaces the
-// old three-row layout (button-label toolbar, "WORKTREE vs HEAD" heading,
-// StatusLine) — see DiffPanel.tsx for how the pieces line up.
+// the left, icon buttons + the send-drafts slot on the right.
 
 import {
   ChevronsDownUp,
@@ -38,7 +36,7 @@ export interface ToolbarProps {
   compareLabel: string;
   /** True when `from`/`to` came from an explicit Graph selection rather
    * than the default worktree-vs-HEAD comparison — shows the chip's clear
-   * button and swaps the trailing slot to "作業ツリーに戻る". */
+   * button. */
   compareRangeActive: boolean;
   onResetToWorktree?: () => void;
   summary: Summary;
@@ -46,8 +44,8 @@ export interface ToolbarProps {
   untrackedCount: number;
   untrackedErrors: number;
   /** レビュー下書きの一括送信ボタン（ui-redesign.md §5.4: Diff でしか使わない
-   * ので、ここに置く）。`compareRangeActive` のときは「作業ツリーに戻る」に
-   * 差し替わる。 */
+   * ので、ここに置く）。比較範囲が有効なときも出す — 作業ツリーに戻る手段は
+   * chip の × だけで足りる。 */
   sendButton?: ReactNode;
 }
 
@@ -184,13 +182,7 @@ export default function Toolbar({
         >
           A+
         </Button>
-        {compareRangeActive ? (
-          <Button type="button" size="sm" variant="ghost" onClick={onResetToWorktree}>
-            作業ツリーに戻る
-          </Button>
-        ) : (
-          sendButton
-        )}
+        {sendButton}
       </div>
     </div>
   );
