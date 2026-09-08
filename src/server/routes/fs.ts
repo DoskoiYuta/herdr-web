@@ -5,11 +5,12 @@ import {
   FileQuerySchema,
   LsQuerySchema,
   RawQuerySchema,
+  StatQuerySchema,
   TrashQuerySchema,
   UploadQuerySchema,
 } from "../../contract/fs";
 import { listDir } from "../fs/ls";
-import { readWorktreeFile } from "../fs/readFile";
+import { readWorktreeFile, resolveWorktreeFile } from "../fs/readFile";
 import { resolveRawFile } from "../fs/rawFile";
 import { resolveInsideRoot } from "../fs/resolveInsideRoot";
 import { createTrasher, type Trasher } from "../fs/trash";
@@ -65,6 +66,23 @@ export function fsRoutes(deps: FsRoutesDeps = {}) {
 
       const result = await readWorktreeFile(root, path);
       return c.json(result.body, result.status);
+    })
+    .get("/stat", vValidator("query", StatQuerySchema), async (c) => {
+      const { root, paths } = c.req.valid("query");
+
+      if (!(await isAllowed(root, allowedRoots))) {
+        if (!(await exists(root))) return c.json({ error: "not-found" as const }, 404);
+        return c.json({ error: "forbidden" as const }, 403);
+      }
+
+      const list = paths
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+      const entries = await Promise.all(
+        list.map(async (path) => [path, (await resolveWorktreeFile(root, path)).ok] as const),
+      );
+      return c.json(Object.fromEntries(entries), 200);
     })
     .get("/raw", vValidator("query", RawQuerySchema), async (c) => {
       const { root, path } = c.req.valid("query");

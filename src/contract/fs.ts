@@ -69,6 +69,24 @@ export const FileErrorCodeSchema = v.picklist([
 export type FileErrorCode = v.InferOutput<typeof FileErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// /api/fs/stat  (file viewer: bulk existence check for open tabs, without
+// reading file contents)
+// ---------------------------------------------------------------------------
+
+export const StatQuerySchema = v.object({
+  root: v.pipe(v.string(), v.minLength(1)),
+  /** Comma-separated paths, relative to `root`. */
+  paths: v.pipe(v.string(), v.minLength(1)),
+});
+export type StatQuery = v.InferOutput<typeof StatQuerySchema>;
+
+/** `path -> exists`. Same containment rules as `/api/fs/file`: an
+ * outside-repo or invalid path is `false` rather than an error, since a
+ * stale tab path (e.g. from a different worktree) is an expected input. */
+export const StatResponseSchema = v.record(v.string(), v.boolean());
+export type StatResponse = v.InferOutput<typeof StatResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // /api/fs/raw  (file viewer: image/PDF preview, raw bytes)
 // ---------------------------------------------------------------------------
 

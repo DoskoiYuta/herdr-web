@@ -93,6 +93,45 @@ describe("GET /api/fs/file", () => {
   });
 });
 
+describe("GET /api/fs/stat", () => {
+  test("reports existing and missing paths in one response", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a.txt"), "a\n");
+    const app = makeApp({ allowedRoots: [dir] });
+
+    const res = await app.request(
+      `/api/fs/stat?root=${encodeURIComponent(dir)}&paths=${encodeURIComponent("a.txt,missing.txt")}`,
+    );
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ "a.txt": true, "missing.txt": false });
+  });
+
+  // Without this, a stale tab path from another worktree (e.g. carried over
+  // via the shared repoKey tab list) would 400/500 the whole stat call
+  // instead of just reporting that one path as absent.
+  test.each([
+    ["a path escaping the root via ..", "../etc/passwd"],
+    ["an absolute path", "/etc/passwd"],
+  ])("%s -> false rather than an error", async (_name, path) => {
+    const dir = await makeDir();
+    const app = makeApp({ allowedRoots: [dir] });
+
+    const res = await app.request(
+      `/api/fs/stat?root=${encodeURIComponent(dir)}&paths=${encodeURIComponent(path)}`,
+    );
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ [path]: false });
+  });
+
+  test("root outside allowed roots -> 403", async () => {
+    const dir = await makeDir();
+    const app = makeApp({ allowedRoots: [] });
+
+    const res = await app.request(`/api/fs/stat?root=${encodeURIComponent(dir)}&paths=a.txt`);
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("GET /api/fs/raw", () => {
   // 1x1 transparent PNG.
   const PNG_BYTES = Buffer.from(

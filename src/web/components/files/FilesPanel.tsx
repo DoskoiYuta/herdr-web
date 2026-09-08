@@ -44,6 +44,7 @@ import { askEventMatchesRepo } from "@/lib/askEvent";
 import { agentPanesAt, liveAskSessionCount } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import { collectDroppedFiles } from "@/lib/dropEntries";
+import { closeTab, useFileTabs } from "@/lib/fileTabs";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
 import { formatBytes } from "@/lib/formatBytes";
 import { languageLabel } from "@/lib/languageLabel";
@@ -59,6 +60,7 @@ import {
 } from "@/components/ask/askAnnotations";
 import type { AskAnnotationMeta } from "@/components/ask/askAnnotations";
 import { CodeFileView, type CodeFileViewHandle } from "./CodeFileView";
+import { FileTabBar } from "./FileTabBar";
 import { useFile } from "./hooks/useFile";
 import { useLs } from "./hooks/useLs";
 import { useStatus } from "./hooks/useStatus";
@@ -146,6 +148,49 @@ export function FilesPanel({
   const dirs = useMemo(() => ["", ...loadedDirs], [loadedDirs]);
   const ls = useLs(repo, dirs, repoChangedTick, pollMs);
   const statusQuery = useStatus(repo, repoChangedTick, pollMs);
+
+  // ファイルタブ列（リポジトリ単位で永続化、ui-redesign.md §5.4）。URL の
+  // `path` が正で、タブ列はそれに追従する側 — ツリークリック・Inbox/質問からの
+  // ジャンプ・リロードのいずれでも、選ばれた path がタブに無ければ追加して
+  // アクティブにする。逆方向（タブクリック→URL）は下の `handleTabSelect` 等が
+  // `onSelectedPathChange` を呼ぶことで揃える。
+  const [tabs, tabActions] = useFileTabs(repoKey);
+  useEffect(() => {
+    if (selectedPath !== null) tabActions.open(selectedPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPath, repoKey]);
+
+  const handleTabClose = useCallback(
+    (path: string) => {
+      const wasActive = tabs.active === path;
+      const next = closeTab(tabs, path);
+      tabActions.close(path);
+      if (wasActive) onSelectedPathChange(next.active);
+    },
+    [tabs, tabActions, onSelectedPathChange],
+  );
+  const handleTabCloseOthers = useCallback(
+    (path: string) => {
+      tabActions.closeOthers(path);
+      if (selectedPath !== path) onSelectedPathChange(path);
+    },
+    [tabActions, selectedPath, onSelectedPathChange],
+  );
+  const handleTabCloseAll = useCallback(() => {
+    tabActions.closeAll();
+    onSelectedPathChange(null);
+  }, [tabActions, onSelectedPathChange]);
+
+  // 開いているタブ分だけの一括存在確認（GET /api/fs/stat）。worktree
+  // （root）が変わったとき・Files タブがマウントされたときに走る — どちらも
+  // queryKey に root を含めた上でのマウント時フェッチで自然にカバーされる。
+  const statQuery = useQuery({
+    queryKey: ["fs-stat", repo, tabs.paths],
+    queryFn: () => fsApi.stat({ root: repo, paths: tabs.paths }),
+    enabled: tabs.paths.length > 0,
+    staleTime: Infinity,
+  });
+  const tabExists = statQuery.data ?? {};
   const previewKind = selectedPath !== null ? previewKindForPath(selectedPath) : null;
   const fileQuery = useFile(repo, selectedPath, repoChangedTick, pollMs, previewKind === null);
   const rawUrl =
@@ -517,6 +562,17 @@ export function FilesPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <FileTabBar
+        paths={tabs.paths}
+        activePath={tabs.active}
+        exists={tabExists}
+        decorations={statusDecorations}
+        onSelect={onSelectedPathChange}
+        onClose={handleTabClose}
+        onCloseOthers={handleTabCloseOthers}
+        onCloseAll={handleTabCloseAll}
+        onCopyPath={(path) => void copyToClipboard(path)}
+      />
       <div className="flex items-center gap-1 border-b border-border p-1">
         <ViewerControls
           showTree={settings.showTree}

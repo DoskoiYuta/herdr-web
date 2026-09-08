@@ -16,6 +16,8 @@ import {
 import {
   FileResponseSchema,
   LsResponseSchema,
+  type StatResponse,
+  StatResponseSchema,
   TrashResponseSchema,
   UploadResponseSchema,
 } from "../../contract/fs";
@@ -249,6 +251,17 @@ export const fsApi = {
     if (res.status === 404) throw new FileNotFoundError(params.path);
     if (!res.ok) throw new Error(`GET /api/fs/file failed: ${res.status}`);
     return v.parse(FileResponseSchema, await res.json());
+  },
+
+  /** Bulk existence check for the file tab bar (no file contents read).
+   * `paths: []` short-circuits to `{}` without a request. */
+  async stat(params: { root: string; paths: string[] }): Promise<StatResponse> {
+    if (params.paths.length === 0) return {};
+    const res = await client.api.fs.stat.$get({
+      query: { root: params.root, paths: params.paths.join(",") },
+    });
+    if (!res.ok) throw new Error(`GET /api/fs/stat failed: ${res.status}`);
+    return v.parse(StatResponseSchema, await res.json());
   },
 
   /** URL for an image/PDF preview (F9-4), served by `GET /api/fs/raw`. Not
