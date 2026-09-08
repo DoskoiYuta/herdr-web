@@ -1,12 +1,22 @@
-// Trimmed port of terminal-diff's src/client/components/Toolbar.tsx.
-// Dropped: the repo/submodule <select> (M3 scope has no submodule concept),
-// the theme toggle (herdr-web's theme is a global `.dark` class, not a
-// per-panel setting) and the close button (no "quit" flow here). Restyled
-// with the shadcn Button component instead of raw CSS.
+// Single-row toolbar (design.pen P8/P11): a compare-range chip + stats on
+// the left, icon buttons + the send/reset slot on the right. Replaces the
+// old three-row layout (button-label toolbar, "WORKTREE vs HEAD" heading,
+// StatusLine) — see DiffPanel.tsx for how the pieces line up.
 
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  PanelLeft,
+  RefreshCw,
+  SquareSplitHorizontal,
+  WrapText,
+  X,
+} from "lucide-react";
 import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ViewerControls } from "@/components/tool/ViewerControls";
+import StatusLine from "./StatusLine.tsx";
+import type { Summary } from "./reconcile.ts";
 import type { Settings } from "./state.ts";
 
 export interface ToolbarProps {
@@ -18,13 +28,26 @@ export interface ToolbarProps {
   onFontDec(): void;
   onFontInc(): void;
   onRefresh(): void;
-  /** Collapse every file in the diff (M3 follow-up: per-file collapse). */
-  onCollapseAll(): void;
-  /** Expand every file in the diff. */
-  onExpandAll(): void;
+  /** Whether every file in the diff is currently collapsed — drives both
+   * the icon shown and which action a click performs (design.pen shows one
+   * button, not separate collapse-all/expand-all controls). */
+  allCollapsed: boolean;
+  onToggleCollapseAll(): void;
   disabled: boolean;
+  /** "WORKTREE vs HEAD" or an explicit "abc1234 → def5678" range label. */
+  compareLabel: string;
+  /** True when `from`/`to` came from an explicit Graph selection rather
+   * than the default worktree-vs-HEAD comparison — shows the chip's clear
+   * button and swaps the trailing slot to "作業ツリーに戻る". */
+  compareRangeActive: boolean;
+  onResetToWorktree?: () => void;
+  summary: Summary;
+  generatedAt: string | null;
+  untrackedCount: number;
+  untrackedErrors: number;
   /** レビュー下書きの一括送信ボタン（ui-redesign.md §5.4: Diff でしか使わない
-   * ので、ここに置く）。`SendDraftsButton` 自身が 0 件なら null を返す。 */
+   * ので、ここに置く）。`compareRangeActive` のときは「作業ツリーに戻る」に
+   * 差し替わる。 */
   sendButton?: ReactNode;
 }
 
@@ -37,77 +60,138 @@ export default function Toolbar({
   onFontDec,
   onFontInc,
   onRefresh,
-  onCollapseAll,
-  onExpandAll,
+  allCollapsed,
+  onToggleCollapseAll,
   disabled,
+  compareLabel,
+  compareRangeActive,
+  onResetToWorktree,
+  summary,
+  generatedAt,
+  untrackedCount,
+  untrackedErrors,
   sendButton,
 }: ToolbarProps) {
   return (
-    <div id="toolbar" className="flex items-center gap-1 border-b border-border p-1">
-      <ViewerControls
-        showTree={showTree}
-        onToggleTree={onToggleTree}
-        onFontDec={onFontDec}
-        onFontInc={onFontInc}
-        disabled={disabled}
-      />
-      <Button
-        id="btn-diffstyle"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="split / unified"
-        onClick={onToggleDiffStyle}
-        disabled={disabled}
-      >
-        {settings.diffStyle === "split" ? "⇄ split" : "≡ unified"}
-      </Button>
-      <Button
-        id="btn-overflow"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="wrap / scroll"
-        onClick={onToggleOverflow}
-        disabled={disabled}
-      >
-        {settings.overflow === "wrap" ? "↵ wrap" : "⇥ scroll"}
-      </Button>
-      <Button
-        id="btn-collapse-all"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="すべて折りたたむ"
-        onClick={onCollapseAll}
-        disabled={disabled}
-      >
-        すべて折りたたむ
-      </Button>
-      <Button
-        id="btn-expand-all"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="すべて展開"
-        onClick={onExpandAll}
-        disabled={disabled}
-      >
-        すべて展開
-      </Button>
-      <span className="flex-1" />
-      <Button
-        id="btn-refresh"
-        type="button"
-        variant="ghost"
-        size="sm"
-        title="更新 (r)"
-        onClick={onRefresh}
-        disabled={disabled}
-      >
-        ↻
-      </Button>
-      {sendButton}
+    <div id="toolbar" className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <Badge
+          variant={compareRangeActive ? "outline" : "secondary"}
+          className="shrink-0 gap-1 font-mono"
+        >
+          {compareLabel}
+          {compareRangeActive && (
+            <button
+              id="btn-clear-range"
+              type="button"
+              title="比較範囲を解除"
+              onClick={onResetToWorktree}
+              className="-mr-0.5 rounded-full p-0.5 hover:bg-muted"
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          )}
+        </Badge>
+        <StatusLine
+          summary={summary}
+          generatedAt={generatedAt}
+          untrackedCount={untrackedCount}
+          untrackedErrors={untrackedErrors}
+          className="truncate text-muted-foreground"
+        />
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Button
+          id="btn-diffstyle"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="split / unified"
+          aria-pressed={settings.diffStyle === "split"}
+          onClick={onToggleDiffStyle}
+          disabled={disabled}
+        >
+          <SquareSplitHorizontal aria-hidden />
+        </Button>
+        <Button
+          id="btn-tree"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="ファイルツリー"
+          aria-pressed={showTree}
+          onClick={onToggleTree}
+          disabled={disabled}
+        >
+          <PanelLeft aria-hidden />
+        </Button>
+        <Button
+          id="btn-collapse-all"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title={allCollapsed ? "すべて展開" : "すべて折りたたむ"}
+          aria-pressed={allCollapsed}
+          onClick={onToggleCollapseAll}
+          disabled={disabled}
+        >
+          {allCollapsed ? <ChevronsUpDown aria-hidden /> : <ChevronsDownUp aria-hidden />}
+        </Button>
+        <Button
+          id="btn-refresh"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="更新 (r)"
+          onClick={onRefresh}
+          disabled={disabled}
+        >
+          <RefreshCw aria-hidden />
+        </Button>
+        <Button
+          id="btn-overflow"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="wrap / scroll"
+          aria-pressed={settings.overflow === "wrap"}
+          onClick={onToggleOverflow}
+          disabled={disabled}
+        >
+          <WrapText aria-hidden />
+        </Button>
+        <Button
+          id="btn-font-dec"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="文字を小さく"
+          onClick={onFontDec}
+          disabled={disabled}
+          className="text-xs"
+        >
+          A-
+        </Button>
+        <Button
+          id="btn-font-inc"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="文字を大きく"
+          onClick={onFontInc}
+          disabled={disabled}
+          className="text-xs"
+        >
+          A+
+        </Button>
+        {compareRangeActive ? (
+          <Button type="button" size="sm" variant="ghost" onClick={onResetToWorktree}>
+            作業ツリーに戻る
+          </Button>
+        ) : (
+          sendButton
+        )}
+      </div>
     </div>
   );
 }

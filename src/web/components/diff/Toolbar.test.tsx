@@ -13,9 +13,15 @@ function baseProps() {
     onFontDec: vi.fn(),
     onFontInc: vi.fn(),
     onRefresh: vi.fn(),
-    onCollapseAll: vi.fn(),
-    onExpandAll: vi.fn(),
+    allCollapsed: false,
+    onToggleCollapseAll: vi.fn(),
     disabled: false,
+    compareLabel: "WORKTREE vs HEAD",
+    compareRangeActive: false,
+    summary: { files: 0, additions: 0, deletions: 0 },
+    generatedAt: null,
+    untrackedCount: 0,
+    untrackedErrors: 0,
   };
 }
 
@@ -34,7 +40,7 @@ test("clicking the tree button calls onToggleTree", () => {
 test("toggle buttons reflect current settings and call their handlers", () => {
   const props = baseProps();
   render(<Toolbar {...props} />);
-  expect(screen.getByTitle("split / unified")).toHaveTextContent("split");
+  expect(screen.getByTitle("split / unified")).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByTitle("split / unified"));
   expect(props.onToggleDiffStyle).toHaveBeenCalledOnce();
 
@@ -48,13 +54,16 @@ test("disabled disables toolbar controls", () => {
   expect(screen.getByTitle("更新 (r)")).toBeDisabled();
 });
 
-test("collapse-all / expand-all buttons call their handlers", () => {
+// 無いと壊れる: 折りたたみ状態を見せる/切り替える手段が無くなる
+// （design.pen: 折りたたみ/展開は 1 個のトグルボタン）。
+test("the collapse-all toggle shows the opposite action's title and calls onToggleCollapseAll", () => {
   const props = baseProps();
-  render(<Toolbar {...props} />);
-  fireEvent.click(screen.getByText("すべて折りたたむ"));
-  expect(props.onCollapseAll).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByText("すべて展開"));
-  expect(props.onExpandAll).toHaveBeenCalledOnce();
+  const { rerender } = render(<Toolbar {...props} />);
+  fireEvent.click(screen.getByTitle("すべて折りたたむ"));
+  expect(props.onToggleCollapseAll).toHaveBeenCalledOnce();
+
+  rerender(<Toolbar {...props} allCollapsed={true} />);
+  expect(screen.getByTitle("すべて展開")).toBeInTheDocument();
 });
 
 // 無いと壊れる: 送信ボタンの置き場所（ui-redesign.md §5.4: Diff の toolbar
@@ -67,4 +76,24 @@ test("renders the sendButton slot at the toolbar's right end when given", () => 
 test("renders nothing extra when sendButton is omitted", () => {
   render(<Toolbar {...baseProps()} />);
   expect(screen.queryByText(/^送信/)).not.toBeInTheDocument();
+});
+
+// 無いと壊れる: 比較範囲 chip の解除操作が消え、Graph から選んだコミット範囲
+// から作業ツリー表示に戻る手段が toolbar から無くなる。
+test("an active compare range shows a clear button and a reset-to-worktree button instead of sendButton", () => {
+  const onResetToWorktree = vi.fn();
+  render(
+    <Toolbar
+      {...baseProps()}
+      compareLabel="abc1234 → def5678"
+      compareRangeActive={true}
+      onResetToWorktree={onResetToWorktree}
+      sendButton={<button type="button">送信 (2)</button>}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "送信 (2)" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "作業ツリーに戻る" }));
+  expect(onResetToWorktree).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByTitle("比較範囲を解除"));
+  expect(onResetToWorktree).toHaveBeenCalledTimes(2);
 });

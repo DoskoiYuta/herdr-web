@@ -261,11 +261,11 @@ test("toolbar すべて折りたたむ/すべて展開 collapse and expand every
   expect(collapsedOf("a.txt")).toBe("false");
   expect(collapsedOf("b.txt")).toBe("false");
 
-  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  fireEvent.click(screen.getByTitle("すべて折りたたむ"));
   expect(collapsedOf("a.txt")).toBe("true");
   expect(collapsedOf("b.txt")).toBe("true");
 
-  fireEvent.click(screen.getByText("すべて展開"));
+  fireEvent.click(screen.getByTitle("すべて展開"));
   expect(collapsedOf("a.txt")).toBe("false");
   expect(collapsedOf("b.txt")).toBe("false");
 });
@@ -277,7 +277,7 @@ test("clicking a file in the PathTree expands it (if collapsed) and scrolls to i
   const collapsedOfA = () =>
     document.querySelector('[data-name="a.txt"]')?.getAttribute("data-collapsed");
 
-  fireEvent.click(screen.getByText("すべて折りたたむ"));
+  fireEvent.click(screen.getByTitle("すべて折りたたむ"));
   expect(collapsedOfA()).toBe("true");
 
   fireEvent.click(screen.getByRole("button", { name: "a.txt" }));

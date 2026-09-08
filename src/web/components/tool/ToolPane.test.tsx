@@ -120,12 +120,16 @@ vi.mock("@/components/diff/DiffPanel", () => ({
     to,
     sendButton,
     initialLocation,
+    compareRangeActive,
+    onResetToWorktree,
   }: {
     repo: string;
     from?: string;
     to?: string;
     sendButton?: React.ReactNode;
     initialLocation?: { path: string; line: number; side: string } | null;
+    compareRangeActive?: boolean;
+    onResetToWorktree?: () => void;
   }) => {
     useEffect(() => {
       diffPanelMountCount += 1;
@@ -133,7 +137,13 @@ vi.mock("@/components/diff/DiffPanel", () => ({
     return (
       <div data-testid="diff-panel-stub">
         {repo}:{from ?? "WORKTREE"}:{to ?? "HEAD"}
-        {sendButton}
+        {compareRangeActive ? (
+          <button type="button" onClick={onResetToWorktree}>
+            作業ツリーに戻る
+          </button>
+        ) : (
+          sendButton
+        )}
         {initialLocation && (
           <span data-testid="diff-panel-initial-location">
             {initialLocation.path}:{initialLocation.line}:{initialLocation.side}
