@@ -4,7 +4,7 @@
  * コンポーネントは `open`/`onOpenChange` だけを受け取る）。状態タブは持たない
  * — 対応すると消えるものだけをセクションで並べる。
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +16,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import type { Repo } from "@contract/events";
 import type { AskPromptState } from "@contract/ask";
 import type { DecisionDeliveryState } from "@contract/decision";
 import type { NotifyState } from "@contract/review";
@@ -35,6 +36,9 @@ import { useToast } from "@/components/ui/toast/ToastProvider";
 import { REPLIED_ICON_CLASS, deliveryOf, type DeliveryResult } from "@/lib/statusVocab";
 import { useHerdrState, useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
+import { inboxLocationFor, worktreeOptions } from "@/lib/inboxLocation";
+import { relativeTime, useNow } from "@/lib/relativeTime";
+import { cn } from "@/lib/utils";
 import { useInbox } from "./hooks/useInbox";
 
 const SECTION_ORDER: InboxSection[] = ["undelivered", "replied", "unsent", "blocked"];
@@ -112,11 +116,56 @@ function rowDetail(item: InboxItem): string {
   return [item.workspaceLabel, item.tabLabel].filter(Boolean).join(" · ");
 }
 
-function rowMeta(item: InboxItem): string {
+/** design.pen 案A: メタ行の worktree 部分だけリポジトリ名 + branch chip にする
+ * （branch chip はサイドバーの `RepoWorkspaceRow` の branch Badge と同じ見た目、
+ * main は色を付けない、linked worktree は sky 系）。 */
+function RowLocation({ repos, item }: { repos: Repo[]; item: InboxItem }) {
+  const repoKey = "repoKey" in item ? item.repoKey : null;
+  const location = inboxLocationFor(repos, repoKey, item.worktreeRoot);
+  if (location) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span>{location.repoName}</span>
+        <Badge
+          variant="outline"
+          className={cn(
+            "h-4 px-1 text-[10px]",
+            !location.isMain && "border-sky-500/40 text-sky-600 dark:text-sky-400",
+          )}
+        >
+          {location.branchLabel}
+        </Badge>
+      </span>
+    );
+  }
+  if (item.worktreeRoot) return <span>{basename(item.worktreeRoot)}</span>;
+  return null;
+}
+
+function RowMeta({ item }: { item: InboxItem }) {
+  const state = useHerdrState();
+  const nowMs = useNow();
   const agent = "agent" in item ? item.agent : null;
-  return [item.kind, item.worktreeRoot ? basename(item.worktreeRoot) : null, agent]
-    .filter(Boolean)
-    .join(" · ");
+  const at = "at" in item ? item.at : null;
+
+  const candidates: (ReactNode | null)[] = [
+    item.kind,
+    <RowLocation key="location" repos={state.repos} item={item} />,
+    agent,
+    at ? relativeTime(at, nowMs) : null,
+  ];
+  const parts = candidates.filter((part) => part !== null);
+
+  return (
+    <p className="truncate text-[11px] text-muted-foreground">
+      {parts.map((part, i) => (
+        <span key={i}>
+          {i > 0 && " · "}
+          {part}
+        </span>
+      ))}
+    </p>
+  );
 }
 
 /** 決定の undelivered 行だけがクリックで遷移する（docs/ui-redesign.md §5.4 の
@@ -143,10 +192,7 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
   const queryClient = useQueryClient();
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
 
-  const worktreeRoots = useMemo(
-    () => [...new Set(state.repos.flatMap((r) => r.worktrees.map((w) => w.root)))],
-    [state.repos],
-  );
+  const worktreeSelectOptions = useMemo(() => worktreeOptions(state.repos), [state.repos]);
 
   const bySection = useMemo(() => {
     const grouped = new Map<InboxSection, InboxItem[]>();
@@ -241,9 +287,9 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_WORKTREES}>すべての worktree</SelectItem>
-              {worktreeRoots.map((root) => (
-                <SelectItem key={root} value={root}>
-                  {basename(root)}
+              {worktreeSelectOptions.map((option) => (
+                <SelectItem key={option.root} value={option.root}>
+                  {option.repoName} › {option.branchLabel}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -300,9 +346,7 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
                           <p className="truncate text-xs text-muted-foreground">
                             {rowDetail(item)}
                           </p>
-                          <p className="truncate text-[11px] text-muted-foreground">
-                            {rowMeta(item)}
-                          </p>
+                          <RowMeta item={item} />
                         </div>
                         {item.section === "undelivered" && (
                           <div onClick={(e) => e.stopPropagation()}>
