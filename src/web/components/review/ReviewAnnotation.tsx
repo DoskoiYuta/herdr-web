@@ -140,7 +140,10 @@ export function ReviewThreadCard({
           onEdit: entry.draft ? (body) => onEditDraft(review.id, entry.seq, body) : undefined,
           onDelete: entry.draft ? () => onDeleteDraft(review.id, entry.seq) : undefined,
         }))}
-        reply={{ placeholder: "下書きとして追加", onSubmit: (body) => onReply(review.id, body) }}
+        reply={{
+          placeholder: "返信を下書き…（⌘Enter）",
+          onSubmit: (body) => onReply(review.id, body),
+        }}
         actions={[
           ...(review.status === "outdated"
             ? [{ label: "再アンカー", onClick: () => onReanchor(review.id) }]

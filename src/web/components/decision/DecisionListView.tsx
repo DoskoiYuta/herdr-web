@@ -4,6 +4,7 @@ import type { Decision, DecisionSpec, DecisionStatus } from "@contract/decision"
 import type { Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
 import { useDecisionEvents, useHerdrState } from "@/lib/HerdrStoreContext";
+import { relativeTime, useNow } from "@/lib/relativeTime";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -70,24 +71,6 @@ function worktreeBasename(root: string | null): string | null {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-function relativeTime(createdAt: string, nowMs: number): string {
-  const minutes = Math.max(0, Math.round((nowMs - new Date(createdAt).getTime()) / 60_000));
-  if (minutes < 60) return `${minutes}分前`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}時間前`;
-  return `${Math.round(hours / 24)}日前`;
-}
-
-/** 60 秒ごとに再レンダーして相対時刻を進める（DecisionView の
- * useElapsedMinutes と同じ理由で lazy initializer を使う）。 */
-function useNow(): number {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => setNowMs(Date.now()), 60_000);
-    return () => clearInterval(interval);
-  }, []);
-  return nowMs;
-}
 
 function DecisionRow({
   decision,

@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { KIND_LABEL, KindIcon } from "@/components/ui/status/KindIcon";
 import { StatusChip } from "@/components/ui/status/StatusChip";
+import { relativeTime, useNow } from "@/lib/relativeTime";
 import type { DeliveryResult, Turn } from "@/lib/statusVocab";
 import { cn } from "@/lib/utils";
 
@@ -47,10 +48,41 @@ export type ThreadCardProps = {
   extra?: ReactNode;
 };
 
-function DraftMessageRow({ message }: { message: ThreadCardMessage }) {
+function MessageHeaderRow({
+  author,
+  at,
+  nowMs,
+  draft,
+  children,
+}: {
+  author: string;
+  at: string;
+  nowMs: number;
+  draft?: boolean;
+  /** 右端に置く要素（下書き行の「編集」「削除」）。 */
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <div className="flex items-center gap-1.5">
+        <span className="font-semibold">{author}</span>
+        <span className="text-[11px] text-muted-foreground">{relativeTime(at, nowMs)}</span>
+        {draft && (
+          <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+            下書き
+          </span>
+        )}
+      </div>
+      {children && <div className="flex shrink-0 gap-1">{children}</div>}
+    </div>
+  );
+}
+
+function DraftMessageRow({ message, nowMs }: { message: ThreadCardMessage; nowMs: number }) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(message.body);
   const [busy, setBusy] = useState(false);
+  const author = message.author === "user" ? "user" : "agent";
 
   if (editing) {
     return (
@@ -87,15 +119,8 @@ function DraftMessageRow({ message }: { message: ThreadCardMessage }) {
   }
 
   return (
-    <div className="flex items-start justify-between gap-2 text-xs">
-      <div>
-        <span className="font-medium">{message.author === "user" ? "user" : "agent"}</span>
-        <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-          下書き
-        </span>
-        <span className="ml-1 whitespace-pre-wrap">{message.body}</span>
-      </div>
-      <div className="flex shrink-0 gap-1">
+    <div className="flex flex-col gap-0.5">
+      <MessageHeaderRow author={author} at={message.at} nowMs={nowMs} draft>
         <button
           type="button"
           className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
@@ -118,7 +143,8 @@ function DraftMessageRow({ message }: { message: ThreadCardMessage }) {
         >
           削除
         </button>
-      </div>
+      </MessageHeaderRow>
+      <p className="text-xs whitespace-pre-wrap">{message.body}</p>
     </div>
   );
 }
@@ -172,6 +198,8 @@ export function ThreadCard({
     };
   }, [blinking, stopBlinking]);
 
+  const nowMs = useNow();
+
   const submitReply = async () => {
     if (!replyBody.trim() || busy || reply.disabled) return;
     setBusy(true);
@@ -191,7 +219,7 @@ export function ThreadCard({
       onFocusCapture={stopBlinking}
       onClickCapture={stopBlinking}
       className={cn(
-        "my-1 flex flex-col gap-1.5 rounded-md border bg-popover p-2 shadow-sm",
+        "my-1 flex flex-col gap-2.5 rounded-md border bg-popover p-3 shadow-sm",
         blinking ? "thread-card-blink border-accent" : "border-border",
       )}
     >
@@ -199,7 +227,7 @@ export function ThreadCard({
         <div className="flex flex-wrap items-center gap-2">
           <KindIcon kind={kind} />
           <span className="text-xs font-medium">{KIND_LABEL[kind]}</span>
-          <span className="font-mono text-[10px] text-muted-foreground">{location}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{location}</span>
           {(turn === "done" || turn === "void") && <StatusChip turn={turn} />}
           {positionEstimated && (
             <span className="text-[10px] text-muted-foreground">位置は推定</span>
@@ -214,16 +242,18 @@ export function ThreadCard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         {messages.map((message, i) =>
           message.draft ? (
-            <DraftMessageRow key={i} message={message} />
+            <DraftMessageRow key={i} message={message} nowMs={nowMs} />
           ) : (
-            <div key={i} className="text-xs">
-              <span className="font-medium">
-                {message.author === "user" ? "user" : (message.agentLabel ?? "agent")}
-              </span>
-              <span className="ml-1 whitespace-pre-wrap">{message.body}</span>
+            <div key={i} className="flex flex-col gap-0.5">
+              <MessageHeaderRow
+                author={message.author === "user" ? "user" : (message.agentLabel ?? "agent")}
+                at={message.at}
+                nowMs={nowMs}
+              />
+              <p className="text-xs whitespace-pre-wrap">{message.body}</p>
             </div>
           ),
         )}
@@ -238,7 +268,7 @@ export function ThreadCard({
             if (e.key === "Escape") setReplyBody("");
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submitReply();
           }}
-          className="min-h-8 text-xs"
+          className="min-h-8 flex-1 text-xs"
         />
         <Button
           type="button"
@@ -248,23 +278,18 @@ export function ThreadCard({
         >
           送信
         </Button>
+        {actions.map((action) => (
+          <Button
+            key={action.label}
+            type="button"
+            size="xs"
+            variant={action.variant ?? "outline"}
+            onClick={() => void action.onClick()}
+          >
+            {action.label}
+          </Button>
+        ))}
       </div>
-
-      {actions.length > 0 && (
-        <div className="flex justify-end gap-2">
-          {actions.map((action) => (
-            <Button
-              key={action.label}
-              type="button"
-              size="xs"
-              variant={action.variant ?? "outline"}
-              onClick={() => void action.onClick()}
-            >
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
