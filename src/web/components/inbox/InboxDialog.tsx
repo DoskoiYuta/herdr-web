@@ -47,7 +47,7 @@ const SECTION_LABEL: Record<InboxSection, string> = {
 };
 
 /** design.pen P2: セクションは色付きアイコン + タイトル + 件数バッジだけで区別する
- * （角丸要素に border-left は使わない方針。design.pen 側もこの後の版で外した）。 */
+ * （角丸要素に border-left は使わない）。 */
 const SECTION_ICON: Record<InboxSection, typeof TriangleAlert> = {
   undelivered: TriangleAlert,
   replied: MessageCircleReply,
