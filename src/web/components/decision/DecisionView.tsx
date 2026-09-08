@@ -71,6 +71,12 @@ export function findPane(
   return null;
 }
 
+function worktreeBasename(root: string): string {
+  const trimmed = root.replace(/\/+$/, "");
+  const idx = trimmed.lastIndexOf("/");
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
+
 /** `session <先頭4>…<末尾4>` — 名前に Claude を出さない (docs/ui-redesign.md §5.4)。 */
 function truncateSessionId(sessionId: string): string {
   if (sessionId.length <= 8) return sessionId;
@@ -166,7 +172,7 @@ function DecisionItemForm({
 
   return (
     <fieldset
-      className="flex flex-col gap-1.5 border-b border-border pb-3"
+      className="flex flex-col gap-2 border-b border-border pb-4"
       data-testid={`decision-item-${item.id}`}
     >
       <legend className="flex items-center gap-1.5 text-sm font-medium">
@@ -210,7 +216,7 @@ function DecisionItemForm({
               <div key={opt.label} className="flex flex-col gap-1">
                 <label
                   className={cn(
-                    "flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm",
+                    "flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm",
                     checked ? "border-primary bg-accent ring-1 ring-primary" : "border-border",
                   )}
                 >
@@ -531,24 +537,34 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
             label={DECISION_STATUS_LABEL[decision.status]}
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {settling ? (
-            <AgentStatusDot status="unknown" label="状態を取得中" />
+            <AgentStatusDot status="unknown" label="状態を取得中" className="shrink-0" />
           ) : pane ? (
-            <AgentStatusDot status={pane.agentStatus} label={agentLabel(decision.agent, pane)} />
+            <AgentStatusDot
+              status={pane.agentStatus}
+              label={agentLabel(decision.agent, pane)}
+              className="shrink-0"
+            />
           ) : (
-            <span>{decision.agent ?? "?"} · pane 消失</span>
+            <span className="shrink-0">{decision.agent ?? "?"} · pane 消失</span>
           )}
-          {decision.worktreeRoot && <span>{decision.worktreeRoot}</span>}
+          {decision.worktreeRoot && (
+            <span className="min-w-0 shrink truncate" title={decision.worktreeRoot}>
+              {worktreeBasename(decision.worktreeRoot)}
+            </span>
+          )}
           {decision.claudeSessionId && (
-            <span>session {truncateSessionId(decision.claudeSessionId)}</span>
+            <span className="shrink-0">session {truncateSessionId(decision.claudeSessionId)}</span>
           )}
-          <span>{elapsedMin} 分前</span>
+          <span className="shrink-0">{elapsedMin} 分前</span>
+          <span className="flex-1" />
           {decision.paneId && onFocusPane && (
             <Button
               type="button"
               size="xs"
               variant="outline"
+              className="shrink-0"
               onClick={() => onFocusPane(decision.paneId!)}
             >
               pane を開く
@@ -603,7 +619,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           </details>
         ))}
 
-      <div className="flex flex-1 flex-col gap-3 px-3 py-2">
+      <div className="flex flex-1 flex-col gap-[18px] px-3 py-2">
         {decision.spec.items.map((item, index) =>
           isOpen ? (
             <DecisionItemForm
