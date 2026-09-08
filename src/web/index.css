@@ -204,7 +204,7 @@ html.dark .md-readonly > div {
 }
 
 /* decision context/preview Blocks (BlockView) render markdown inline among
- * text-sm UI copy — wysimark's document-scale headings (h1 등) otherwise
+ * text-sm UI copy — wysimark's document-scale headings (h1 など) otherwise
  * dwarf everything around them (docs/ui-redesign.md §5.4 P3/P13). */
 .md-readonly-compact,
 .md-readonly-compact :is(p, li, td, th, blockquote) {
