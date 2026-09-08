@@ -370,8 +370,7 @@ function DecisionItemForm({
 
   return (
     <div className="border-t border-border pt-3.5" data-testid={`decision-item-${item.id}`}>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="sr-only">{item.header}</legend>
+      <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1.5">
           <ItemNumberBadge index={index} />
           <span className="text-sm font-semibold">{item.header}</span>
@@ -495,7 +494,7 @@ function DecisionItemForm({
             ＋ メモを追加
           </button>
         )}
-      </fieldset>
+      </div>
     </div>
   );
 }
