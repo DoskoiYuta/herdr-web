@@ -37,9 +37,20 @@ export function gitStatusLetterColor(status: GitStatus): string {
   return COLOR[status];
 }
 
-/** CSS injected into the tree's shadow DOM (see PathTree's `unsafeCSS`):
- * hides @pierre/trees' own uncolored git-status letter on file rows only
- * (a directory's "contains a git change" dot has no `data-item-git-status`
- * of its own, so it's unaffected and still shows). */
-export const HIDE_BUILT_IN_FILE_GIT_STATUS_CSS =
-  '[data-item-type="file"][data-item-git-status] [data-item-section="git"] { display: none; }';
+/** CSS injected into the tree's shadow DOM (see PathTree's `unsafeCSS`).
+ * design.pen keeps the file name in the default text color and colors only
+ * the trailing status letter, but @pierre/trees (1.0.0-beta.6,
+ * render/rowAttributes.js + style.js) tints both the built-in git-status
+ * letter *and* the row's name text via `[data-item-git-status]` selectors
+ * and a `--trees-item-git-status-color` custom property, keyed off the
+ * `data-item-git-status`/`data-item-type`/`data-item-section` attributes it
+ * stamps on each row — there's no supported prop to disable either. Hiding
+ * `[data-item-section="git"]` removes the uncolored built-in letter (our own
+ * colored one renders in the "custom decoration" lane instead); resetting
+ * `[data-item-section="content"]`'s color keeps the name itself default.
+ * Restricted to file rows so a directory's "contains a git change" dot
+ * (which has no `data-item-git-status` of its own) is unaffected. */
+export const HIDE_BUILT_IN_FILE_GIT_STATUS_CSS = `
+[data-item-type="file"][data-item-git-status] [data-item-section="git"] { display: none; }
+[data-item-type="file"][data-item-git-status] [data-item-section="content"] { color: inherit; }
+`;

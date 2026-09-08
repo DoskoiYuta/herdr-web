@@ -145,7 +145,7 @@ export function PathTree({
     // untracked "?" rather than the library's fixed, uncolored "U" — hide
     // its built-in letter (directories' "contains a change" dot is
     // untouched) and show our own via `decorations` instead.
-    unsafeCSS: gitStatus ? HIDE_BUILT_IN_FILE_GIT_STATUS_CSS : undefined,
+    unsafeCSS: HIDE_BUILT_IN_FILE_GIT_STATUS_CSS,
     // Read once at construction (module comment) — a plain-button trigger
     // lane would otherwise appear on hover even before any menu content is
     // supplied. `enabled` itself is set by the React wrapper (FileTree.js)
