@@ -141,8 +141,8 @@ describe("reviewApi", () => {
 
   test("counts() GETs /api/review/counts with repo/worktree and parses the response", async () => {
     const body = {
-      byCommit: { abc: { unresolved: 1, drafts: 0 } },
-      worktree: { unresolved: 0, drafts: 2 },
+      byCommit: { abc: { unresolved: 1, replied: 0, drafts: 0 } },
+      worktree: { unresolved: 0, replied: 0, drafts: 2 },
       pendingDrafts: 2,
       replied: { worktree: 0, commit: 0 },
     };

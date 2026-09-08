@@ -346,7 +346,7 @@ describe("reviewRoutes", () => {
     const before = await json(await app.request("/counts?repo=/repo/.git&worktree=/repo"));
     expect(before).toEqual({
       byCommit: {},
-      worktree: { unresolved: 0, drafts: 1 },
+      worktree: { unresolved: 0, replied: 0, drafts: 1 },
       pendingDrafts: 1,
       replied: { worktree: 0, commit: 0 },
     });
@@ -355,7 +355,7 @@ describe("reviewRoutes", () => {
     const after = await json(await app.request("/counts?repo=/repo/.git&worktree=/repo"));
     expect(after).toEqual({
       byCommit: {},
-      worktree: { unresolved: 1, drafts: 0 },
+      worktree: { unresolved: 1, replied: 0, drafts: 0 },
       pendingDrafts: 0,
       replied: { worktree: 0, commit: 0 },
     });

@@ -19,22 +19,26 @@ export function countsUsecase(deps: CountsDeps) {
 
         const byCommit: ReviewCountsResponse["byCommit"] = {};
         let worktreeUnresolved = 0;
+        let worktreeReplied = 0;
         let worktreeDrafts = 0;
 
         for (const review of reviews) {
           const hasDraft = review.thread.some((e) => e.draft);
           const hasSent = review.thread.some((e) => !e.draft);
           const unresolved = (review.status === "open" || review.status === "replied") && hasSent;
+          const replied = review.status === "replied" && hasSent;
 
           if (review.target.kind === "commit") {
             const hash = review.target.hash;
-            const existing = byCommit[hash] ?? { unresolved: 0, drafts: 0 };
+            const existing = byCommit[hash] ?? { unresolved: 0, replied: 0, drafts: 0 };
             byCommit[hash] = {
               unresolved: existing.unresolved + (unresolved ? 1 : 0),
+              replied: existing.replied + (replied ? 1 : 0),
               drafts: existing.drafts + (hasDraft ? 1 : 0),
             };
           } else if (review.target.root === input.worktree) {
             worktreeUnresolved += unresolved ? 1 : 0;
+            worktreeReplied += replied ? 1 : 0;
             worktreeDrafts += hasDraft ? 1 : 0;
           }
         }
@@ -65,7 +69,11 @@ export function countsUsecase(deps: CountsDeps) {
 
         return {
           byCommit,
-          worktree: { unresolved: worktreeUnresolved, drafts: worktreeDrafts },
+          worktree: {
+            unresolved: worktreeUnresolved,
+            replied: worktreeReplied,
+            drafts: worktreeDrafts,
+          },
           pendingDrafts,
           replied,
         };

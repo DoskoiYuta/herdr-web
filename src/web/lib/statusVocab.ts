@@ -8,6 +8,10 @@ import type { NotifyState, ReviewStatus } from "@contract/review";
 
 export type Turn = "action" | "progress" | "done" | "void";
 
+/** replied（返信あり）を示す色。Inbox のセクションアイコンと Graph のレビュー chip で共用する。 */
+export const REPLIED_ICON_CLASS = "text-sky-500";
+export const REPLIED_CHIP_CLASS = "bg-sky-500/15 text-sky-600 dark:text-sky-400";
+
 export function turnOf(
   kind: "review",
   input: { status: ReviewStatus; hasUnsentDraft: boolean },

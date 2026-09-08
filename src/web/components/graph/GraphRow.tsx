@@ -1,10 +1,11 @@
-import { MessageSquare } from "lucide-react";
+import { MessageCircleReply, MessageSquare } from "lucide-react";
 import type { LayoutRow } from "./layout/layout";
 import { GEOM, gutterGeom, nodeCenter, segmentPath } from "./layout/path";
 import { PALETTE } from "./layout/colors";
 import type { Commit, Ref } from "@contract/git";
 import type { ReviewCount } from "@contract/review";
 import { relativeTime } from "@/lib/relativeTime";
+import { REPLIED_CHIP_CLASS } from "@/lib/statusVocab";
 import RefBadge from "./RefBadge";
 import CommitDetail from "./CommitDetail";
 
@@ -45,14 +46,32 @@ export interface GraphRowProps {
 }
 
 function ReviewCountBadge({ count, onOpenDiff }: { count: ReviewCount; onOpenDiff?(): void }) {
-  if (count.unresolved <= 0 && count.drafts <= 0) return null;
+  const replied = count.replied;
+  // unresolved は open + replied の合計なので、差し引いて「返信待ち open」を出す。
+  const waiting = count.unresolved - count.replied;
+  if (replied <= 0 && waiting <= 0 && count.drafts <= 0) return null;
   return (
     <div className="flex shrink-0 items-center gap-1">
-      {count.unresolved > 0 && (
+      {replied > 0 && (
         <button
           type="button"
-          className="flex items-center gap-0.5 rounded bg-primary/15 px-1 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/25"
-          aria-label={`未解決レビュー ${count.unresolved} 件`}
+          className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium hover:opacity-80 ${REPLIED_CHIP_CLASS}`}
+          aria-label={`返信のあるレビュー ${replied} 件`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDiff?.();
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <MessageCircleReply className="size-3" aria-hidden="true" />
+          {replied}
+        </button>
+      )}
+      {waiting > 0 && (
+        <button
+          type="button"
+          className="flex items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/70"
+          aria-label={`返信待ちレビュー ${waiting} 件`}
           onClick={(e) => {
             e.stopPropagation();
             onOpenDiff?.();
@@ -60,7 +79,7 @@ function ReviewCountBadge({ count, onOpenDiff }: { count: ReviewCount; onOpenDif
           onDoubleClick={(e) => e.stopPropagation()}
         >
           <MessageSquare className="size-3" aria-hidden="true" />
-          {count.unresolved}
+          {waiting}
         </button>
       )}
       {count.drafts > 0 && (
