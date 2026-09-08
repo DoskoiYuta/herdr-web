@@ -144,6 +144,9 @@ export function AskTargetDialog({
                 className="inline-block size-3 rounded-full border border-primary"
               />
               新規セッション
+              <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                既定
+              </span>
             </button>
             <div className="mt-2 flex flex-wrap gap-1.5 pl-5">
               {agents.map((agent) => (
