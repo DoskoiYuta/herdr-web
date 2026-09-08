@@ -328,7 +328,7 @@ test("outdated (unanchored) for-file matches render in the mismatch strip, not i
   ] satisfies ForFileMatch[]);
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
-  expect(await screen.findByTestId("ask-mismatch-strip")).toHaveTextContent("一致しない質問 1 件");
+  expect(await screen.findByTestId("ask-mismatch-strip")).toHaveTextContent("1 件あります");
   expect(screen.queryByTestId("thread-card")).not.toBeInTheDocument();
 });
 
