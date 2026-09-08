@@ -138,7 +138,8 @@ export function createDecisionService(deps: DecisionServiceDeps) {
       if (decision.status !== "open") {
         return err(invalidStatus(`decision ${id} is ${decision.status}, not open`));
       }
-      const updated: Decision = { ...decision, status: "dismissed" };
+      const now = deps.clock.now().toISOString();
+      const updated: Decision = { ...decision, status: "dismissed", answeredAt: now };
       await deps.repository.save(updated);
       deps.events.emit({
         type: "decision",
@@ -161,7 +162,8 @@ export function createDecisionService(deps: DecisionServiceDeps) {
       if (decision.status !== "open") {
         return err(invalidStatus(`decision ${id} is ${decision.status}, not open`));
       }
-      const updated: Decision = { ...decision, status: "cancelled" };
+      const now = deps.clock.now().toISOString();
+      const updated: Decision = { ...decision, status: "cancelled", answeredAt: now };
       await deps.repository.save(updated);
       deps.events.emit({
         type: "decision",

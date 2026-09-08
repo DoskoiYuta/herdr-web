@@ -129,6 +129,7 @@ export const DecisionSchema = v.object({
   repoKey: v.nullable(v.string()),
   agent: v.nullable(v.string()),
   createdAt: v.string(),
+  /** 回答・却下・取り下げのいずれかで確定した時刻。`status` が `open` の間は null。 */
   answeredAt: v.nullable(v.string()),
   delivery: v.nullable(DecisionDeliverySchema),
 });

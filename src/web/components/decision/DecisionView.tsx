@@ -4,9 +4,10 @@ import type {
   DecisionDeliveryState,
   DecisionItem,
   DecisionItemAnswer,
+  DecisionStatus,
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaneRow, Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
@@ -42,6 +43,14 @@ export type DecisionViewProps = {
 function emptyAnswer(): DecisionItemAnswer {
   return { selected: [], other: null, note: null };
 }
+
+/** 依頼が確定した動作を表す語 (spec-F のメタ行/フッタ)。`open` はメタ行では
+ * `answeredAt` が null のまま分岐しないので出番が無い。 */
+const RESOLVED_VERB: Record<Exclude<DecisionStatus, "open">, string> = {
+  answered: "回答",
+  dismissed: "却下",
+  cancelled: "取り下げ",
+};
 
 const DELIVERY_PROBLEM_HEADING: Record<DecisionDeliveryState, string> = {
   agent_blocked: "回答はエージェントに届いていません",
@@ -142,49 +151,6 @@ function isAnswered(answer: DecisionItemAnswer | undefined): boolean {
   return (answer.other ?? "").trim().length > 0;
 }
 
-/** 確定した依頼を開いたときの読み取り専用表示 (plan F13-8)。 */
-function DecisionAnswerView({
-  item,
-  index,
-  answer,
-}: {
-  item: DecisionItem;
-  index: number;
-  answer: DecisionItemAnswer | undefined;
-}) {
-  const selected = answer?.selected ?? [];
-  const other = answer?.other ?? null;
-  const note = answer?.note ?? null;
-
-  const value =
-    item.kind === "confirm"
-      ? selected[0] === "yes"
-        ? "はい"
-        : selected[0] === "no"
-          ? "いいえ"
-          : "(未回答)"
-      : [selected.join(", ") || null, other ? `その他: ${other}` : null]
-          .filter(Boolean)
-          .join(" / ") || "(未回答)";
-
-  return (
-    <div className="flex flex-col gap-1" data-testid={`decision-answer-${item.id}`}>
-      <div className="flex items-center gap-1.5 text-sm font-medium">
-        <ItemNumberBadge index={index} />
-        {item.header}
-      </div>
-      <p className="text-sm text-muted-foreground">{item.question}</p>
-      <p className="flex items-center gap-1 text-sm">
-        {isAnswered(answer) && (
-          <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-        )}
-        {value}
-      </p>
-      {note && <p className="text-xs text-muted-foreground">メモ: {note}</p>}
-    </div>
-  );
-}
-
 /** 選択肢 1 行 (design.pen P3v2)。枠線なし、選択中だけ `bg-accent`。ラジオ/
  * チェックボックスは実要素として残す（キーボード操作とスクリーンリーダーの
  * 名前付けをブラウザのネイティブ実装に任せるため）。見た目は 14px の丸/角に
@@ -201,6 +167,7 @@ function DecisionOptionRow({
   worktreeRoot,
   onOpenLocation,
   onToggle,
+  readOnly = false,
 }: {
   kind: "single" | "multi";
   itemId: string;
@@ -213,18 +180,23 @@ function DecisionOptionRow({
   worktreeRoot: string | null;
   onOpenLocation?: OpenLocation;
   onToggle: (checked: boolean) => void;
+  /** 確定済みの依頼を開いたときの表示 (spec-F): 選択中だけ `bg-accent`、それ
+   * 以外は薄く表示し、ラジオ/チェックは操作できない。 */
+  readOnly?: boolean;
 }) {
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-[7px] text-[13px]",
-        checked && "bg-accent",
+        "flex items-start gap-2 rounded-md px-2.5 py-[7px] text-[13px]",
+        readOnly ? (checked ? "bg-accent" : "opacity-55") : "cursor-pointer",
+        !readOnly && checked && "bg-accent",
       )}
     >
       <input
         type={kind === "single" ? "radio" : "checkbox"}
         name={`decision-item-${itemId}`}
         checked={checked}
+        disabled={readOnly}
         className="mt-0.5 size-3.5 shrink-0"
         onChange={(e) => onToggle(e.target.checked)}
       />
@@ -318,7 +290,20 @@ function DecisionOtherRow({
   );
 }
 
-/** single/multi の選択肢を選ぶ。single は「その他」と排他 (レビュー指摘):
+/** 確定済みの依頼の「その他」表示 (spec-F): 記入があるときだけ、選択肢と
+ * 同じ行の見た目でラベルの後ろに内容を出す。記入が無ければ行ごと出さない
+ * （選んだが空欄のまま送信された、という状態は表示価値が無い）。 */
+function DecisionReadOnlyOtherRow({ other }: { other: string | null }) {
+  if (!other) return null;
+  return (
+    <div className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-[7px] text-[13px]">
+      <span className="text-muted-foreground">その他</span>
+      <span>{other}</span>
+    </div>
+  );
+}
+
+/** single/multi の選択肢を選ぶ。single は「その他」と排他:
  * 選択肢を選んだら `other` を消す。multi は選択肢と「その他」が併存できる
  * ため `other` はそのまま。 */
 function selectOption(
@@ -344,16 +329,21 @@ function DecisionItemForm({
   compare,
   worktreeRoot,
   onOpenLocation,
+  readOnly = false,
 }: {
   item: DecisionItem;
   index: number;
   answer: DecisionItemAnswer;
+  /** 読み取り専用 (`readOnly`) では呼ばれない。 */
   onChange: (next: DecisionItemAnswer) => void;
   /** `layout: "compare"` applies only when some option actually has a
    * preview — otherwise the compare grid would show empty cards. */
   compare: boolean;
   worktreeRoot: string | null;
   onOpenLocation?: OpenLocation;
+  /** 確定済み（回答済み/却下/取り下げ）の依頼を開いたときの表示 (spec-F)。
+   * 未回答と同じ並びのまま、操作だけを止める。 */
+  readOnly?: boolean;
 }) {
   // note を持つ依頼を切り替えても畳まれたままにならないよう、呼び出し側が
   // key に `${decision.id}:${item.id}` を渡してマウントし直す前提 — この
@@ -388,18 +378,21 @@ function DecisionItemForm({
               onChange={onChange}
               worktreeRoot={worktreeRoot}
               onOpenLocation={onOpenLocation}
+              readOnly={readOnly}
             />
-            {(item.allowOther ?? true) && (
-              <DecisionOtherRow
-                kind={item.kind}
-                itemId={item.id}
-                itemHeader={item.header}
-                other={answer.other}
-                onSelect={selectOther}
-                onDeselect={deselectOther}
-                onChangeText={setOtherText}
-              />
-            )}
+            {readOnly
+              ? (item.allowOther ?? true) && <DecisionReadOnlyOtherRow other={answer.other} />
+              : (item.allowOther ?? true) && (
+                  <DecisionOtherRow
+                    kind={item.kind}
+                    itemId={item.id}
+                    itemHeader={item.header}
+                    other={answer.other}
+                    onSelect={selectOther}
+                    onDeselect={deselectOther}
+                    onChangeText={setOtherText}
+                  />
+                )}
           </>
         )}
 
@@ -418,6 +411,7 @@ function DecisionItemForm({
                 preview={opt.preview}
                 worktreeRoot={worktreeRoot}
                 onOpenLocation={onOpenLocation}
+                readOnly={readOnly}
                 onToggle={(checked) =>
                   onChange(
                     selectOption(item.kind as "single" | "multi", answer, opt.label, checked),
@@ -425,28 +419,33 @@ function DecisionItemForm({
                 }
               />
             ))}
-            {(item.allowOther ?? true) && (
-              <DecisionOtherRow
-                kind={item.kind}
-                itemId={item.id}
-                itemHeader={item.header}
-                other={answer.other}
-                onSelect={selectOther}
-                onDeselect={deselectOther}
-                onChangeText={setOtherText}
-              />
-            )}
+            {readOnly
+              ? (item.allowOther ?? true) && <DecisionReadOnlyOtherRow other={answer.other} />
+              : (item.allowOther ?? true) && (
+                  <DecisionOtherRow
+                    kind={item.kind}
+                    itemId={item.id}
+                    itemHeader={item.header}
+                    other={answer.other}
+                    onSelect={selectOther}
+                    onDeselect={deselectOther}
+                    onChangeText={setOtherText}
+                  />
+                )}
           </div>
         )}
 
-        {item.kind === "text" && (
-          <textarea
-            className="min-h-16 rounded-md border border-border bg-background px-1.5 py-1 text-[13px]"
-            value={answer.other ?? ""}
-            onChange={(e) => setTextAnswer(e.target.value)}
-            aria-label={item.header}
-          />
-        )}
+        {item.kind === "text" &&
+          (readOnly ? (
+            <p className="whitespace-pre-wrap text-[13px]">{answer.other || "(未回答)"}</p>
+          ) : (
+            <textarea
+              className="min-h-16 rounded-md border border-border bg-background px-1.5 py-1 text-[13px]"
+              value={answer.other ?? ""}
+              onChange={(e) => setTextAnswer(e.target.value)}
+              aria-label={item.header}
+            />
+          ))}
 
         {item.kind === "confirm" && (
           <div className="flex gap-2">
@@ -456,14 +455,22 @@ function DecisionItemForm({
                 <label
                   key={value}
                   className={cn(
-                    "cursor-pointer rounded-md border px-3 py-1.5 text-[13px]",
-                    checked ? "border-transparent bg-accent ring-1 ring-ring" : "border-border",
+                    "rounded-md border px-3 py-1.5 text-[13px]",
+                    readOnly
+                      ? cn("border-transparent", checked ? "bg-accent" : "opacity-55")
+                      : cn(
+                          "cursor-pointer",
+                          checked
+                            ? "border-transparent bg-accent ring-1 ring-ring"
+                            : "border-border",
+                        ),
                   )}
                 >
                   <input
                     type="radio"
                     name={`decision-item-${item.id}`}
                     checked={checked}
+                    disabled={readOnly}
                     onChange={() => onChange({ ...answer, selected: [value] })}
                     className="sr-only"
                   />
@@ -474,7 +481,13 @@ function DecisionItemForm({
           </div>
         )}
 
-        {noteOpen ? (
+        {readOnly ? (
+          answer.note && (
+            <p className="text-[13px]">
+              <span className="text-muted-foreground">メモ</span> {answer.note}
+            </p>
+          )
+        ) : noteOpen ? (
           <label className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">メモ</span>
             <textarea
@@ -663,10 +676,10 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
   // 操作で終わっているので、配達が滞っていても再送の宛先が無い。
   const canResend = delivery.canResend && decision.status !== "cancelled";
   const hasDeliveryProblem = decision.delivery !== null && delivery.state !== "sent";
-  // レビュー指摘: 起動直後（WS 未接続 / tree 未着）に「見つからない」＝
-  // 「pane 消失」と決めつけると、実際には生きているエージェントを死んだと
-  // 誤表示する。tree がまだ 1 件も届いていない、または接続が確立していない
-  // 間は「不明」として扱う。
+  // 起動直後（WS 未接続 / tree 未着）に「見つからない」＝「pane 消失」と
+  // 決めつけると、実際には生きているエージェントを死んだと誤表示する。
+  // tree がまだ 1 件も届いていない、または接続が確立していない間は
+  // 「不明」として扱う。
   const settling = state.connection !== "open" || state.repos.length === 0;
   const pane = settling ? null : findPane(state.repos, decision.paneId, decision.agent);
 
@@ -725,8 +738,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
             <span className="shrink-0">session {truncateSessionId(decision.claudeSessionId)}</span>
           )}
           <span className="shrink-0">
-            {decision.answeredAt
-              ? `${elapsedMin} 分前に依頼・${answeredElapsedMin} 分前に回答`
+            {decision.status !== "open" && decision.answeredAt
+              ? `${elapsedMin} 分前に依頼・${answeredElapsedMin} 分前に${RESOLVED_VERB[decision.status]}`
               : `${elapsedMin} 分前に依頼`}
           </span>
           <span className="flex-1" />
@@ -765,7 +778,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         </div>
       )}
 
-      {isOpen && decision.spec.context.length > 0 && (
+      {decision.spec.context.length > 0 && (
         <div className="flex shrink-0 flex-col gap-2.5 px-3 py-2 text-sm">
           {decision.spec.context.map((block, i) => (
             <BlockView
@@ -779,62 +792,32 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
       )}
 
       <div className="flex flex-1 flex-col gap-[18px] px-3 py-2">
-        {isOpen ? (
-          decision.spec.items.map((item, index) => (
-            <DecisionItemForm
-              key={`${decision.id}:${item.id}`}
-              item={item}
-              index={index}
-              answer={answers[item.id] ?? emptyAnswer()}
-              onChange={(next) => updateItem(item.id, next)}
-              compare={
-                decision.spec.layout === "compare" &&
-                (item.kind === "single" || item.kind === "multi") &&
-                item.options.some((o) => o.preview.length > 0)
-              }
-              worktreeRoot={decision.worktreeRoot}
-              onOpenLocation={onOpenLocation}
-            />
-          ))
-        ) : (
-          <>
-            {decision.spec.items.map((item, index) => (
-              <div key={item.id} className="border-t border-border pt-3.5">
-                <DecisionAnswerView
-                  item={item}
-                  index={index}
-                  answer={decision.answer?.answers[item.id]}
-                />
-              </div>
-            ))}
-
-            {decision.spec.context.length > 0 && (
-              <details
-                data-testid="decision-context"
-                className="flex flex-col gap-2 border-t border-border pt-3.5"
-              >
-                <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-                  コンテキスト
-                </summary>
-                <div className="flex flex-col gap-2.5 pt-1 text-[13px]">
-                  {decision.spec.context.map((block, i) => (
-                    <BlockView
-                      key={i}
-                      block={block}
-                      worktreeRoot={decision.worktreeRoot}
-                      onOpenLocation={onOpenLocation}
-                    />
-                  ))}
-                </div>
-              </details>
-            )}
-          </>
-        )}
+        {decision.spec.items.map((item, index) => (
+          <DecisionItemForm
+            key={`${decision.id}:${item.id}`}
+            item={item}
+            index={index}
+            answer={
+              isOpen
+                ? (answers[item.id] ?? emptyAnswer())
+                : (decision.answer?.answers[item.id] ?? emptyAnswer())
+            }
+            onChange={(next) => updateItem(item.id, next)}
+            compare={
+              decision.spec.layout === "compare" &&
+              (item.kind === "single" || item.kind === "multi") &&
+              item.options.some((o) => o.preview.length > 0)
+            }
+            worktreeRoot={decision.worktreeRoot}
+            onOpenLocation={onOpenLocation}
+            readOnly={!isOpen}
+          />
+        ))}
       </div>
 
       {error && <p className="shrink-0 px-3 py-1 text-xs text-destructive">{error}</p>}
 
-      {isOpen && (
+      {isOpen ? (
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-2">
           <span className="text-xs text-muted-foreground">1–9 で選択 · ⌘Enter で送信</span>
           <span className="flex items-center gap-2">
@@ -845,6 +828,27 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
               回答を送信
             </Button>
           </span>
+        </footer>
+      ) : (
+        <footer
+          data-testid="decision-delivery-footer"
+          className="flex shrink-0 items-center justify-end gap-1 border-t border-border px-3 py-2 text-xs text-muted-foreground"
+        >
+          {hasDeliveryProblem ? (
+            // 再送操作は上のアラート（DeliveryChip）にある — ここは配達が
+            // 滞っていることだけを示す静的な表示。
+            <span>未達</span>
+          ) : decision.status === "answered" && decision.delivery ? (
+            <span>
+              回答は{agentLabel(decision.agent, pane)}に届きました・{deliveryElapsedMin} 分前
+            </span>
+          ) : decision.status === "dismissed" ? (
+            <span>
+              却下しました・{answeredElapsedMin} 分前{decision.delivery && "・届いた"}
+            </span>
+          ) : decision.status === "cancelled" ? (
+            <span>取り下げました{decision.answeredAt ? `・${answeredElapsedMin} 分前` : ""}</span>
+          ) : null}
         </footer>
       )}
     </div>

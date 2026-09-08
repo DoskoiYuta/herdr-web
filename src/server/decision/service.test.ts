@@ -138,6 +138,20 @@ describe("createDecisionService.answerDecision", () => {
   });
 });
 
+describe("createDecisionService.dismissDecision", () => {
+  // 無いと壊れる: 却下してから何分経ったか UI のメタ行/フッタに出せない。
+  test("dismissing an open decision sets answeredAt", async () => {
+    const { service } = setup();
+    const created = await service.createDecision({
+      spec,
+      paneId: null,
+      claudeSessionId: null,
+    });
+    const result = await service.dismissDecision(created.id);
+    expect(result._unsafeUnwrap().answeredAt).not.toBeNull();
+  });
+});
+
 describe("createDecisionService.cancelDecision", () => {
   // 無いと壊れる: エージェントが取り下げた依頼にまで agent.prompt が送られ、
   // 自分自身が出した依頼への通知が二重に届く。
@@ -152,6 +166,18 @@ describe("createDecisionService.cancelDecision", () => {
     expect(result.isOk()).toBe(true);
     expect(result._unsafeUnwrap().status).toBe("cancelled");
     expect(scheduled).toEqual([]);
+  });
+
+  // 無いと壊れる: 取り下げてから何分経ったか UI のメタ行/フッタに出せない。
+  test("cancelling an open decision sets answeredAt", async () => {
+    const { service } = setup();
+    const created = await service.createDecision({
+      spec,
+      paneId: null,
+      claudeSessionId: null,
+    });
+    const result = await service.cancelDecision(created.id);
+    expect(result._unsafeUnwrap().answeredAt).not.toBeNull();
   });
 });
 
