@@ -38,6 +38,9 @@ export interface LayoutOutput {
  *     existing lane already waiting for that parent hash, or open a new one.
  *  4. Draws a `pass` segment for every other lane that was already active
  *     before this row and remains active after it, untouched by this row.
+ *  4.5. Packs the lanes left, closing any gap left by a lane that just
+ *     closed, so branches ending mid-history don't hold the grid at their
+ *     old width.
  *  5. Trims trailing free lanes so finished branches don't keep the grid
  *     wide forever.
  */
@@ -125,6 +128,32 @@ export function layoutGraph(input: LayoutInput): LayoutOutput {
       if (j === lane || touched.has(j)) continue;
       if (j < topLanes.length && topLanes[j] !== null && lanes[j] !== null) {
         segments.push({ fromLane: j, toLane: j, color: laneColor[j]!, kind: "pass" });
+      }
+    }
+
+    // 4.5. Compact: pack still-active lanes leftward into any gap left by a
+    // lane that just closed, so a branch that ended doesn't hold everything
+    // to its right out at its old width for the rest of the graph. This
+    // scan is a stable left-pack (every active lane ends up at the leftmost
+    // free index, in original relative order); the commit's own seat
+    // (`lane`, the node's drawn position) is never itself relocated, but its
+    // `to-parent`/`merge-in` segments can still have their `toLane` remapped
+    // below like any other lane's.
+    const compacted = new Map<number, number>();
+    for (let j = 0; j < lanes.length; j++) {
+      if (lanes[j] === null) continue;
+      const free = lanes.indexOf(null);
+      if (free >= 0 && free < j) {
+        lanes[free] = lanes[j]!;
+        laneColor[free] = laneColor[j]!;
+        lanes[j] = null;
+        compacted.set(j, free);
+      }
+    }
+    if (compacted.size > 0) {
+      for (const seg of segments) {
+        const moved = compacted.get(seg.toLane);
+        if (moved !== undefined) seg.toLane = moved;
       }
     }
 

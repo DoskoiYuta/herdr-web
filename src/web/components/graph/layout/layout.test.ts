@@ -266,6 +266,31 @@ describe("layoutGraph", () => {
   });
 });
 
+describe("lane compaction", () => {
+  it("packs a lane leftward into a gap opened by a lane closing earlier in the row", () => {
+    // x and y each open their own lane (0 and 1) waiting on p0/p1. p0 has no
+    // parent and seats in lane 0, closing it; lane 1 (still waiting on p1)
+    // must compact into the freed lane 0 in that same row, and p1 seats
+    // there next.
+    const input: LayoutInput = {
+      commits: [
+        { hash: "x", parents: ["p0"] },
+        { hash: "y", parents: ["p1"] },
+        { hash: "p0", parents: [] },
+        { hash: "p1", parents: [] },
+      ],
+    };
+    const out = layoutGraph(input);
+    expect(out.laneCount).toBe(2);
+    const p0 = out.rows[2]!;
+    expect(p0.lane).toBe(0);
+    expect(p0.segments).toEqual([{ fromLane: 1, toLane: 0, color: 1, kind: "pass" }]);
+    const p1 = out.rows[3]!;
+    expect(p1.lane).toBe(0);
+    expect(p1.segments).toEqual([]);
+  });
+});
+
 describe("lane closed and reopened in the same row", () => {
   it("does not emit a spurious pass line for a lane that merges in and is immediately reused", () => {
     // a and b are both children of m; m is itself a merge of x and p.

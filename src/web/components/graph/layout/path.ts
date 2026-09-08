@@ -34,21 +34,41 @@ export function nodeCenter(row: LayoutRow, geom: Geom = GEOM): { cx: number; cy:
 const laneX = (lane: number, geom: Geom): number => (lane + 0.5) * geom.laneWidth;
 
 /**
- * SVG path `d` string for one segment spanning the full height of a row:
- * a straight vertical line when the lane doesn't change, otherwise a cubic
- * bezier whose control points sit `rowHeight * 0.5` in from the top/bottom
- * edges (per plan.md §6.2/§6.4).
+ * SVG path `d` string for one segment.
+ *
+ * `merge-in` segments (a line joining this row's commit from another lane)
+ * and `to-parent` segments whose lane changes (a line leaving this row's
+ * commit toward a differently-laned parent) run only between the row edge
+ * and the commit node at `rowHeight / 2`, so the curve passes through the
+ * node instead of skirting past it. All other segments (`pass`, and
+ * same-lane `to-parent`) span the full row height as before.
+ *
+ * A straight vertical line is used when the lane doesn't change; otherwise
+ * a cubic bezier whose control points sit half the segment's height in from
+ * each end (per plan.md §6.2/§6.4).
  */
 export function segmentPath(seg: LayoutSegment, geom: Geom = GEOM): string {
   const x1 = laneX(seg.fromLane, geom);
   const x2 = laneX(seg.toLane, geom);
-  const y1 = 0;
-  const y2 = geom.rowHeight;
+  const nodeY = geom.rowHeight / 2;
+
+  let y1: number;
+  let y2: number;
+  if (seg.kind === "merge-in") {
+    y1 = 0;
+    y2 = nodeY;
+  } else if (seg.kind === "to-parent" && seg.fromLane !== seg.toLane) {
+    y1 = nodeY;
+    y2 = geom.rowHeight;
+  } else {
+    y1 = 0;
+    y2 = geom.rowHeight;
+  }
 
   if (seg.fromLane === seg.toLane) {
     return `M ${x1} ${y1} L ${x2} ${y2}`;
   }
 
-  const c = geom.rowHeight * 0.5;
+  const c = (y2 - y1) * 0.5;
   return `M ${x1} ${y1} C ${x1} ${y1 + c}, ${x2} ${y2 - c}, ${x2} ${y2}`;
 }
