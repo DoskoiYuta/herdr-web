@@ -303,7 +303,7 @@ function DecisionReadOnlyOtherRow({ other }: { other: string | null }) {
   );
 }
 
-/** single/multi の選択肢を選ぶ。single は「その他」と排他 (レビュー指摘):
+/** single/multi の選択肢を選ぶ。single は「その他」と排他:
  * 選択肢を選んだら `other` を消す。multi は選択肢と「その他」が併存できる
  * ため `other` はそのまま。 */
 function selectOption(
@@ -676,10 +676,10 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
   // 操作で終わっているので、配達が滞っていても再送の宛先が無い。
   const canResend = delivery.canResend && decision.status !== "cancelled";
   const hasDeliveryProblem = decision.delivery !== null && delivery.state !== "sent";
-  // レビュー指摘: 起動直後（WS 未接続 / tree 未着）に「見つからない」＝
-  // 「pane 消失」と決めつけると、実際には生きているエージェントを死んだと
-  // 誤表示する。tree がまだ 1 件も届いていない、または接続が確立していない
-  // 間は「不明」として扱う。
+  // 起動直後（WS 未接続 / tree 未着）に「見つからない」＝「pane 消失」と
+  // 決めつけると、実際には生きているエージェントを死んだと誤表示する。
+  // tree がまだ 1 件も届いていない、または接続が確立していない間は
+  // 「不明」として扱う。
   const settling = state.connection !== "open" || state.repos.length === 0;
   const pane = settling ? null : findPane(state.repos, decision.paneId, decision.agent);
 

@@ -28,7 +28,7 @@ export function CompareOptions({
 }) {
   function toggle(label: string) {
     if (item.kind === "single") {
-      // single では「その他」と排他 (レビュー指摘): カードを選んだら other を消す。
+      // single では「その他」と排他: カードを選んだら other を消す。
       onChange({ ...answer, selected: [label], other: null });
       return;
     }
