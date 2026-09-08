@@ -5,7 +5,10 @@ export function formatBytes(bytes: number): string {
   const units = ["KB", "MB", "GB"] as const;
   let value = bytes / 1024;
   let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
+  // Compares the *rounded* value against the unit boundary: a raw value
+  // like 1023.99 is < 1024 but rounds to "1024.0", which must still bump to
+  // the next unit rather than print "1024.0 KB".
+  while (unitIndex < units.length - 1 && Number(value.toFixed(1)) >= 1024) {
     value /= 1024;
     unitIndex += 1;
   }

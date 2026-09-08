@@ -12,6 +12,9 @@ describe("formatBytes", () => {
     [4300, "4.2 KB"],
     [1024 * 1024, "1.0 MB"],
     [1.5 * 1024 * 1024, "1.5 MB"],
+    // 丸めで "1024.0 KB" になっていた境界（1024 未満だが小数第1位に丸めると
+    // 1024.0 になる）。
+    [1_048_570, "1.0 MB"],
   ])("formats %d bytes as %s", (bytes, expected) => {
     expect(formatBytes(bytes)).toBe(expected);
   });
