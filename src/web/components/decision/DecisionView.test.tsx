@@ -210,6 +210,23 @@ describe("DecisionView", () => {
     expect(screen.getByText(/却下しました/)).toBeInTheDocument();
   });
 
+  // 無いと壊れる: herdr 未接続/pane 消失で配達がまだ記録されていない却下済み
+  // 依頼はフッタが空になり、却下されたこと自体が確認できなくなる。
+  test("a dismissed decision with no delivery record still shows a dismissed footer message", async () => {
+    const decision = baseDecision({
+      status: "dismissed",
+      answer: null,
+      answeredAt: new Date().toISOString(),
+      delivery: null,
+    });
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    expect(screen.getByText(/却下しました/)).toBeInTheDocument();
+  });
+
   // 無いと壊れる: layout: "compare" でもラジオボタンのままになり、選択肢の
   // preview を横並びで比較できない。
   test("layout: compare renders cards, and clicking one selects it", async () => {

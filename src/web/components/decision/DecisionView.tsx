@@ -837,15 +837,17 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
           className="flex shrink-0 items-center justify-end gap-1 border-t border-border px-3 py-2 text-xs text-muted-foreground"
         >
           {hasDeliveryProblem ? (
-            // 実際の再送操作は上のアラート（DeliveryChip）にある — ここは配達が
+            // 再送操作は上のアラート（DeliveryChip）にある — ここは配達が
             // 滞っていることだけを示す静的な表示。
-            <span>未達 · 再送</span>
+            <span>未達</span>
           ) : decision.status === "answered" && decision.delivery ? (
             <span>
               回答は{agentLabel(decision.agent, pane)}に届きました・{deliveryElapsedMin} 分前
             </span>
-          ) : decision.status === "dismissed" && decision.delivery ? (
-            <span>却下しました・{deliveryElapsedMin} 分前</span>
+          ) : decision.status === "dismissed" ? (
+            <span>
+              却下しました・{answeredElapsedMin} 分前{decision.delivery && "・届いた"}
+            </span>
           ) : decision.status === "cancelled" ? (
             <span>取り下げました{decision.answeredAt ? `・${answeredElapsedMin} 分前` : ""}</span>
           ) : null}
