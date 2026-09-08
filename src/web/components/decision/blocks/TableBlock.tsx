@@ -11,23 +11,29 @@ import {
 
 export function TableBlock({ header, rows }: { header: string[]; rows: string[][] }) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {header.map((h, i) => (
-            <TableHead key={i}>{h}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, i) => (
-          <TableRow key={i}>
-            {row.map((cell, j) => (
-              <TableCell key={j}>{cell}</TableCell>
+    <div className="w-full max-w-full overflow-hidden rounded-md border border-border">
+      <Table>
+        <TableHeader className="bg-muted">
+          <TableRow>
+            {header.map((h, i) => (
+              <TableHead key={i} className="h-8 text-xs">
+                {h}
+              </TableHead>
             ))}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i}>
+              {row.map((cell, j) => (
+                <TableCell key={j} className="text-xs">
+                  {cell}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

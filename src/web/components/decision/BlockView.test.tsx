@@ -11,7 +11,11 @@ vi.mock("@pierre/diffs/react", () => ({
   File: ({ file }: { file: { contents: string } }) => (
     <div data-testid="pierre-file">{file.contents}</div>
   ),
-  PatchDiff: ({ patch }: { patch: string }) => <div data-testid="pierre-patchdiff">{patch}</div>,
+  PatchDiff: ({ patch, options }: { patch: string; options?: { diffStyle?: string } }) => (
+    <div data-testid="pierre-patchdiff" data-diff-style={options?.diffStyle}>
+      {patch}
+    </div>
+  ),
 }));
 
 describe.each<[string, Block, () => void]>([
@@ -70,6 +74,15 @@ describe.each<["code" | "diff", (text: string) => Block]>([
   });
 });
 
+describe("diff Block", () => {
+  // 無いと壊れる: split 表示のままだと preview の固定幅でファイル名タブが
+  // 折り返され、640px 幅では diff が読めなくなる。
+  test("renders in unified diffStyle regardless of viewport", () => {
+    render(<BlockView block={{ kind: "diff", patch: "diff --git a/f b/f\n+added line\n" }} />);
+    expect(screen.getByTestId("pierre-patchdiff").dataset.diffStyle).toBe("unified");
+  });
+});
+
 describe("html Block sandbox", () => {
   // 無いと壊れる: allowScripts が既定で true 扱いになり、依頼が埋め込む
   // 任意の html が同一オリジンの権限まで持って実行できてしまう。
@@ -81,6 +94,21 @@ describe("html Block sandbox", () => {
     const iframe = screen.getByTitle("html block");
     expect(iframe.getAttribute("sandbox")).toBe(expected);
     expect(iframe.getAttribute("sandbox")).not.toMatch(/allow-same-origin/);
+  });
+
+  // 無いと壊れる: srcdoc 内スクリプトの postMessage を無視したままだと、
+  // 中身がどんなに小さくても常に初期の固定高さで表示され続ける。
+  test("grows to the height reported by the srcdoc's own postMessage", () => {
+    render(<BlockView block={{ kind: "html", html: "<p>hi</p>", allowScripts: true }} />);
+    const iframe = screen.getByTitle("html block") as HTMLIFrameElement;
+    fireEvent(
+      window,
+      new MessageEvent("message", {
+        data: { source: "herdr-html-block", height: 321 },
+        source: iframe.contentWindow,
+      }),
+    );
+    expect(iframe.style.height).toBe("321px");
   });
 });
 
@@ -100,6 +128,15 @@ describe("image Block", () => {
     render(<BlockView block={{ kind: "image", path: "docs/a.png" }} worktreeRoot={null} />);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByText(/表示できません/)).toBeInTheDocument();
+  });
+
+  // 無いと壊れる: 存在しないパスの image でも壊れた <img> がそのまま
+  // 残り、依頼を見た人に読み込み失敗が伝わらない。
+  test("shows a message instead of the broken <img> when it fails to load", () => {
+    render(<BlockView block={{ kind: "image", path: "docs/missing.png" }} worktreeRoot="/repo" />);
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByText("画像を読み込めません: docs/missing.png")).toBeInTheDocument();
   });
 });
 

@@ -242,7 +242,7 @@ function DecisionOptionRow({
         </span>
         {description && <span className="block text-xs text-muted-foreground">{description}</span>}
         {preview.length > 0 && (
-          <span className="mt-1 flex flex-col gap-1.5 rounded bg-muted p-2 text-xs">
+          <span className="mt-1 flex flex-col gap-2.5 rounded bg-muted p-2 text-xs">
             {preview.map((block, i) => (
               <BlockView
                 key={i}
@@ -766,7 +766,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
       )}
 
       {isOpen && decision.spec.context.length > 0 && (
-        <div className="flex shrink-0 flex-col gap-2 px-3 py-2 text-sm">
+        <div className="flex shrink-0 flex-col gap-2.5 px-3 py-2 text-sm">
           {decision.spec.context.map((block, i) => (
             <BlockView
               key={i}
@@ -816,7 +816,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
                   コンテキスト
                 </summary>
-                <div className="flex flex-col gap-2 pt-1 text-[13px]">
+                <div className="flex flex-col gap-2.5 pt-1 text-[13px]">
                   {decision.spec.context.map((block, i) => (
                     <BlockView
                       key={i}
