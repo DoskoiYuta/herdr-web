@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import type { GraphResponse } from "@contract/git";
 
-vi.mock("@/components/tree/PathTree", () => ({
+vi.mock("@/components/tree/PathTree", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/tree/PathTree")>()),
   PathTree: ({ paths, onSelectFile }: { paths: string[]; onSelectFile?(path: string): void }) => (
     <div role="tree">
       {paths.map((p) => (

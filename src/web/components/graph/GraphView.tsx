@@ -2,10 +2,11 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "rea
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { VirtualizerOptions } from "@tanstack/react-virtual";
 import { layoutGraph } from "./layout/layout";
-import { GEOM } from "./layout/path";
 import type { Commit, Ref } from "@contract/git";
 import type { ReviewCountsResponse } from "@contract/review";
 import GraphRow, { UNCOMMITTED_HASH } from "./GraphRow";
+import { useCommit } from "./hooks/useCommit";
+import { estimateRowHeight } from "./estimateRowHeight";
 
 export interface GraphViewHandle {
   scrollToIndex(index: number, opts?: { align?: "start" | "center" | "end" | "auto" }): void;
@@ -72,10 +73,27 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
     return map;
   }, [commits]);
 
+  // Shares its query cache entry with the expanded row's own CommitDetail
+  // (same queryKey via useCommit), so its changed-file paths become
+  // available here as soon as CommitDetail's fetch resolves — without a
+  // second request.
+  const expandedHash = detailOpen ? selectedHash : null;
+  const expandedDetailQuery = useCommit(repo, expandedHash);
+  const expandedPaths = useMemo(
+    () => expandedDetailQuery.data?.files.map((f) => f.path),
+    [expandedDetailQuery.data],
+  );
+
   const virtualizer = useVirtualizer({
     count: layout.rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => GEOM.rowHeight,
+    estimateSize: (index) => {
+      const isExpanded = detailOpen && layout.rows[index]?.hash === selectedHash;
+      return estimateRowHeight({
+        isExpanded,
+        paths: isExpanded ? expandedPaths : undefined,
+      });
+    },
     overscan: 10,
     ...virtualizerOptions,
   });
@@ -83,13 +101,14 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
   // Rows are fixed-height (24px) except the one currently expanded inline,
   // which react-virtual measures via `measureElement`'s ResizeObserver.
   // That observer only fires on subsequent size *changes* of an already
-  // mounted node — the first time a row expands/collapses its measured
-  // element identity is unchanged (same DOM node, different children), so
-  // force a re-measure explicitly whenever which row is expanded changes.
+  // mounted node — the first time a row expands/collapses, or once the path
+  // list above resolves and changes the estimate, its measured element
+  // identity is unchanged (same DOM node, different children), so force a
+  // re-measure explicitly.
   useEffect(() => {
     virtualizer.measure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHash, detailOpen]);
+  }, [selectedHash, detailOpen, expandedPaths]);
 
   useImperativeHandle(
     ref,

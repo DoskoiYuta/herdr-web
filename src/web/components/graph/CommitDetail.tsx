@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { PathTree, type PathTreeDecoration } from "@/components/tree/PathTree";
+import {
+  countFileTreeRows,
+  PATH_TREE_ROW_HEIGHT,
+  PathTree,
+  type PathTreeDecoration,
+} from "@/components/tree/PathTree";
 import { useViewerSettings } from "@/lib/viewerSettings";
 import { useCommit, UNCOMMITTED_HASH } from "./hooks/useCommit";
 import { buildDecorations, buildGitStatus } from "./fileDecorations";
@@ -28,6 +33,12 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
   const [viewerSettings] = useViewerSettings();
   const files = useMemo(() => query.data?.files ?? [], [query.data]);
   const paths = useMemo(() => files.map((f) => f.path), [files]);
+  // @pierre/trees' FileTree virtualizes against its own container's height
+  // (see node_modules/@pierre/trees/dist/render/FileTreeView.js — a
+  // ResizeObserver measures it to decide which rows are in range) rather
+  // than sizing to its content, so `height: "auto"` renders zero rows. Give
+  // it the exact pixel height its own row count needs instead.
+  const treeHeight = useMemo(() => PATH_TREE_ROW_HEIGHT * countFileTreeRows(paths), [paths]);
   const gitStatus = useMemo(() => buildGitStatus(files), [files]);
   const baseDecorations = useMemo(() => buildDecorations(files), [files]);
   // Trailing "→" only when a click actually goes somewhere (Diff jump).
@@ -92,11 +103,6 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
             {query.data.body ? `\n\n${query.data.body}` : ""}
           </pre>
           <div
-            className="rounded-sm border border-border"
-            // Sized to the file count (rows are ~24px; ancestor directory
-            // rows are mostly flattened away) and capped — the tree scrolls
-            // internally beyond that.
-            style={{ height: Math.min(320, 24 * paths.length + 32) }}
             // ルートコミットなど onOpenFile が渡らないケースは、行をクリック
             // しても Diff へは飛べない（GraphRow 参照）。
             aria-disabled={!onOpenFile}
@@ -110,6 +116,10 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
               selectedPath={null}
               search={false}
               onSelectFile={onOpenFile}
+              // No cap and no internal scroll here (unlike Files/Diff): sized
+              // exactly to its row count so nothing is clipped, and the tree
+              // scrolls with the rest of Graph's single virtualized list.
+              style={{ height: treeHeight }}
             />
           </div>
         </div>
