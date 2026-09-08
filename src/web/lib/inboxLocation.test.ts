@@ -130,4 +130,23 @@ describe("worktreeOptions", () => {
 
     expect(worktreeOptions(repos).map((o) => o.repoName)).toEqual(["side/foo", "work/foo"]);
   });
+
+  // 無いと壊れる: root の再割り当て中などで同じ root が一時的に 2 repo に
+  // 現れると、Select の key/value が重複する。
+  test("dedupes an option when the same root appears under two repos", () => {
+    const repos = [
+      repo({
+        key: "/repo/a/.git",
+        name: "a",
+        worktrees: [{ root: "/shared", branch: "main", isMain: true, panes: [] }],
+      }),
+      repo({
+        key: "/repo/b/.git",
+        name: "b",
+        worktrees: [{ root: "/shared", branch: "main", isMain: true, panes: [] }],
+      }),
+    ];
+
+    expect(worktreeOptions(repos).map((o) => o.root)).toEqual(["/shared"]);
+  });
 });

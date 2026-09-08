@@ -59,6 +59,7 @@ export function worktreeOptions(repos: Repo[]): WorktreeOption[] {
     (names.get(a.key) ?? a.name).localeCompare(names.get(b.key) ?? b.name),
   );
 
+  const seenRoots = new Set<string>();
   const options: WorktreeOption[] = [];
   for (const repo of sortedRepos) {
     const repoName = names.get(repo.key) ?? repo.name;
@@ -67,6 +68,10 @@ export function worktreeOptions(repos: Repo[]): WorktreeOption[] {
       return (a.branch ?? "").localeCompare(b.branch ?? "");
     });
     for (const worktree of worktrees) {
+      // 同じ worktree root が一時的に複数 repo に現れうる（repo の再割り当て中
+      // 等）— Select の key/value は root 単位で一意でなければならない。
+      if (seenRoots.has(worktree.root)) continue;
+      seenRoots.add(worktree.root);
       options.push({
         root: worktree.root,
         repoName,

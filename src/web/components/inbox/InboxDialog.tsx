@@ -129,7 +129,7 @@ function RowLocation({ repos, item }: { repos: Repo[]; item: InboxItem }) {
         <Badge
           variant="outline"
           className={cn(
-            "h-4 px-1 text-[10px]",
+            "h-4 max-w-24 truncate px-1 text-[10px]",
             !location.isMain && "border-sky-500/40 text-sky-600 dark:text-sky-400",
           )}
         >
@@ -142,15 +142,13 @@ function RowLocation({ repos, item }: { repos: Repo[]; item: InboxItem }) {
   return null;
 }
 
-function RowMeta({ item }: { item: InboxItem }) {
-  const state = useHerdrState();
-  const nowMs = useNow();
+function RowMeta({ item, repos, nowMs }: { item: InboxItem; repos: Repo[]; nowMs: number }) {
   const agent = "agent" in item ? item.agent : null;
   const at = "at" in item ? item.at : null;
 
   const candidates: (ReactNode | null)[] = [
     item.kind,
-    <RowLocation key="location" repos={state.repos} item={item} />,
+    <RowLocation key="location" repos={repos} item={item} />,
     agent,
     at ? relativeTime(at, nowMs) : null,
   ];
@@ -185,6 +183,7 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
   const worktree = worktreeFilter === ALL_WORKTREES ? undefined : worktreeFilter;
   const { data } = useInbox(worktree);
   const state = useHerdrState();
+  const nowMs = useNow();
   const { send } = useHerdrStoreActions();
   const navigate = useNavigate();
   const toast = useToast();
@@ -346,7 +345,7 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
                           <p className="truncate text-xs text-muted-foreground">
                             {rowDetail(item)}
                           </p>
-                          <RowMeta item={item} />
+                          <RowMeta item={item} repos={state.repos} nowMs={nowMs} />
                         </div>
                         {item.section === "undelivered" && (
                           <div onClick={(e) => e.stopPropagation()}>
