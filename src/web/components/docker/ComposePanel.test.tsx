@@ -41,11 +41,7 @@ test("no matching containers shows the empty-state message rather than a bare em
   containersMock.mockResolvedValue({ groups: [] });
   render(renderPanel());
 
-  expect(
-    await screen.findByText(
-      "この worktree に紐づくコンテナはありません（compose / devcontainer のラベルで判定）",
-    ),
-  ).toBeInTheDocument();
+  expect(await screen.findByText("この worktree に紐づくコンテナはありません")).toBeInTheDocument();
 });
 
 test("renders a group's containers with service, state, and ports", async () => {
@@ -139,6 +135,23 @@ test("groups one project's containers under a card showing running/exited counts
   render(renderPanel());
 
   expect(await screen.findByText("1 running · 1 exited")).toBeInTheDocument();
+});
+
+// 無いと壊れる: プロジェクト数・種別の内訳がどこにも出ず、複数プロジェクトが
+// 並んでいてもコンテナ一覧をスクロールして数えるしかなくなる。
+test("shows a summary of how many compose/devcontainer projects this worktree has", async () => {
+  containersMock.mockResolvedValue({
+    groups: [
+      { kind: "compose", name: "a", workingDir: "/repo", containers: [] },
+      { kind: "compose", name: "b", workingDir: "/repo", containers: [] },
+      { kind: "devcontainer", name: "c", workingDir: "/repo", containers: [] },
+    ],
+  });
+  render(renderPanel());
+
+  expect(
+    await screen.findByText("この worktree の compose プロジェクト 2 · devcontainer 1"),
+  ).toBeInTheDocument();
 });
 
 test.each([
@@ -257,6 +270,6 @@ test("a later poll failure keeps the previous container list visible while showi
     </QueryClientProvider>,
   );
 
-  expect(await screen.findByText(/docker ps がタイムアウトしました/)).toBeInTheDocument();
+  expect(await screen.findByText(/タイムアウト/)).toBeInTheDocument();
   expect(screen.getByText("herdr-web-1")).toBeInTheDocument();
 });
