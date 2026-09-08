@@ -218,6 +218,21 @@ html.dark .md-readonly > div {
   font-weight: 600 !important;
 }
 
+/* wysimark はエディタ本体を枠線+角丸付きのカード (32px パディング) として
+ * 描く — ドキュメント編集面としては妥当だが、decision の設問と地続きに
+ * 流れる本文としては枠と余白が過大 (design.pen P3v2)。emotion のハッシュ
+ * class は当てにできないので、構造 (最初の子要素 / data-slate-editor) で
+ * 選ぶ。 */
+.md-readonly-compact > div:first-child {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.md-readonly-compact [data-slate-editor] {
+  padding: 0 !important;
+}
+
 /* ThreadCard: 要対応（turn=action）で未読のカードは、バッジではなく枠線の
  * 明滅で注意を引く（docs/ui-redesign.md §6.2）。`prefers-reduced-motion` では
  * 動きを止め、静的なアクセント枠線だけを残す。 */

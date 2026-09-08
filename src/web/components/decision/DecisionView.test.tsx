@@ -211,7 +211,9 @@ describe("DecisionView", () => {
     renderWithStore(<DecisionView id="decision-1" />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument());
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    // A/B のカード自体はラジオではなくクリック可能な div。ラジオが残るのは
+    // 「その他」欄の選択状態表示用の 1 個だけ。
+    expect(screen.queryAllByRole("radio")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "A" }));
     fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
@@ -654,7 +656,90 @@ describe("DecisionView", () => {
     const details = (await screen.findByTestId("decision-context")) as HTMLDetailsElement;
     expect(details.open).toBe(false);
 
-    fireEvent.click(screen.getByText("コンテキスト（折りたたみ）"));
+    fireEvent.click(screen.getByText("コンテキスト"));
     expect(details.open).toBe(true);
+  });
+
+  // 無いと壊れる: 「その他」欄に入力しても選択状態が変わらないと、必須設問で
+  // 自由記述だけ書いても回答済みに見えず、送信していいか判断できない。
+  // single では通常の選択肢と「その他」は排他 (レビュー指摘) — 排他が効かない
+  // と、A を選び直したのに「その他」の文字列が selected と一緒に送信され、
+  // エージェント側がどちらの回答か判断できない。
+  test("typing into the allowOther field selects it, and reselecting A clears it", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    const otherInput = screen.getByLabelText("どちらにしますか その他");
+    const otherRadio = screen.getByRole("radio", { name: "その他" });
+    const radioA = screen.getAllByRole("radio")[0]!;
+    expect(otherRadio).not.toBeChecked();
+
+    fireEvent.change(otherInput, { target: { value: "C案" } });
+    expect(otherRadio).toBeChecked();
+    expect(radioA).not.toBeChecked();
+
+    fireEvent.click(radioA);
+    expect(radioA).toBeChecked();
+    expect(otherRadio).not.toBeChecked();
+  });
+
+  // 無いと壊れる: ラジオが readOnly のままだと、クリックで DOM 上は一瞬
+  // チェックが付いても React の controlled 再描画で即座に元に戻り、
+  // 「その他」をテキストを打たずに選ぶ手段が無い。
+  test("clicking the allowOther radio selects it (empty) and focuses the text field", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    const otherRadio = screen.getByRole("radio", { name: "その他" });
+    const otherInput = screen.getByLabelText("どちらにしますか その他");
+    fireEvent.click(otherRadio);
+
+    expect(otherRadio).toBeChecked();
+    expect(otherInput).toHaveValue("");
+    expect(document.activeElement).toBe(otherInput);
+  });
+
+  // 無いと壊れる: 「その他」を選んだだけで本文が空の回答が回答済み扱いに
+  // なると、必須設問なのに中身の無い回答のまま送信できてしまう。
+  test("selecting allowOther without typing still blocks a required item from submitting", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("radio", { name: "その他" }));
+    fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
+
+    await waitFor(() => expect(screen.getByText(/に回答してください/)).toBeInTheDocument());
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  // 無いと壊れる: 下書きに保存済みの note が最初は畳まれたままだと、
+  // 書いたメモが見えなくなり回答の中身が失われて見える。
+  test("a note already present on the answer starts the memo field expanded", async () => {
+    const decision = baseDecision();
+    get.mockResolvedValue(decision);
+
+    const first = renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
+    expect(screen.queryByLabelText("どちらにしますか メモ")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ メモを追加" }));
+    fireEvent.change(screen.getByLabelText("どちらにしますか メモ"), {
+      target: { value: "念のため" },
+    });
+    first.unmount();
+
+    renderWithStore(<DecisionView id="decision-1" />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("どちらにしますか メモ")).toHaveValue("念のため"),
+    );
   });
 });
