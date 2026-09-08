@@ -203,6 +203,21 @@ html.dark .md-readonly > div {
   color: var(--foreground) !important;
 }
 
+/* decision context/preview Blocks (BlockView) render markdown inline among
+ * text-sm UI copy — wysimark's document-scale headings (h1 등) otherwise
+ * dwarf everything around them (docs/ui-redesign.md §5.4 P3/P13). */
+.md-readonly-compact,
+.md-readonly-compact :is(p, li, td, th, blockquote) {
+  font-size: 0.8125rem !important;
+  line-height: 1.5 !important;
+}
+
+.md-readonly-compact :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0.25rem 0 !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+}
+
 /* ThreadCard: 要対応（turn=action）で未読のカードは、バッジではなく枠線の
  * 明滅で注意を引く（docs/ui-redesign.md §6.2）。`prefers-reduced-motion` では
  * 動きを止め、静的なアクセント枠線だけを残す。 */

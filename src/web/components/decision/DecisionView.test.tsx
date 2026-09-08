@@ -76,7 +76,7 @@ describe("DecisionView", () => {
     await waitFor(() => expect(screen.getByText("A")).toBeInTheDocument());
     const radios = screen.getAllByRole("radio");
     fireEvent.click(radios[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
 
     await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
     expect(answer.mock.calls[0]![0]).toBe("decision-1");
@@ -124,8 +124,10 @@ describe("DecisionView", () => {
 
     renderWithStore(<DecisionView id="decision-1" />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "送信" })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "回答を送信" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
 
     await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
   });
@@ -212,7 +214,7 @@ describe("DecisionView", () => {
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "A" }));
-    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
 
     await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
     expect(answer.mock.calls[0]![1].answers.q1.selected).toEqual(["A"]);
@@ -255,7 +257,7 @@ describe("DecisionView", () => {
     fireEvent.change(screen.getByLabelText("どちらにしますか その他"), {
       target: { value: "C案" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    fireEvent.click(screen.getByRole("button", { name: "回答を送信" }));
 
     await waitFor(() => expect(answer).toHaveBeenCalledTimes(1));
     expect(answer.mock.calls[0]![1].answers.q1.other).toBe("C案");
@@ -652,7 +654,7 @@ describe("DecisionView", () => {
     const details = (await screen.findByTestId("decision-context")) as HTMLDetailsElement;
     expect(details.open).toBe(false);
 
-    fireEvent.click(screen.getByText("context"));
+    fireEvent.click(screen.getByText("コンテキスト（折りたたみ）"));
     expect(details.open).toBe(true);
   });
 });

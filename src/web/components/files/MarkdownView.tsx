@@ -12,16 +12,21 @@
 
 import { Editable, useEditor } from "@wysimark/react";
 import { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 
 export interface MarkdownViewProps {
   contents: string;
+  /** Shrinks headings/body to text-sm scale — used where markdown is one
+   * Block among many small UI elements (decision context/preview) rather
+   * than a document-sized preview (Files tab). */
+  compact?: boolean;
 }
 
 function noop() {
   // read-only: edits are discarded rather than fed back into `contents`
 }
 
-export function MarkdownView({ contents }: MarkdownViewProps) {
+export function MarkdownView({ contents, compact = false }: MarkdownViewProps) {
   const editor = useEditor({ height: "100%" });
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -35,7 +40,10 @@ export function MarkdownView({ contents }: MarkdownViewProps) {
   }, [contents]);
 
   return (
-    <div ref={containerRef} className="md-readonly h-full min-h-0 overflow-auto">
+    <div
+      ref={containerRef}
+      className={cn("md-readonly h-full min-h-0 overflow-auto", compact && "md-readonly-compact")}
+    >
       <Editable editor={editor} value={contents} onChange={noop} />
     </div>
   );

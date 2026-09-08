@@ -29,7 +29,7 @@ export interface BlockViewProps {
 export function BlockView({ block, worktreeRoot = null, onOpenLocation }: BlockViewProps) {
   switch (block.kind) {
     case "markdown":
-      return <MarkdownView contents={block.text} />;
+      return <MarkdownView contents={block.text} compact />;
     case "code":
       return <CodeBlock language={block.language} text={block.text} />;
     case "diff":
