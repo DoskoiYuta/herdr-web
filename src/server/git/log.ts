@@ -21,7 +21,20 @@ export interface ListCommitsOptions {
   userArgs?: string[];
   /** Extra starting revisions (e.g. stash base commits) to make reachable. */
   extraRevs?: string[];
+  /**
+   * Commit ordering. Default `"date"`. `"topo"` groups a branch's commits
+   * together, which under `--max-count` cuts off many branches' parents
+   * before their lane closes, inflating the number of simultaneously open
+   * lanes in the graph.
+   */
+  order?: "date" | "author-date" | "topo";
 }
+
+const ORDER_FLAG: Record<NonNullable<ListCommitsOptions["order"]>, string> = {
+  date: "--date-order",
+  "author-date": "--author-date-order",
+  topo: "--topo-order",
+};
 
 export interface ListCommitsResult {
   commits: Commit[];
@@ -38,13 +51,13 @@ export async function listCommits(
   repoDir: string,
   options: ListCommitsOptions = {},
 ): Promise<ListCommitsResult> {
-  const { max = 500, all = false, userArgs = [], extraRevs = [] } = options;
+  const { max = 500, all = false, userArgs = [], extraRevs = [], order = "date" } = options;
 
   const args = [
     "-c",
     "log.showSignature=false",
     "log",
-    "--topo-order",
+    ORDER_FLAG[order],
     `--max-count=${max + 1}`,
     `--format=${LOG_FORMAT}`,
     ...(all ? ["--all"] : ["HEAD"]),
