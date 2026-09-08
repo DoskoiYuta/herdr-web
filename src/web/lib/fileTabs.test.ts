@@ -4,6 +4,7 @@ import {
   closeAllTabs,
   closeOtherTabs,
   closeTab,
+  MAX_TABS_PER_REPO,
   openTab,
   setActiveTab,
   validateFileTabsMap,
@@ -18,6 +19,16 @@ test("openTab: appends a new path to the end and activates it", () => {
 test("openTab: clicking an already-open path activates it without adding a duplicate", () => {
   const state: FileTabsState = { paths: ["a.ts", "b.ts"], active: "a.ts" };
   assert.deepEqual(openTab(state, "b.ts"), { paths: ["a.ts", "b.ts"], active: "b.ts" });
+});
+
+test("openTab: past the per-repo cap, opening a new tab drops the oldest one", () => {
+  const paths = Array.from({ length: MAX_TABS_PER_REPO }, (_, i) => `f${i}.ts`);
+  const state: FileTabsState = { paths, active: "f0.ts" };
+  const next = openTab(state, "new.ts");
+  assert.equal(next.paths.length, MAX_TABS_PER_REPO);
+  assert.equal(next.paths[0], "f1.ts"); // f0.ts (the oldest) was dropped
+  assert.equal(next.paths.at(-1), "new.ts");
+  assert.equal(next.active, "new.ts");
 });
 
 test.each([

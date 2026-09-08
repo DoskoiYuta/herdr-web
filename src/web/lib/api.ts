@@ -255,11 +255,15 @@ export const fsApi = {
 
   /** Bulk existence check for the file tab bar (no file contents read).
    * `paths: []` short-circuits to `{}` without a request. */
+  // `paths` is sent as repeated query params (`paths=a&paths=b`), not
+  // comma-joined — a path with a literal comma must not be split. The typed
+  // `hc` client only validates `root` (see contract/fs.ts), so this builds
+  // the URL directly rather than going through `$get`, same as `upload`.
   async stat(params: { root: string; paths: string[] }): Promise<StatResponse> {
     if (params.paths.length === 0) return {};
-    const res = await client.api.fs.stat.$get({
-      query: { root: params.root, paths: params.paths.join(",") },
-    });
+    const url = client.api.fs.stat.$url({ query: { root: params.root } });
+    for (const path of params.paths) url.searchParams.append("paths", path);
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`GET /api/fs/stat failed: ${res.status}`);
     return v.parse(StatResponseSchema, await res.json());
   },

@@ -100,10 +100,25 @@ describe("GET /api/fs/stat", () => {
     const app = makeApp({ allowedRoots: [dir] });
 
     const res = await app.request(
-      `/api/fs/stat?root=${encodeURIComponent(dir)}&paths=${encodeURIComponent("a.txt,missing.txt")}`,
+      `/api/fs/stat?root=${encodeURIComponent(dir)}&paths=${encodeURIComponent("a.txt")}&paths=${encodeURIComponent("missing.txt")}`,
     );
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ "a.txt": true, "missing.txt": false });
+  });
+
+  // Without this, a path with a literal comma would be mis-split by a
+  // comma-joining encoding (the repeated-param format below must not
+  // reintroduce that).
+  test("a path containing a comma is checked as one path, not split", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a,b.txt"), "a\n");
+    const app = makeApp({ allowedRoots: [dir] });
+
+    const res = await app.request(
+      `/api/fs/stat?root=${encodeURIComponent(dir)}&paths=${encodeURIComponent("a,b.txt")}`,
+    );
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ "a,b.txt": true });
   });
 
   // Without this, a stale tab path from another worktree (e.g. carried over

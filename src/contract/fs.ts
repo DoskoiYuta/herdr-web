@@ -73,10 +73,13 @@ export type FileErrorCode = v.InferOutput<typeof FileErrorCodeSchema>;
 // reading file contents)
 // ---------------------------------------------------------------------------
 
+// `paths` is a repeated query param (`paths=a&paths=b`), not comma-joined —
+// a comma-joined single string would mis-split a path containing a literal
+// comma. Read via `c.req.queries("paths")` in the route rather than through
+// this schema (valibot/Hono's query validator collapses repeats to the last
+// value), so this schema only covers `root`.
 export const StatQuerySchema = v.object({
   root: v.pipe(v.string(), v.minLength(1)),
-  /** Comma-separated paths, relative to `root`. */
-  paths: v.pipe(v.string(), v.minLength(1)),
 });
 export type StatQuery = v.InferOutput<typeof StatQuerySchema>;
 

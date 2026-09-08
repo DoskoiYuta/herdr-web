@@ -51,11 +51,19 @@ const store = createLocalStorageStore<FileTabsMap>({
 // Pure state transitions (one repo's tab list at a time)
 // ---------------------------------------------------------------------------
 
+/** 1 リポジトリのタブ数の上限。超えたら最も古い非アクティブなタブを落とす
+ * （localStorage の肥大化と、タブバーの実用上の一覧性を両立させる値）。 */
+export const MAX_TABS_PER_REPO = 50;
+
 /** クリックのたびに 1 タブ増える（プレビュータブ方式は採らない）。既に開いて
- * いれば末尾に足さず、そのままアクティブにする。 */
+ * いれば末尾に足さず、そのままアクティブにする。上限を超えたら、開いた順が
+ * 最も古いタブを 1 つ落とす — 新しく開く（=これからアクティブになる）タブは
+ * 末尾に追加されるため、この操作で落ちることはない。 */
 export function openTab(state: FileTabsState, path: string): FileTabsState {
   if (state.paths.includes(path)) return { ...state, active: path };
-  return { paths: [...state.paths, path], active: path };
+  const paths = [...state.paths, path];
+  if (paths.length > MAX_TABS_PER_REPO) paths.shift();
+  return { paths, active: path };
 }
 
 /** 閉じたタブがアクティブだった場合、隣（右優先、無ければ左）を選ぶ。最後の

@@ -157,15 +157,20 @@ vi.mock("@/components/diff/DiffPanel", () => ({
 vi.mock("@/components/files/FilesPanel", () => ({
   FilesPanel: ({
     repo,
+    selectedPath,
     initialLocation,
     onInitialLocationConsumed,
   }: {
     repo: string;
+    selectedPath?: string | null;
     initialLocation?: { path: string; line: number } | null;
     onInitialLocationConsumed?: () => void;
   }) => (
     <div data-testid="files-panel-stub">
       {repo}
+      {selectedPath !== null && selectedPath !== undefined && (
+        <span data-testid="files-panel-selected-path">{selectedPath}</span>
+      )}
       {initialLocation && (
         <>
           <span data-testid="files-panel-initial-location">
@@ -291,6 +296,7 @@ describe("ToolPane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     diffPanelMountCount = 0;
+    localStorage.clear();
   });
 
   // 無いと壊れる: focus 追従中に worktree が切り替わっても DiffPanel が使い回され、

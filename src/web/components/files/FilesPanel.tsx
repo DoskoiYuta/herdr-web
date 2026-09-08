@@ -95,6 +95,14 @@ export interface FilesPanelProps {
    * 戻す契約は無く、常に呼び出し側 (ToolPane) が URL から渡す。 */
   selectedPath: string | null;
   onSelectedPathChange: (path: string | null) => void;
+  /** `selectedPath` が null のとき、開いているファイルタブ列（repoKey 単位、
+   * fileTabs.ts）の `active` を URL へ自動で書き戻す処理を止める。ToolPane が
+   * 別 worktree への意図したジャンプの適用待ち（`rootPending`）や、worktree
+   * 切り替えで search を空にする navigate がまだ commit していない
+   * （`searchCleared`）間に立てる — この間に書き戻すと、その直後/同時に
+   * ToolPane 自身が発行する navigate と競合する（同一 tick の二重 navigate、
+   * または無関係な path の上書き）。 */
+  restoreSuppressed?: boolean;
   /** markdown のソース/プレビュー切替。URL の `md`。 */
   mdMode: "source" | "preview";
   onMdModeChange: (mode: "source" | "preview") => void;
@@ -115,6 +123,7 @@ export function FilesPanel({
   repos = [],
   selectedPath,
   onSelectedPathChange,
+  restoreSuppressed = false,
   mdMode,
   onMdModeChange,
   initialLocation = null,
@@ -154,20 +163,38 @@ export function FilesPanel({
   // ジャンプ・リロードのいずれでも、選ばれた path がタブに無ければ追加して
   // アクティブにする。逆方向（タブクリック→URL）は下の `handleTabSelect` 等が
   // `onSelectedPathChange` を呼ぶことで揃える。
+  //
+  // `selectedPath` が null のときは、その repoKey のタブ列に `active`（前回・
+  // 他ウィンドウで選んでいた復元用の記録）があれば URL へ書き戻す — リロード
+  // 直後に path 無しで着地したときも、worktree 切り替えで ToolPane が path を
+  // 落とした直後も、同じ 1 つの規則で塞ぐ。`restoreSuppressed` の間（ToolPane
+  // が別 worktree へのジャンプ待ち・search クリアの navigate 未 commit）は
+  // 書き戻さない。
   const [tabs, tabActions] = useFileTabs(repoKey);
   useEffect(() => {
-    if (selectedPath !== null) tabActions.open(selectedPath);
+    if (selectedPath !== null) {
+      tabActions.open(selectedPath);
+      return;
+    }
+    if (restoreSuppressed) return;
+    if (tabs.active !== null) onSelectedPathChange(tabs.active);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPath, repoKey]);
+  }, [selectedPath, repoKey, restoreSuppressed, tabs.active]);
 
+  // タブバー上の「アクティブ」表示は共有ストアの `tabs.active` ではなく必ず
+  // 自分の `selectedPath` から決める — `tabs.active` は他のブラウザウィンドウ
+  // の操作でも書き換わる（同じ repoKey を共有するため）ため、それをハイライト
+  // に使うと自分がまだ見ている・選んでいるファイルのタブが他ウィンドウの操作で
+  // 動いたり消えたりして見える。ストアの `active` はリロード時の復元用にだけ
+  // 使う（上の effect）。
   const handleTabClose = useCallback(
     (path: string) => {
-      const wasActive = tabs.active === path;
-      const next = closeTab(tabs, path);
+      const wasActive = selectedPath === path;
+      const next = closeTab({ paths: tabs.paths, active: selectedPath }, path);
       tabActions.close(path);
       if (wasActive) onSelectedPathChange(next.active);
     },
-    [tabs, tabActions, onSelectedPathChange],
+    [tabs.paths, selectedPath, tabActions, onSelectedPathChange],
   );
   const handleTabCloseOthers = useCallback(
     (path: string) => {
@@ -184,8 +211,12 @@ export function FilesPanel({
   // 開いているタブ分だけの一括存在確認（GET /api/fs/stat）。worktree
   // （root）が変わったとき・Files タブがマウントされたときに走る — どちらも
   // queryKey に root を含めた上でのマウント時フェッチで自然にカバーされる。
+  // `repoChangedTick` もキーに含める（useStatus/useFile と同じ規約）—
+  // ゴミ箱で消した・checkout で消えたファイルは worktree root 自体もパスの
+  // 集合も変わらないため、tick が無いと既存のキャッシュが古い存在判定を
+  // 返し続ける。
   const statQuery = useQuery({
-    queryKey: ["fs-stat", repo, tabs.paths],
+    queryKey: ["fs-stat", repo, repoChangedTick, tabs.paths],
     queryFn: () => fsApi.stat({ root: repo, paths: tabs.paths }),
     enabled: tabs.paths.length > 0,
     staleTime: Infinity,
@@ -527,9 +558,16 @@ export function FilesPanel({
       try {
         await fsApi.trash({ root: repo, path });
         void queryClient.invalidateQueries({ queryKey: ["ls", repo] });
-        // The trashed path may be a directory that contained the currently
-        // selected file — clear the selection for either case so the
-        // viewer doesn't keep showing a file that no longer exists.
+        // The tab itself stays open (it may still hold other, unrelated tabs
+        // under a trashed directory too) — the bulk existence check
+        // (fs-stat, keyed on repoChangedTick) picks up the removal and marks
+        // it missing/strikethrough, same as a file absent because of a
+        // worktree switch. Only the currently viewed selection needs
+        // clearing here, for the directory case where the deleted path
+        // isn't the exact tab path (`selectedPath` inside a removed dir):
+        // the "restore the active tab when nothing is selected" rule then
+        // re-selects it if it's still the repo's remembered active tab,
+        // and the viewer naturally shows the not-found state for it.
         if (
           selectedPath !== null &&
           (selectedPath === path || selectedPath.startsWith(`${path}/`))
@@ -564,7 +602,7 @@ export function FilesPanel({
     <div className="flex h-full min-h-0 flex-col">
       <FileTabBar
         paths={tabs.paths}
-        activePath={tabs.active}
+        activePath={selectedPath}
         exists={tabExists}
         decorations={statusDecorations}
         onSelect={onSelectedPathChange}

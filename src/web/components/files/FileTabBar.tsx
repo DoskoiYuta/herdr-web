@@ -4,6 +4,7 @@
 // tabs.tsx）はツールタブ専用なので流用せず、素の div + button で組む。
 
 import { X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -54,6 +55,14 @@ export function FileTabBar({
   onCloseAll,
   onCopyPath,
 }: FileTabBarProps) {
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    // アクティブなタブが画面外（タブ列の横スクロール）にあっても見える位置へ
+    // スクロールする — ツリークリックで末尾に足したタブや、他ウィンドウから
+    // 復元された選択がスクロール外だと気付けない。
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activePath]);
+
   if (paths.length === 0) return null;
 
   const basenameCounts = new Map<string, number>();
@@ -76,6 +85,7 @@ export function FileTabBar({
           <ContextMenu key={path}>
             <ContextMenuTrigger asChild>
               <button
+                ref={isActive ? activeTabRef : undefined}
                 type="button"
                 role="tab"
                 aria-selected={isActive}

@@ -568,7 +568,10 @@ test("a 409 conflict opens a dialog listing the paths, and 上書き retries wit
   );
 });
 
-test("ゴミ箱に移動 confirms and trashes the file, clearing its selection", async () => {
+// トラッシュ後もタブ自体は残る（取り消し線になるかは fs-stat の再確認 —
+// 別テストの対象）。選択は一度 null に落ちても「アクティブなタブを復元する」
+// 規則がすぐ元の a.md に戻すため、プレースホルダーには留まらない。
+test("ゴミ箱に移動 confirms and trashes the file; its tab stays open (not closed)", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
   fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
   trashMock.mockResolvedValue({ trashed: "a.md" });
@@ -584,7 +587,10 @@ test("ゴミ箱に移動 confirms and trashes the file, clearing its selection",
 
   await waitFor(() => expect(trashMock).toHaveBeenCalledWith({ root: "/repo", path: "a.md" }));
   expect(await screen.findByText("ゴミ箱に移動しました: a.md")).toBeInTheDocument();
-  expect(await screen.findByText("ファイルを選択してください")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /a\.md/ })).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: /a\.md/ })).toHaveAttribute("aria-selected", "true"),
+  );
 });
 
 test("ゴミ箱に移動 on a directory notes that its contents move too", async () => {
@@ -693,4 +699,80 @@ test("a tab whose path doesn't exist in this worktree is marked missing via the 
   (await screen.findByText("a.ts")).click();
   await waitFor(() => expect(statMock).toHaveBeenCalledWith({ root: "/repo", paths: ["a.ts"] }));
   expect(await screen.findByRole("tab", { name: /a\.ts/ })).toHaveAttribute("data-missing", "true");
+});
+
+// ---------------------------------------------------------------------------
+// Restoring the active tab when selectedPath is null (ui-redesign.md §5.4):
+// one rule covers both "reloaded with no path in the URL" and "ToolPane just
+// dropped path on a worktree switch, same repoKey" — both land here as
+// selectedPath === null with a persisted `active` tab.
+// ---------------------------------------------------------------------------
+
+test("mounting with no selectedPath restores the repo's persisted active tab", async () => {
+  localStorage.setItem(
+    "herdr-web.fileTabs",
+    JSON.stringify({ "/repo": { paths: ["a.ts"], active: "a.ts" } }),
+  );
+  lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  render(renderPanel());
+
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: /a\.ts/ })).toHaveAttribute("aria-selected", "true"),
+  );
+  expect(await screen.findByTestId("code-file-view-stub")).toHaveTextContent("a.ts:a");
+});
+
+test("restoreSuppressed defers restoring the active tab until it clears", async () => {
+  localStorage.setItem(
+    "herdr-web.fileTabs",
+    JSON.stringify({ "/repo": { paths: ["a.ts"], active: "a.ts" } }),
+  );
+  lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  const { rerender } = render(renderPanel({ restoreSuppressed: true }));
+
+  // Suppressed: the tab list persists (still shown) but nothing gets
+  // auto-selected — restoring here would race the navigate ToolPane is
+  // still mid-flight on.
+  await screen.findByRole("tab", { name: /a\.ts/ });
+  expect(screen.getByText("ファイルを選択してください")).toBeInTheDocument();
+
+  rerender(renderPanel({ restoreSuppressed: false }));
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: /a\.ts/ })).toHaveAttribute("aria-selected", "true"),
+  );
+});
+
+// Without this, a trashed/checked-out-away file's tab would keep showing as
+// present forever once `fs-stat` had been fetched once, since the query key
+// didn't change when only the worktree's content did.
+test("bumping repoChangedTick refetches existence, so a since-removed file's tab becomes missing", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
+  statMock.mockResolvedValue({ "a.ts": true });
+  const client = new QueryClient();
+  const store = makeFakeStore();
+  const tree = (repoChangedTick: number) => (
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <HerdrStoreProvider store={store}>
+          <TestFilesPanel repoChangedTick={repoChangedTick} />
+        </HerdrStoreProvider>
+      </ToastProvider>
+    </QueryClientProvider>
+  );
+
+  const { rerender } = render(tree(0));
+  (await screen.findByText("a.ts")).click();
+  await waitFor(() => expect(statMock).toHaveBeenCalledWith({ root: "/repo", paths: ["a.ts"] }));
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: /a\.ts/ })).not.toHaveAttribute("data-missing"),
+  );
+
+  statMock.mockClear();
+  statMock.mockResolvedValue({ "a.ts": false });
+  rerender(tree(1));
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: /a\.ts/ })).toHaveAttribute("data-missing", "true"),
+  );
 });

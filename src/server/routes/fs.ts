@@ -68,17 +68,16 @@ export function fsRoutes(deps: FsRoutesDeps = {}) {
       return c.json(result.body, result.status);
     })
     .get("/stat", vValidator("query", StatQuerySchema), async (c) => {
-      const { root, paths } = c.req.valid("query");
+      const { root } = c.req.valid("query");
 
       if (!(await isAllowed(root, allowedRoots))) {
         if (!(await exists(root))) return c.json({ error: "not-found" as const }, 404);
         return c.json({ error: "forbidden" as const }, 403);
       }
 
-      const list = paths
-        .split(",")
-        .map((p) => p.trim())
-        .filter((p) => p.length > 0);
+      // Repeated `paths=` params, not comma-joined (see contract/fs.ts) — a
+      // path with a literal comma must not be split.
+      const list = c.req.queries("paths") ?? [];
       const entries = await Promise.all(
         list.map(async (path) => [path, (await resolveWorktreeFile(root, path)).ok] as const),
       );
