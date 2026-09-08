@@ -49,7 +49,9 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
     <div className="px-2 py-1 text-sm" role="region" aria-label="commit detail">
       {(isUncommitted || query.isLoading || query.isError) && (
         <div className="mb-2 flex items-center justify-between">
-          <span className="font-mono text-xs text-muted-foreground">{hash}</span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {isUncommitted ? hash : hash.slice(0, 12)}
+          </span>
         </div>
       )}
 
