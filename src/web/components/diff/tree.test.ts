@@ -1,6 +1,13 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { fileStatus, fileStats, buildTree, toGitStatus, statsDecoration } from "./tree.ts";
+import {
+  fileStatus,
+  fileStats,
+  buildTree,
+  toGitStatus,
+  statsDecoration,
+  fileDecoration,
+} from "./tree.ts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 
 function fileDiff(overrides: Partial<FileDiffMetadata> = {}): FileDiffMetadata {
@@ -61,6 +68,20 @@ test("statsDecoration: shows +additions/-deletions, omitting zero parts", () => 
   assert.equal(statsDecoration({ additions: 5, deletions: 0 }).text, "+5");
   assert.equal(statsDecoration({ additions: 0, deletions: 8 }).text, "−8");
   assert.equal(statsDecoration({ additions: 0, deletions: 0 }).text, "");
+});
+
+// ---------------------------------------------------------------------------
+// fileDecoration
+// ---------------------------------------------------------------------------
+
+// 無いと壊れる: stats と status letter をマージする際にどちらかを取りこぼす
+// (例: 文字列連結の順序ミスで letter が欠ける)。
+test("fileDecoration: keeps the status letter even when a file has no stat changes (e.g. a pure rename)", () => {
+  assert.equal(fileDecoration("R", { additions: 0, deletions: 0 }).text, "R");
+});
+
+test("fileDecoration: combines stats and the trailing status letter", () => {
+  assert.equal(fileDecoration("M", { additions: 3, deletions: 1 }).text, "+3 −1 M");
 });
 
 // ---------------------------------------------------------------------------
@@ -180,6 +201,22 @@ test("buildTree: dirs sort before files, both alphabetically", () => {
   assert.deepEqual(
     tree.map((n) => n.label),
     ["a", "a.ts", "z.ts"],
+  );
+});
+
+// 無いと壊れる: 単純な `<` 比較だと大文字が小文字よりも先に来る・"file10" が
+// "file2" より前に来るため、左の PathTree（@pierre/trees の自然順・小文字化
+// ソート）でクリックした順序と、右ビューア／j-k の順序が食い違う。
+test("buildTree: sorts case-insensitively with natural (numeric-aware) order, matching PathTree", () => {
+  const tree = buildTree([
+    entry("file10.ts"),
+    entry("file2.ts"),
+    entry("Banners.tsx"),
+    entry("annotationVersion.ts"),
+  ]);
+  assert.deepEqual(
+    tree.map((n) => n.label),
+    ["annotationVersion.ts", "Banners.tsx", "file2.ts", "file10.ts"],
   );
 });
 

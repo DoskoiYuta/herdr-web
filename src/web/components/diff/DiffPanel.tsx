@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { parsePatchFiles } from "@pierre/diffs";
 import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
+import type { GitStatus } from "@pierre/trees";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import type { PatchResponse } from "@contract/git";
@@ -25,9 +26,9 @@ import {
 } from "@/lib/viewerSettings";
 import { ComposerAnnotation, ReviewsAnnotation } from "@/components/review/ReviewAnnotation";
 import { annotationSignature, withAnnotationRev, withCollapsedVersion } from "./annotationVersion";
+import { PathTree, type PathTreeDecoration } from "@/components/tree/PathTree";
 import Banners from "./Banners.tsx";
 import { DiffEmptyState } from "./DiffEmptyState.tsx";
-import { DiffFileList } from "./DiffFileList.tsx";
 import DiffView from "./DiffView.tsx";
 import type { DiffViewHandle } from "./DiffView.tsx";
 import { usePatch } from "./hooks/usePatch.ts";
@@ -47,7 +48,7 @@ import {
   useSettings,
 } from "./state.ts";
 import type { BannerState } from "./state.ts";
-import { buildTree, fileStats, fileStatus } from "./tree.ts";
+import { buildTree, fileDecoration, fileStats, fileStatus, toGitStatus } from "./tree.ts";
 import Toolbar from "./Toolbar.tsx";
 
 const FOR_DIFF_DEBOUNCE_MS = 200;
@@ -65,6 +66,25 @@ function buildUntrackedMap(files: PatchResponse["files"] | undefined): Map<strin
   const map = new Map<string, boolean>();
   for (const f of files ?? []) map.set(f.name, !!f.untracked);
   return map;
+}
+
+function gitStatusListEqual(
+  a: { path: string; status: GitStatus }[],
+  b: { path: string; status: GitStatus }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((entry, i) => entry.path === b[i]!.path && entry.status === b[i]!.status);
+}
+
+function decorationsMapEqual(
+  a: Map<string, PathTreeDecoration>,
+  b: Map<string, PathTreeDecoration>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [path, decoration] of a) {
+    if (b.get(path)?.text !== decoration.text) return false;
+  }
+  return true;
 }
 
 function isTypingTarget(el: Element | null): boolean {
@@ -285,8 +305,8 @@ export function DiffPanel({
   // Tree order (part 2: right pane follows the FileTree, not git's patch
   // order). Built here — ahead of selection/j-k-nav — because those need to
   // walk items in the same order the tree and the rendered panes use.
-  const treeNodes = useMemo(() => {
-    const entries = items.map((item) => {
+  const treeEntries = useMemo(() => {
+    return items.map((item) => {
       const fileDiff = item.fileDiff;
       const untracked = !!untrackedByName.get(fileDiff.name);
       const stats = fileStats(fileDiff);
@@ -298,8 +318,39 @@ export function DiffPanel({
         deletions: stats.deletions,
       };
     });
-    return buildTree(entries);
   }, [items, untrackedByName]);
+  const treeNodes = useMemo(() => buildTree(treeEntries), [treeEntries]);
+
+  // PathTree props (Files/Graph's shared component — ui-redesign.md §9):
+  // flat paths, per-file git status and a "+n −m <letter>" row decoration.
+  const treePaths = useMemo(() => treeEntries.map((e) => e.name), [treeEntries]);
+  const rawTreeGitStatus = useMemo(
+    () => treeEntries.map((e) => ({ path: e.name, status: toGitStatus(e.status) })),
+    [treeEntries],
+  );
+  const rawTreeDecorations = useMemo(() => {
+    const map = new Map<string, PathTreeDecoration>();
+    for (const e of treeEntries) {
+      map.set(e.name, fileDecoration(e.status, { additions: e.additions, deletions: e.deletions }));
+    }
+    return map;
+  }, [treeEntries]);
+  // `items` (and so treeEntries) gets a new array on every applied patch,
+  // even one whose per-file git status/decoration content is unchanged —
+  // PathTree (see its gitStatus/decorations effect) re-renders every row
+  // whenever either prop's *reference* changes, so these are pinned to the
+  // previous reference when the content is equal rather than passing the
+  // freshly computed value straight through.
+  const treeGitStatusRef = useRef(rawTreeGitStatus);
+  if (!gitStatusListEqual(treeGitStatusRef.current, rawTreeGitStatus)) {
+    treeGitStatusRef.current = rawTreeGitStatus;
+  }
+  const treeGitStatus = treeGitStatusRef.current;
+  const treeDecorationsRef = useRef(rawTreeDecorations);
+  if (!decorationsMapEqual(treeDecorationsRef.current, rawTreeDecorations)) {
+    treeDecorationsRef.current = rawTreeDecorations;
+  }
+  const treeDecorations = treeDecorationsRef.current;
 
   // reconcile() (above) preserves object identity for unchanged files —
   // reordering here must not disturb that, so this only permutes the array,
@@ -787,8 +838,12 @@ export function DiffPanel({
       <div className="flex min-h-0 flex-1">
         {viewerSettings.showTree && (
           <>
-            <DiffFileList
-              nodes={treeNodes}
+            <PathTree
+              paths={treePaths}
+              gitStatus={treeGitStatus}
+              decorations={treeDecorations}
+              initialExpansion="open"
+              fontSize={viewerSettings.fontSize}
               selectedPath={selectedPath}
               onSelectFile={handleTreeSelectFile}
               style={{ width: treeWidth }}

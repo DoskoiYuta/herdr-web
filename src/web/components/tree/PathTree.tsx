@@ -139,8 +139,8 @@ export function PathTree({
     flattenEmptyDirectories,
     search,
     gitStatus,
-    // design.pen: monochrome folder/file outlines, not per-language colored icons.
-    icons: { set: "minimal", colored: false },
+    // VS Code style: colored, per-filetype icons (design.pen updated to match).
+    icons: { set: "standard", colored: true },
     // design.pen colors the trailing git-status letter per status and spells
     // untracked "?" rather than the library's fixed, uncolored "U" — hide
     // its built-in letter (directories' "contains a change" dot is
