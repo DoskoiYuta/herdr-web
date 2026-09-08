@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import type { ResultAsync } from "neverthrow";
 import { basename, dirname, join } from "node:path";
 import type { Config } from "../contract/config";
+import type { Db } from "./db/client";
 import { createEventHub, wireHerdrToHub, type WiredHerdr } from "./events/broadcast";
 import { createEventsWss } from "./events/ws";
 import { createPollerRegistry, type ChangedInfo } from "./git/poller";
@@ -13,6 +14,7 @@ import type { HerdrGateway } from "./herdr/gateway";
 import { createHerdrSocketClient } from "./herdr/socket-client";
 import { createHerdrState } from "./herdr/state";
 import type { WorktreeResolver } from "./herdr/tree";
+import { createSqlitePaneWorktreeOverrideRepository } from "./herdr/worktree-overrides";
 
 export type RuntimeDeps = {
   config: Config;
@@ -20,6 +22,8 @@ export type RuntimeDeps = {
   gateway?: HerdrGateway;
   resolver?: WorktreeResolver;
   logger?: Pick<typeof console, "error" | "warn" | "info">;
+  /** 与えれば `hw worktree use/clear` の上書きを永続化する。省略時（テスト等）はプロセス内のみ保持する。 */
+  db?: Db;
 };
 
 export function herdrSocketPath(config: Config): string {
@@ -44,7 +48,11 @@ export function createRuntime(deps: RuntimeDeps) {
   const gateway =
     deps.gateway ?? createHerdrSocketClient({ socketPath: herdrSocketPath(config), logger });
   const resolver = deps.resolver ?? gitWorktreeResolver;
-  const state = createHerdrState(gateway, logger);
+  const state = createHerdrState(
+    gateway,
+    logger,
+    deps.db ? createSqlitePaneWorktreeOverrideRepository(deps.db) : undefined,
+  );
   const focus = createFocusTracker({
     state,
     gateway,

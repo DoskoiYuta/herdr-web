@@ -102,6 +102,7 @@ tailscale serve --bg 8080
 レビューコメントの通知を受けたら `hw review list` で確認し、`hw review show <id>` で該当箇所を読む。
 対応後は `hw review reply <id> "<返答>"` で返答する（この返信も下書きになり、ユーザーが送信するまでは届かない）。
 解決（resolve）の判断はユーザーが行うので、エージェントは resolve しない。
+worktree を作って移ったら `hw worktree use <path>`、元の worktree に戻ったら `hw worktree clear` で宣言する。
 ```
 
 ### `hw` CLI
@@ -112,9 +113,31 @@ hw review show <id> [--json]   # <id> は `hw review list` が出す短縮 id（
 hw review reply <id> <text>
 hw status
 hw repo move <old-path> <new-path>
+hw worktree use [<path>] [--pane <id>]   # 省略時は cwd / $HERDR_PANE_ID
+hw worktree clear [--pane <id>]
+hw worktree sync                         # Claude Code の hook から呼ぶ（後述）
 ```
 
 宛先は `HW_URL`（既定 `http://127.0.0.1:8080`）。pane 内で実行すると `HERDR_PANE_ID` から自分の worktree を解決する。pane 外では `--worktree <path>` かカレントディレクトリを使う。
+
+### worktree の宣言（`hw worktree use` / `clear`）
+
+herdr-web がツール領域の追従に使う「pane の cwd」は herdr の `foreground_cwd`（無ければ `cwd`）から決まるが、これは tty のフォアグラウンドプロセス＝エージェント本体の cwd で、エージェントが `git worktree add` 等で別の worktree に移って作業しても変わらない。`hw worktree use <path>` はその pane に対して「実際にはこの worktree で作業している」と宣言し、以後その pane のツール領域・レビュー宛先解決・`hw status`/`whoami` はすべて宣言した worktree を実効 cwd として扱う。元の worktree に戻ったら `hw worktree clear` で宣言を解除する（宣言はサーバー再起動をまたいで残るので、忘れると宣言が残ったままになる）。
+
+Claude Code の `EnterWorktree` / `ExitWorktree` ツールを使っている場合は、hook で `hw worktree sync` を呼べば手動での `use`/`clear` が要らない。`~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "EnterWorktree|ExitWorktree",
+        "hooks": [{ "type": "command", "command": "hw worktree sync" }]
+      }
+    ]
+  }
+}
+```
 
 ## 判断依頼（AskUserQuestion の置き換え）
 

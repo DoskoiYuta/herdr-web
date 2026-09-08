@@ -52,4 +52,12 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "0d388e768915ecc9751828d772c1c0377f01f0f1c66d9d24465deea200cc78ce",
     bps: true,
   },
+  {
+    sql: [
+      "CREATE TABLE `pane_worktree_overrides` (\n\t`pane_id` text PRIMARY KEY NOT NULL,\n\t`root` text NOT NULL,\n\t`observed_cwd` text,\n\t`set_at` text NOT NULL\n);\n",
+    ],
+    folderMillis: 1788903972287,
+    hash: "7f1b641fa70979e434dfd5fd88da7ad9ac04f33922235c98906f47ce18bb1c79",
+    bps: true,
+  },
 ];

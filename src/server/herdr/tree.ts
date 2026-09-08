@@ -1,6 +1,6 @@
 import type { PaneRow, Repo, TabNode, WorkspaceNode, WorktreeRow } from "../../contract/events";
 import type { PaneInfo } from "../../contract/herdr";
-import type { HerdrState } from "./state";
+import { effectiveCwd, type HerdrState } from "./state";
 
 /**
  * Injected by the caller (a real implementation lives in `src/server/git`, owned
@@ -58,10 +58,6 @@ export function toPaneRow(
   };
 }
 
-function paneCwd(pane: { foreground_cwd?: string | null; cwd?: string | null }): string | null {
-  return pane.foreground_cwd ?? pane.cwd ?? null;
-}
-
 /**
  * Resolves each pane's effective cwd against `resolved` (a cwd -> WorktreeInfo|null
  * map the caller builds via `WorktreeResolver`, cached by cwd per plan.md §6.6) and
@@ -84,7 +80,7 @@ export function buildTree(state: HerdrState, resolved: Map<string, WorktreeInfo 
   }
 
   for (const pane of livePanes(state)) {
-    const cwd = paneCwd(pane);
+    const cwd = effectiveCwd(state, pane);
     const info = cwd ? (resolved.get(cwd) ?? null) : null;
 
     const repoKey = info?.commonDir ?? OTHER_REPO_KEY;

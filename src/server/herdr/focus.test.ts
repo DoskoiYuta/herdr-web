@@ -57,6 +57,31 @@ describe("createFocusTracker", () => {
     expect(seen).toContain(cwd);
   });
 
+  // 無いと壊れる: hw worktree use で宣言しても、ツール領域の追従先が herdr の
+  // foreground_cwd（agent 本体の cwd）のままになり、宣言した worktree に切り替わらない。
+  test("reports the declared worktree override for the focused pane instead of its foreground_cwd", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const state = createHerdrState(gw);
+    await settle();
+    const paneId = state.get().focusedPaneId!;
+    const declaredRoot = "/declared/wt";
+    const resolver = fakeResolver({
+      [declaredRoot]: {
+        root: declaredRoot,
+        commonDir: `${declaredRoot}/.git`,
+        branch: "wt",
+        isMain: false,
+      },
+    });
+    const tracker = createFocusTracker({ state, gateway: gw, resolver, pollMs: 1_000_000 });
+    await settle();
+
+    state.setWorktreeOverride(paneId, declaredRoot);
+    await settle();
+
+    expect(tracker.get().worktreeRoot).toBe(declaredRoot);
+  });
+
   test("polls the focused pane and re-resolves when foreground_cwd drifts without an event", async () => {
     const gw = createFakeHerdr(snapshot);
     const state = createHerdrState(gw);

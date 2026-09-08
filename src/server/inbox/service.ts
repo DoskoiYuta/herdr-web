@@ -5,7 +5,7 @@ import type { InboxItem, InboxLocation, InboxResponse, InboxSection } from "../.
 import type { NotifyState } from "../../contract/review";
 import type { AskRepository } from "../ask/ports";
 import type { DecisionRepository } from "../decision/ports";
-import type { HerdrState, HerdrStateStore } from "../herdr/state";
+import { effectiveCwd, type HerdrState, type HerdrStateStore } from "../herdr/state";
 import { livePanes, type WorktreeInfo, type WorktreeResolver } from "../herdr/tree";
 import type { ReviewRepository } from "../review/ports";
 
@@ -239,7 +239,7 @@ export function createInboxService(deps: InboxServiceDeps) {
     const blockedPanes = livePanes(state).filter((p) => p.agent_status === "blocked");
     const cwds = new Set<string>();
     for (const pane of blockedPanes) {
-      const cwd = pane.foreground_cwd ?? pane.cwd ?? null;
+      const cwd = effectiveCwd(state, pane);
       if (cwd) cwds.add(cwd);
     }
     const resolved = new Map<string, WorktreeInfo | null>();
@@ -249,7 +249,7 @@ export function createInboxService(deps: InboxServiceDeps) {
       }),
     );
     for (const pane of blockedPanes) {
-      const cwd = pane.foreground_cwd ?? pane.cwd ?? null;
+      const cwd = effectiveCwd(state, pane);
       const info = cwd ? (resolved.get(cwd) ?? null) : null;
       items.push({
         section: "blocked",

@@ -127,10 +127,13 @@ describe("createHerdrNotifier", () => {
         focusedPaneId: paneA.pane_id,
         focusedWorkspaceId: null,
         focusedTabId: null,
+        paneWorktreeOverrides: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
       isSettled: () => true,
+      setWorktreeOverride: () => ({ ok: true as const }),
+      clearWorktreeOverride: () => {},
     };
     const notifier = createHerdrNotifier({
       state,
@@ -251,10 +254,13 @@ describe("createHerdrNotifier", () => {
         focusedPaneId: null,
         focusedWorkspaceId: null,
         focusedTabId: null,
+        paneWorktreeOverrides: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
       isSettled: () => true,
+      setWorktreeOverride: () => ({ ok: true as const }),
+      clearWorktreeOverride: () => {},
     };
     const gateway = {
       agentPrompt: async () => {

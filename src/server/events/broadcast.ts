@@ -2,7 +2,7 @@ import { match } from "ts-pattern";
 import type { ClientEventMessage, ServerEventMessage } from "../../contract/events";
 import type { HerdrGateway } from "../herdr/gateway";
 import type { FocusTracker } from "../herdr/focus";
-import type { HerdrStateStore, Logger } from "../herdr/state";
+import { effectiveCwd, type HerdrStateStore, type Logger } from "../herdr/state";
 import {
   buildTree,
   livePanes,
@@ -63,12 +63,6 @@ export interface WiredHerdr {
   stop(): void;
 }
 
-function effectiveCwd(
-  pane: { foreground_cwd?: string | null; cwd?: string | null } | undefined,
-): string | null {
-  return pane?.foreground_cwd ?? pane?.cwd ?? null;
-}
-
 /**
  * Wires herdr state/focus into the event hub (plan.md deliverable 7): sends
  * `tree` to newly attached clients and whenever state resets, `pane-updated` /
@@ -93,7 +87,7 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
     const s = state.get();
     const cwds = new Set<string>();
     for (const pane of livePanes(s)) {
-      const cwd = effectiveCwd(pane);
+      const cwd = effectiveCwd(s, pane);
       if (cwd) cwds.add(cwd);
     }
     const resolved = new Map<string, WorktreeInfo | null>();
@@ -120,11 +114,12 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
   }
 
   async function broadcastPaneUpdated(paneId: string): Promise<void> {
-    const pane = state.get().panes.get(paneId);
+    const s = state.get();
+    const pane = s.panes.get(paneId);
     // workspace 未登録の pane（閉じた直後の残骸や workspace_created 前の pane）は流さない。
     // 後者は workspace_created の reset で tree ごと送られる。
-    if (!pane || !state.get().workspaces.has(pane.workspace_id)) return;
-    const cwd = effectiveCwd(pane);
+    if (!pane || !s.workspaces.has(pane.workspace_id)) return;
+    const cwd = effectiveCwd(s, pane);
     const info = cwd ? await resolveCached(cwd) : null;
     hub.broadcast({
       type: "pane-updated",

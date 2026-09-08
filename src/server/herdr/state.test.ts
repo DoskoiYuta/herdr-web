@@ -2,11 +2,38 @@ import { describe, expect, test } from "bun:test";
 import snapshotFixture from "../../contract/__fixtures__/snapshot.json" with { type: "json" };
 import { SessionSnapshotSchema } from "../../contract/herdr";
 import * as v from "valibot";
-import { applyEvent, describeChange, emptyState, stateFromSnapshot } from "./state";
+import {
+  applyEvent,
+  describeChange,
+  effectiveCwd,
+  emptyState,
+  stateFromSnapshot,
+  type HerdrState,
+  type PaneWorktreeOverride,
+  type PaneWorktreeOverrideRepository,
+} from "./state";
 import { createFakeHerdr, type FakeHerdr } from "./fake";
 import { createHerdrState } from "./state";
 import type { HerdrGateway } from "./gateway";
 import type { SessionSnapshot } from "../../contract/herdr";
+
+function inMemoryOverrideRepo(): PaneWorktreeOverrideRepository & {
+  rows: Map<string, PaneWorktreeOverride>;
+} {
+  const rows = new Map<string, PaneWorktreeOverride>();
+  return {
+    rows,
+    async list() {
+      return [...rows.values()];
+    },
+    async set(override) {
+      rows.set(override.paneId, override);
+    },
+    async delete(paneId) {
+      rows.delete(paneId);
+    },
+  };
+}
 
 const snapshot = v.parse(SessionSnapshotSchema, snapshotFixture);
 
@@ -316,6 +343,99 @@ describe("applyEvent", () => {
     expect(updated.agent_status).toBe("blocked");
     expect(updated.agent).toBeNull();
   });
+
+  test("pane_updated drops the pane's worktree override once its raw cwd no longer matches what was observed when the override was set", () => {
+    const base = stateFromSnapshot(snapshot);
+    const pane = snapshot.panes[0]!;
+    const observedCwd = pane.foreground_cwd ?? pane.cwd ?? null;
+    const withOverride: HerdrState = {
+      ...base,
+      paneWorktreeOverrides: new Map([
+        [pane.pane_id, { paneId: pane.pane_id, root: "/declared/wt", observedCwd, setAt: "t0" }],
+      ]),
+    };
+
+    // 無いと壊れる: エージェント本体が本当に別の worktree へ移動したのに、
+    // 古い宣言がいつまでも effectiveCwd を上書きし続けてしまう。
+    const moved = applyEvent(withOverride, {
+      event: "pane_updated",
+      data: { type: "pane_updated", pane: { ...pane, foreground_cwd: "/somewhere/else" } },
+    });
+    expect(moved.paneWorktreeOverrides.has(pane.pane_id)).toBe(false);
+
+    // 無いと壊れる: cwd が変わっていないだけの通常更新（例えば agent_status の
+    // 反映）まで宣言を消してしまうと、宣言のたびに hw worktree use を打ち直す
+    // 羽目になる。
+    const unrelatedUpdate = applyEvent(withOverride, {
+      event: "pane_updated",
+      data: { type: "pane_updated", pane: { ...pane, agent_status: "blocked" } },
+    });
+    expect(unrelatedUpdate.paneWorktreeOverrides.get(pane.pane_id)?.root).toBe("/declared/wt");
+  });
+
+  test("pane_closed drops the pane's worktree override", () => {
+    const base = stateFromSnapshot(snapshot);
+    const pane = snapshot.panes[0]!;
+    const withOverride: HerdrState = {
+      ...base,
+      paneWorktreeOverrides: new Map([
+        [
+          pane.pane_id,
+          {
+            paneId: pane.pane_id,
+            root: "/declared/wt",
+            observedCwd: pane.foreground_cwd ?? pane.cwd ?? null,
+            setAt: "t0",
+          },
+        ],
+      ]),
+    };
+    // 無いと壊れる: pane が閉じた後も宣言が残ると、同じ pane_id が別の agent に
+    // 再利用された（あるいは表示上ゴーストとして残った）ときに誤った worktree
+    // へ勝手に紐付いてしまう。
+    const next = applyEvent(withOverride, {
+      event: "pane_closed",
+      data: { type: "pane_closed", pane_id: pane.pane_id, workspace_id: pane.workspace_id },
+    });
+    expect(next.paneWorktreeOverrides.has(pane.pane_id)).toBe(false);
+  });
+});
+
+describe("effectiveCwd", () => {
+  test.each([
+    [
+      "an override root wins over foreground_cwd/cwd",
+      "/declared/wt",
+      "/fg",
+      "/cwd",
+      "/declared/wt",
+    ],
+    ["falls back to foreground_cwd when there's no override", null, "/fg", "/cwd", "/fg"],
+    [
+      "falls back to cwd when foreground_cwd is null and there's no override",
+      null,
+      null,
+      "/cwd",
+      "/cwd",
+    ],
+  ])("%s", (_label, overrideRoot, foregroundCwd, cwd, expected) => {
+    const paneWorktreeOverrides = overrideRoot
+      ? new Map([
+          ["p1", { paneId: "p1", root: overrideRoot, observedCwd: foregroundCwd, setAt: "t" }],
+        ])
+      : new Map();
+    expect(
+      effectiveCwd(
+        { paneWorktreeOverrides },
+        { pane_id: "p1", foreground_cwd: foregroundCwd, cwd },
+      ),
+    ).toBe(expected);
+  });
+
+  test("returns null for a null/undefined pane", () => {
+    expect(effectiveCwd({ paneWorktreeOverrides: new Map() }, null)).toBeNull();
+    expect(effectiveCwd({ paneWorktreeOverrides: new Map() }, undefined)).toBeNull();
+  });
 });
 
 describe("describeChange", () => {
@@ -466,6 +586,93 @@ describe("createHerdrState", () => {
     expect(store.get().panes.size).toBe(0);
     expect(store.get().focusedPaneId).toBeNull();
     expect(changes).toContainEqual({ kind: "reset" });
+  });
+});
+
+describe("createHerdrState: pane worktree overrides", () => {
+  test("setWorktreeOverride makes effectiveCwd report the declared root; clearWorktreeOverride removes it", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const repo = inMemoryOverrideRepo();
+    const store = createHerdrState(gw, undefined, repo);
+    await settle();
+    const paneId = snapshot.panes[0]!.pane_id;
+
+    expect(store.setWorktreeOverride(paneId, "/declared/wt")).toEqual({ ok: true });
+    expect(effectiveCwd(store.get(), store.get().panes.get(paneId))).toBe("/declared/wt");
+
+    store.clearWorktreeOverride(paneId);
+    const pane = store.get().panes.get(paneId)!;
+    expect(effectiveCwd(store.get(), pane)).toBe(pane.foreground_cwd ?? pane.cwd ?? null);
+  });
+
+  // 無いと壊れる: 存在しない pane 宛の宣言が黙って受理され、DB に孤児レコードが残る。
+  test("setWorktreeOverride on an unknown pane returns pane_not_found and persists nothing", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const repo = inMemoryOverrideRepo();
+    const store = createHerdrState(gw, undefined, repo);
+    await settle();
+
+    expect(store.setWorktreeOverride("no-such-pane", "/declared/wt")).toEqual({
+      ok: false,
+      reason: "pane_not_found",
+    });
+    expect(repo.rows.size).toBe(0);
+  });
+
+  // 無いと壊れる: pane が閉じても DB 上の宣言が残り続け、bun --watch 再起動のたびに
+  // 別の agent がその pane_id を再利用したときに誤った worktree へ紐付いてしまう。
+  test("closing a pane deletes its persisted override", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const repo = inMemoryOverrideRepo();
+    const store = createHerdrState(gw, undefined, repo);
+    await settle();
+    const paneId = snapshot.panes[0]!.pane_id;
+    store.setWorktreeOverride(paneId, "/declared/wt");
+    await settle();
+    expect(repo.rows.has(paneId)).toBe(true);
+
+    gw.closePane(paneId);
+    await settle();
+    expect(repo.rows.has(paneId)).toBe(false);
+  });
+
+  // 無いと壊れる: これが無いと bun --watch の再起動（または herdr 再接続）のたびに
+  // 宣言を失い、長いセッション中に何度も hw worktree use を打ち直す羽目になる。
+  test("survives a fresh store over the same repository, as long as the pane's cwd hasn't drifted", async () => {
+    const repo = inMemoryOverrideRepo();
+    const paneId = snapshot.panes[0]!.pane_id;
+    const first = createHerdrState(createFakeHerdr(snapshot), undefined, repo);
+    await settle();
+    first.setWorktreeOverride(paneId, "/declared/wt");
+    await settle();
+
+    const second = createHerdrState(createFakeHerdr(snapshot), undefined, repo);
+    await settle();
+    const pane = second.get().panes.get(paneId)!;
+    expect(effectiveCwd(second.get(), pane)).toBe("/declared/wt");
+  });
+
+  // 無いと壊れる: ストアが無かった間（再起動中）に本体が実際に別 worktree へ
+  // 移動したケースを見逃し、古い宣言をいつまでも effectiveCwd が返し続ける。
+  test("does not restore an override whose pane's cwd drifted while no store held it", async () => {
+    const repo = inMemoryOverrideRepo();
+    const paneId = snapshot.panes[0]!.pane_id;
+    const first = createHerdrState(createFakeHerdr(snapshot), undefined, repo);
+    await settle();
+    first.setWorktreeOverride(paneId, "/declared/wt");
+    await settle();
+
+    const driftedSnapshot: SessionSnapshot = {
+      ...snapshot,
+      panes: snapshot.panes.map((p) =>
+        p.pane_id === paneId ? { ...p, foreground_cwd: "/moved/elsewhere" } : p,
+      ),
+    };
+    const second = createHerdrState(createFakeHerdr(driftedSnapshot), undefined, repo);
+    await settle();
+    const pane = second.get().panes.get(paneId)!;
+    expect(effectiveCwd(second.get(), pane)).toBe("/moved/elsewhere");
+    expect(repo.rows.has(paneId)).toBe(false);
   });
 });
 

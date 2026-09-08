@@ -78,7 +78,7 @@ const reviewDb = openReviewDb(dbPath);
   );
 }
 
-const runtime = createRuntime({ config });
+const runtime = createRuntime({ config, db: reviewDb });
 
 const review = createReviewRuntime({
   config,

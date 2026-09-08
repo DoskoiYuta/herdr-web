@@ -87,6 +87,13 @@ export const askEntries = sqliteTable(
   (t) => [primaryKey({ columns: [t.askId, t.seq] })],
 );
 
+export const paneWorktreeOverrides = sqliteTable("pane_worktree_overrides", {
+  paneId: text("pane_id").primaryKey(),
+  root: text("root").notNull(),
+  observedCwd: text("observed_cwd"),
+  setAt: text("set_at").notNull(),
+});
+
 export const decisions = sqliteTable(
   "decisions",
   {

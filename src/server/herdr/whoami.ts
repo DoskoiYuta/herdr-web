@@ -1,5 +1,5 @@
 import type { AgentSessionInfo } from "../../contract/herdr";
-import type { HerdrStateStore } from "./state";
+import { effectiveCwd, type HerdrStateStore } from "./state";
 import type { WorktreeResolver } from "./tree";
 
 export type WhoamiInfo = {
@@ -21,9 +21,10 @@ export async function resolveWhoami(
   deps: { state: HerdrStateStore; resolver: WorktreeResolver },
   paneId: string,
 ): Promise<WhoamiInfo | null> {
-  const pane = deps.state.get().panes.get(paneId);
+  const s = deps.state.get();
+  const pane = s.panes.get(paneId);
   if (!pane) return null;
-  const cwd = pane.foreground_cwd ?? pane.cwd ?? null;
+  const cwd = effectiveCwd(s, pane);
   const info = cwd ? await deps.resolver.resolve(cwd).catch(() => null) : null;
   return {
     pane: pane.pane_id,

@@ -1,7 +1,7 @@
 import type { FocusMessage } from "../../contract/events";
 import type { PaneInfo } from "../../contract/herdr";
 import type { HerdrGateway } from "./gateway";
-import type { HerdrStateStore, Logger } from "./state";
+import { effectiveCwd, type HerdrStateStore, type Logger } from "./state";
 import type { WorktreeInfo, WorktreeResolver } from "./tree";
 
 export type FocusPayload = Omit<FocusMessage, "type">;
@@ -33,10 +33,6 @@ const emptyPayload: FocusPayload = {
   agentStatus: null,
   agentSession: null,
 };
-
-function effectiveCwd(pane: PaneInfo | undefined): string | null {
-  return pane?.foreground_cwd ?? pane?.cwd ?? null;
-}
 
 /**
  * Computes the §9.2 `focus` payload from the herdr-state's currently focused pane,
@@ -85,7 +81,7 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
     const paneId = s.focusedPaneId;
     const pane = paneOverride ?? (paneId ? s.panes.get(paneId) : undefined);
     const workspaceId = pane?.workspace_id ?? s.focusedWorkspaceId;
-    const cwd = effectiveCwd(pane);
+    const cwd = effectiveCwd(s, pane);
 
     lastKnownPaneId = paneId;
     lastKnownCwd = cwd;
@@ -136,7 +132,7 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
     if (!paneId) return;
     try {
       const fresh = await gateway.paneGet(paneId);
-      const cwd = effectiveCwd(fresh);
+      const cwd = effectiveCwd(state.get(), fresh);
       if (paneId !== lastKnownPaneId || cwd !== lastKnownCwd) {
         // Write the fresh pane back into the shared store first, so every
         // reader (routes/hw.ts whoami, the notifier, any future recompute()

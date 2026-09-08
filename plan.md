@@ -151,6 +151,7 @@ Claude Code ── hw review list / show / reply ──▶ Web UI サーバー
 4. `git -C <cwd> rev-parse --show-toplevel` で worktree ルートを求め、変わった時だけツール領域を切り替える。
 5. `foreground_cwd` の変化が `pane.updated` を発火させない場合に備え、フォーカス pane に対してのみ低頻度（既定 3 秒）の `pane.get` ポーリングをフォールバックとして持つ（§12-1）。
 6. ツール領域は常に herdr のフォーカスに追従する。固定表示（ピン留め）は持たない。複数ブラウザ・複数タブでも herdr の状態が唯一の正で、ブラウザ側に独自の選択状態を持たせない。
+7. pane 内のエージェントが `hw worktree use` で宣言した worktree はその pane の cwd として扱う（人間が UI で固定するピン留めとは別）。
 
 ### 6.5 レビューのモデル（所有・可視性・通知）
 
