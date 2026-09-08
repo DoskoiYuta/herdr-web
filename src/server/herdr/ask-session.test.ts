@@ -24,7 +24,7 @@ async function settle(): Promise<void> {
 
 async function makeLauncher(maxSessions = 3) {
   const fake = createFakeHerdr(emptySnapshot);
-  const state = createHerdrState(fake, logger, { replaySettleMs: 0, replayMaxMs: 0 });
+  const state = createHerdrState(fake, logger);
   // createHerdrState's initial session.snapshot load is async (fires on
   // construction); let it settle before tests start emitting further events,
   // otherwise it can race and clobber state applied via those events.

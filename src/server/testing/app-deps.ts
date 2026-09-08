@@ -49,11 +49,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
   const db = openDb(":memory:");
   applyMigrations(db);
   const fake = opts.fake ?? createFakeHerdr(emptySnapshot);
-  const state = createHerdrState(
-    fake,
-    { error() {}, warn() {} },
-    { replaySettleMs: 0, replayMaxMs: 0 },
-  );
+  const state = createHerdrState(fake, { error() {}, warn() {} });
   const resolver = opts.resolver ?? gitWorktreeResolver;
   const events: ReviewEvent[] = opts.events ?? [];
   const review = createReviewRuntime({

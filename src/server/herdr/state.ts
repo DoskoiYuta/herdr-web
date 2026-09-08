@@ -192,11 +192,10 @@ export function applyEvent(state: HerdrState, envelope: HerdrEventEnvelope): Her
   const data: HerdrEventData = envelope.data;
   return (
     match(data)
-      // Live creation order from herdr 0.8.2 is pane -> workspace -> tab, so a
-      // pane/tab_created legitimately arrives before its workspace exists in
-      // this store. The out-of-order-replay case (a stray creation for an
-      // already-closed workspace) is handled by the settle window in
-      // createHerdrState, not by guarding on workspace existence here.
+      // Live creation order for a new workspace is pane -> workspace -> tab,
+      // so a pane/tab_created legitimately arrives before its workspace
+      // exists in this store — don't guard pane_created/tab_created on
+      // workspace existence.
       .with({ type: "pane_created" }, (d) => withPane(state, d.pane))
       .with({ type: "pane_updated" }, (d) => mergePaneUpdate(state, d.pane))
       .with({ type: "pane_moved" }, (d) => mergePaneUpdate(state, d.pane))
@@ -280,52 +279,37 @@ export interface HerdrStateStore {
    */
   patchPane(pane: PaneInfo): void;
   /**
-   * True once a `session.snapshot` has been loaded and the replay window
-   * (see `HerdrStateOptions.replaySettleMs`) has finished — i.e. `panes` can
-   * be trusted. False right after (re)connect: a pane missing from `panes`
-   * during replay may simply not have arrived yet, not actually be gone
-   * (F13-9 decision delivery relies on this to avoid misreading a pane as
-   * gone).
+   * True once `session.snapshot` has been loaded — i.e. `panes` can be
+   * trusted. False before the first snapshot arrives (including while one is
+   * in flight) and again right after a disconnect (F13-9 decision delivery
+   * relies on this to avoid misreading a pane as gone).
    */
   isSettled(): boolean;
 }
 
 export type Logger = Pick<typeof console, "error" | "warn">;
 
-export interface HerdrStateOptions {
-  /**
-   * herdr 0.8.2's `events.subscribe` replays a buffer of past events right after
-   * `subscription_started`, on every (re)connect, and NOT in chronological order
-   * (e.g. `workspace_closed` before `workspace_created` for the same id) — a raw
-   * subscribe confirmed this against a live herdr while `session.snapshot` at the
-   * same moment was already clean. There is no replay/since option in
-   * `events.subscribe`'s params. Applying the replay straight into the reducer
-   * therefore resurrects workspaces/panes the snapshot says are gone ("ghost"
-   * entries in the sidebar) until the next reconnect happens to clean it up.
-   *
-   * The fix: treat the stream as still replaying until `replaySettleMs` passes
-   * with no event, discarding everything received during that window, then load
-   * `session.snapshot` (which supersedes whatever arrived) and only apply events
-   * from that point on. `replayMaxMs` bounds the wait in case events never stop.
-   */
-  replaySettleMs?: number;
-  replayMaxMs?: number;
-}
-
 /**
  * Loads the snapshot on connect, applies events as they arrive, and re-snapshots
  * whenever the gateway (re)connects — including the very first connection, so
  * callers don't need to special-case startup (plan.md deliverable 4).
+ *
+ * The gateway subscribes before requesting the snapshot (socket-client.ts), so
+ * a live event can arrive while the `session.snapshot` request is still in
+ * flight. Such events are buffered and folded into the state, in arrival
+ * order, once the snapshot response lands — the reducer is an upsert (or a
+ * no-op for an id the snapshot doesn't know), so replaying them after the
+ * snapshot is harmless even though the snapshot already reflects some of them.
  */
-export function createHerdrState(
-  gateway: HerdrGateway,
-  logger: Logger = console,
-  options: HerdrStateOptions = {},
-): HerdrStateStore {
-  const replaySettleMs = options.replaySettleMs ?? 300;
-  const replayMaxMs = options.replayMaxMs ?? 3000;
+export function createHerdrState(gateway: HerdrGateway, logger: Logger = console): HerdrStateStore {
   let state = emptyState();
   let hasSnapshot = false;
+  let snapshotInFlight = false;
+  let pendingEvents: HerdrEventEnvelope[] = [];
+  // Guards against a snapshot request that outlives the connection it was
+  // issued for (e.g. herdr drops right after we asked for session.snapshot):
+  // a stale response arriving after a disconnect must not resurrect state.
+  let snapshotGeneration = 0;
   const listeners = new Set<(change: StateChange) => void>();
 
   function notify(change: StateChange): void {
@@ -335,17 +319,6 @@ export function createHerdrState(
       } catch (err) {
         logger.error("herdr state listener threw", err);
       }
-    }
-  }
-
-  async function loadSnapshot(): Promise<void> {
-    try {
-      const snapshot = await gateway.snapshot();
-      state = stateFromSnapshot(snapshot);
-      hasSnapshot = true;
-      notify({ kind: "reset" });
-    } catch (err) {
-      logger.error("herdr: failed to load session.snapshot", err);
     }
   }
 
@@ -362,50 +335,51 @@ export function createHerdrState(
     }
   }
 
-  // See HerdrStateOptions.replaySettleMs: everything on the subscribe stream
-  // between (re)connect and the settle timer firing is a possibly-stale,
-  // possibly-out-of-order replay and must not touch the reducer.
-  let replaying = false;
-  let settleTimer: ReturnType<typeof setTimeout> | null = null;
-  let capTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearReplayTimers(): void {
-    if (settleTimer != null) clearTimeout(settleTimer);
-    if (capTimer != null) clearTimeout(capTimer);
-    settleTimer = null;
-    capTimer = null;
+  function applyIncoming(event: HerdrEventEnvelope): void {
+    state = applyEvent(state, event);
+    const data = event.data;
+    if (data.type === "pane_agent_detected" || data.type === "pane_agent_status_changed") {
+      void refreshPane(data.pane_id);
+    }
   }
 
-  function finishReplay(): void {
-    if (!replaying) return;
-    replaying = false;
-    clearReplayTimers();
-    void loadSnapshot();
-  }
-
-  function startReplayWindow(): void {
-    replaying = true;
-    clearReplayTimers();
-    settleTimer = setTimeout(finishReplay, replaySettleMs);
-    capTimer = setTimeout(finishReplay, replayMaxMs);
+  async function loadSnapshot(): Promise<void> {
+    const generation = ++snapshotGeneration;
+    snapshotInFlight = true;
+    try {
+      const snapshot = await gateway.snapshot();
+      if (generation !== snapshotGeneration) return; // superseded by a disconnect since this call started
+      state = stateFromSnapshot(snapshot);
+      hasSnapshot = true;
+      snapshotInFlight = false;
+      const buffered = pendingEvents;
+      pendingEvents = [];
+      for (const event of buffered) {
+        try {
+          applyIncoming(event);
+        } catch (err) {
+          logger.error("herdr: failed to apply event", err, event);
+        }
+      }
+      notify({ kind: "reset" });
+    } catch (err) {
+      if (generation !== snapshotGeneration) return;
+      logger.error("herdr: failed to load session.snapshot", err);
+      // Drop whatever buffered during the failed request rather than retry
+      // with stale data — the next reconnect issues a fresh snapshot request.
+      pendingEvents = [];
+      snapshotInFlight = false;
+    }
   }
 
   gateway.subscribe((event) => {
-    if (replaying) {
-      // Still quiet-waiting for the replay to end: bump the settle timer (the
-      // cap timer is untouched, so a busy replay can't stall this forever),
-      // and discard the event — the snapshot fetched once we settle wins.
-      if (settleTimer != null) clearTimeout(settleTimer);
-      settleTimer = setTimeout(finishReplay, replaySettleMs);
+    if (snapshotInFlight) {
+      pendingEvents.push(event);
       return;
     }
     try {
-      state = applyEvent(state, event);
+      applyIncoming(event);
       notify(describeChange(event));
-      const data = event.data;
-      if (data.type === "pane_agent_detected" || data.type === "pane_agent_status_changed") {
-        void refreshPane(data.pane_id);
-      }
     } catch (err) {
       logger.error("herdr: failed to apply event", err, event);
     }
@@ -413,20 +387,21 @@ export function createHerdrState(
 
   let wasConnected = gateway.status().connected;
   gateway.onStatus((status) => {
-    if (status.connected && !wasConnected) startReplayWindow();
+    if (status.connected && !wasConnected) void loadSnapshot();
     if (!status.connected && wasConnected) {
       // herdr disconnected: drop the stale snapshot so the notifier (and anything
       // else reading the store) can never target a pane that may no longer exist —
       // "ghost panes" would otherwise linger until the next reconnect's snapshot.
-      replaying = false;
-      clearReplayTimers();
+      snapshotGeneration++;
+      pendingEvents = [];
+      snapshotInFlight = false;
       state = emptyState();
       hasSnapshot = false;
       notify({ kind: "reset" });
     }
     wasConnected = status.connected;
   });
-  if (gateway.status().connected) startReplayWindow();
+  if (gateway.status().connected) void loadSnapshot();
 
   return {
     get: () => state,
@@ -438,6 +413,6 @@ export function createHerdrState(
       state = withPane(state, pane);
       notify({ kind: "pane", paneId: pane.pane_id });
     },
-    isSettled: () => hasSnapshot && !replaying,
+    isSettled: () => hasSnapshot,
   };
 }
