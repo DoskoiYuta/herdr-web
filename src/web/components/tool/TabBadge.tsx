@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 export function TabBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <Badge variant="secondary" className="ml-1 px-1.5">
+    <Badge variant="default" className="ml-1 h-4.5 min-w-4.5 rounded-full px-1 text-[10px]">
       {count}
     </Badge>
   );
