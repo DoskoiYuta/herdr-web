@@ -69,20 +69,21 @@ function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
         <TableCell className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {p.pid}
         </TableCell>
-        <TableCell className="max-w-0 p-0 text-xs">
-          <div className="flex h-full items-stretch">
+        <TableCell className="relative max-w-0 text-xs">
+          {/* ガイドは絶対配置で行の全高を覆う: td の高さは同じ行の他セル（Port の
+           * chip など）で決まるので、flex の stretch では届かない。 */}
+          <div aria-hidden className="absolute inset-y-0 left-0 flex">
             {Array.from({ length: depth }, (_, i) => (
-              <span
-                key={i}
-                aria-hidden
-                data-testid="indent-guide"
-                className="w-3.5 shrink-0 self-stretch border-l border-border"
-              />
+              <span key={i} data-testid="indent-guide" className="w-3.5 border-l border-border" />
             ))}
-            <span className="min-w-0 flex-1 truncate py-1.5 pl-2 pr-2 font-mono" title={p.command}>
-              {p.command}
-            </span>
           </div>
+          <span
+            className="block truncate font-mono"
+            style={{ paddingLeft: depth * 14 }}
+            title={p.command}
+          >
+            {p.command}
+          </span>
         </TableCell>
         <TableCell className="whitespace-nowrap text-right text-xs">{p.cpu.toFixed(1)}%</TableCell>
         <TableCell className="whitespace-nowrap text-right text-xs">
