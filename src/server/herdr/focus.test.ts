@@ -24,7 +24,7 @@ async function settle(): Promise<void> {
 describe("createFocusTracker", () => {
   test("computes the focus payload for the initially focused pane", async () => {
     const gw = createFakeHerdr(snapshot);
-    const state = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const state = createHerdrState(gw);
     await settle();
     const focusedPane = state.get().panes.get(state.get().focusedPaneId!)!;
     const cwd = focusedPane.foreground_cwd ?? focusedPane.cwd!;
@@ -39,7 +39,7 @@ describe("createFocusTracker", () => {
 
   test("re-resolves and notifies when the focused pane changes", async () => {
     const gw = createFakeHerdr(snapshot);
-    const state = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const state = createHerdrState(gw);
     await settle();
     const panes = [...state.get().panes.values()];
     const other = panes.find((p) => p.pane_id !== state.get().focusedPaneId)!;
@@ -59,7 +59,7 @@ describe("createFocusTracker", () => {
 
   test("polls the focused pane and re-resolves when foreground_cwd drifts without an event", async () => {
     const gw = createFakeHerdr(snapshot);
-    const state = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const state = createHerdrState(gw);
     await settle();
     const paneId = state.get().focusedPaneId!;
     const pane = state.get().panes.get(paneId)!;

@@ -1,5 +1,5 @@
 /**
- * valibot schemas for the subset of the herdr socket API (protocol 20, herdr 0.8.2)
+ * valibot schemas for the subset of the herdr socket API (protocol 22, herdr 0.9.0)
  * that herdr-web uses. Loose objects everywhere per plan.md N6: unknown fields are
  * ignored so herdr can add fields without breaking us.
  *

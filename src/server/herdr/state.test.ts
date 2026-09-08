@@ -3,15 +3,38 @@ import snapshotFixture from "../../contract/__fixtures__/snapshot.json" with { t
 import { SessionSnapshotSchema } from "../../contract/herdr";
 import * as v from "valibot";
 import { applyEvent, describeChange, emptyState, stateFromSnapshot } from "./state";
-import { createFakeHerdr } from "./fake";
+import { createFakeHerdr, type FakeHerdr } from "./fake";
 import { createHerdrState } from "./state";
+import type { HerdrGateway } from "./gateway";
+import type { SessionSnapshot } from "../../contract/herdr";
 
 const snapshot = v.parse(SessionSnapshotSchema, snapshotFixture);
 
-/** Flushes both the replay-settle timer (scheduled via real `setTimeout`, 0ms in
- * these tests) and the microtasks `loadSnapshot`'s await chain needs after it fires. */
+/** Flushes the microtasks `loadSnapshot`'s await chain needs to settle. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+}
+
+/**
+ * Wraps a fake gateway so `snapshot()` doesn't resolve until `release()` is
+ * called — used to exercise the window between subscribing and the
+ * `session.snapshot` response landing.
+ */
+function withDelayedSnapshot(fake: FakeHerdr): { gateway: HerdrGateway; release: () => void } {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    gateway: {
+      ...fake,
+      snapshot: async (): Promise<SessionSnapshot> => {
+        await gate;
+        return fake.snapshot();
+      },
+    },
+    release,
+  };
 }
 
 describe("stateFromSnapshot", () => {
@@ -338,7 +361,7 @@ describe("createHerdrState", () => {
   test("loads the snapshot on connect and notifies reset", async () => {
     const gw = createFakeHerdr(snapshot);
     const changes: string[] = [];
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const store = createHerdrState(gw);
     store.onChange((c) => changes.push(c.kind));
     await settle();
     expect(store.get().panes.size).toBe(snapshot.panes.length);
@@ -347,7 +370,7 @@ describe("createHerdrState", () => {
 
   test("applies subsequent events and notifies with a granular change", async () => {
     const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const store = createHerdrState(gw);
     await settle();
     const changes: import("./state").StateChange[] = [];
     store.onChange((c) => changes.push(c));
@@ -357,21 +380,39 @@ describe("createHerdrState", () => {
     expect(changes).toContainEqual({ kind: "pane", paneId });
   });
 
-  test("re-snapshots on reconnect", async () => {
+  // Without this, a herdr restart leaves the sidebar stuck showing whatever
+  // was true before the restart, and further changes never arrive.
+  test("re-snapshots on reconnect and keeps applying events afterward", async () => {
     const gw = createFakeHerdr(snapshot);
     gw.setStatus({ connected: false, protocol: null });
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const store = createHerdrState(gw);
     await settle();
     expect(store.get().panes.size).toBe(0);
     gw.closePane(snapshot.panes[1]!.pane_id);
     gw.setStatus({ connected: true, protocol: 20 });
     await settle();
     expect(store.get().panes.size).toBe(snapshot.panes.length - 1);
+
+    const created = await gw.workspaceCreate({ cwd: "/tmp/live", label: "live-ws" });
+    await settle();
+    expect(store.get().workspaces.has(created.workspace_id)).toBe(true);
+  });
+
+  // Without this, decision delivery (F13-9) could treat a pane as gone while
+  // the snapshot request is still in flight, instead of waiting.
+  test("isSettled is false until the snapshot loads, then true", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const { gateway, release } = withDelayedSnapshot(gw);
+    const store = createHerdrState(gateway);
+    expect(store.isSettled()).toBe(false);
+    release();
+    await settle();
+    expect(store.isSettled()).toBe(true);
   });
 
   test("an agent lifecycle event re-reads the pane from herdr, so fields the event omits (session, status) still land", async () => {
     const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const store = createHerdrState(gw);
     await settle();
     const pane = snapshot.panes[0]!;
     gw.setPaneSilently(pane.pane_id, {
@@ -395,7 +436,7 @@ describe("createHerdrState", () => {
 
   test("patchPane merges the pane into the store and notifies a pane change", async () => {
     const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const store = createHerdrState(gw);
     await settle();
     const paneId = snapshot.panes[0]!.pane_id;
     const existing = store.get().panes.get(paneId)!;
@@ -414,7 +455,7 @@ describe("createHerdrState", () => {
   // no longer exists (a "ghost pane") until the next reconnect's snapshot.
   test("on disconnect, resets the store to empty and notifies reset", async () => {
     const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+    const store = createHerdrState(gw);
     await settle();
     expect(store.get().panes.size).toBe(snapshot.panes.length);
 
@@ -428,98 +469,50 @@ describe("createHerdrState", () => {
   });
 });
 
-// herdr 0.8.2's events.subscribe replays a buffer of past events right after
-// (re)connect, out of chronological order, with no way to opt out (see
-// HerdrStateOptions.replaySettleMs in state.ts). These tests use small
-// real-timer windows (well under bun's default test timeout) instead of a
-// fake clock, since createHerdrState only depends on the ambient setTimeout.
-describe("createHerdrState replay window", () => {
-  const ghostWorkspace = {
-    workspace_id: "ghost-ws",
-    number: 999,
-    label: "ask:ghost",
-    focused: false,
-    pane_count: 1,
-    tab_count: 1,
-    active_tab_id: "ghost-tab",
-    agent_status: "unknown" as const,
-  };
-  const ghostTab = {
-    tab_id: "ghost-tab",
-    workspace_id: "ghost-ws",
-    number: 1,
-    label: "1",
-    focused: false,
-    pane_count: 1,
-    agent_status: "unknown" as const,
-  };
-  const ghostPane = {
-    pane_id: "ghost-pane",
-    terminal_id: "ghost-term",
-    workspace_id: "ghost-ws",
-    tab_id: "ghost-tab",
-    focused: false,
-    agent_status: "unknown" as const,
-    revision: 0,
-  };
-
-  // Without this, a replayed workspace_created for an already-closed workspace
-  // resurrects it (the ghost-workspace bug: a closed `ask:*` workspace lingers
-  // in the sidebar under 「質問セッション」until the next reconnect).
-  test("events replayed right after connect for a workspace absent from the snapshot are discarded once the window settles", async () => {
+// subscribe is established before `session.snapshot` is requested (see
+// socket-client.ts), so a live event can legitimately arrive while the
+// snapshot request is still in flight — it must not be lost.
+describe("createHerdrState snapshot-in-flight buffering", () => {
+  // Without this, a pane created while the snapshot round-trip is in flight
+  // would vanish from the store until the next reconnect happens to include it.
+  test("a pane_created delivered before the snapshot response arrives is included once it lands", async () => {
     const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 20, replayMaxMs: 1000 });
+    const { gateway, release } = withDelayedSnapshot(gw);
+    const store = createHerdrState(gateway);
 
     gw.emit({
-      event: "workspace_created",
-      data: { type: "workspace_created", workspace: ghostWorkspace },
+      event: "pane_created",
+      data: {
+        type: "pane_created",
+        pane: {
+          pane_id: "live-pane",
+          terminal_id: "live-term",
+          workspace_id: snapshot.workspaces[0]!.workspace_id,
+          tab_id: snapshot.tabs[0]!.tab_id,
+          focused: false,
+          agent_status: "unknown",
+          revision: 0,
+        },
+      },
     });
-    gw.emit({ event: "tab_created", data: { type: "tab_created", tab: ghostTab } });
-    gw.emit({ event: "pane_created", data: { type: "pane_created", pane: ghostPane } });
 
-    await new Promise((r) => setTimeout(r, 60));
+    release();
     await settle();
 
-    expect(store.get().workspaces.has("ghost-ws")).toBe(false);
-    expect(store.get().panes.has("ghost-pane")).toBe(false);
-    expect(store.get().panes.size).toBe(snapshot.panes.length);
+    expect(store.get().panes.has("live-pane")).toBe(true);
+    expect(store.get().panes.size).toBe(snapshot.panes.length + 1);
   });
 
-  // Without this, the fix could over-suppress and the sidebar would stop
-  // reflecting real changes once herdr has been up for a while.
-  test("a pane_created delivered after the window has settled is applied", async () => {
+  // Without this, the sidebar would stop reflecting live changes once the
+  // initial snapshot has loaded.
+  test("a pane_created delivered after the snapshot has loaded is applied immediately", async () => {
     const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 20, replayMaxMs: 1000 });
-    await new Promise((r) => setTimeout(r, 60));
+    const store = createHerdrState(gw);
     await settle();
     expect(store.get().panes.size).toBe(snapshot.panes.length);
 
     const created = await gw.workspaceCreate({ cwd: "/tmp/live", label: "live-ws" });
-    await settle();
 
     expect(store.get().workspaces.has(created.workspace_id)).toBe(true);
-  });
-
-  // Without this, a herdr restart (disconnect + reconnect) would replay its
-  // history straight into the store on the new connection too.
-  test("on reconnect (status false -> true) the replay window starts again, discarding what arrives right after", async () => {
-    const gw = createFakeHerdr(snapshot);
-    const store = createHerdrState(gw, undefined, { replaySettleMs: 20, replayMaxMs: 1000 });
-    await new Promise((r) => setTimeout(r, 60));
-    await settle();
-    expect(store.get().panes.size).toBe(snapshot.panes.length);
-
-    gw.setStatus({ connected: false, protocol: null });
-    gw.setStatus({ connected: true, protocol: 20 });
-    gw.emit({
-      event: "workspace_created",
-      data: { type: "workspace_created", workspace: ghostWorkspace },
-    });
-
-    await new Promise((r) => setTimeout(r, 60));
-    await settle();
-
-    expect(store.get().workspaces.has("ghost-ws")).toBe(false);
-    expect(store.get().panes.size).toBe(snapshot.panes.length);
   });
 });

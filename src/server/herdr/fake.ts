@@ -57,7 +57,7 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
   let focusedPaneId = initial.focused_pane_id ?? null;
   let focusedWorkspaceId = initial.focused_workspace_id ?? null;
   let focusedTabId = initial.focused_tab_id ?? null;
-  let status: HerdrStatus = { connected: true, protocol: 20 };
+  let status: HerdrStatus = { connected: true, protocol: 22 };
   const blockedPanes = new Set<string>();
   const paneLayouts = new Map<string, PaneLayoutSnapshot>();
   const failingLayoutPanes = new Set<string>();
@@ -89,12 +89,12 @@ export function createFakeHerdr(initial: SessionSnapshot): FakeHerdr {
 
   return {
     async ping(): Promise<PingResult> {
-      return { type: "pong", version: "0.8.2-fake", protocol: status.protocol ?? 20 };
+      return { type: "pong", version: "0.9.0-fake", protocol: status.protocol ?? 22 };
     },
     async snapshot(): Promise<SessionSnapshot> {
       return {
-        version: "0.8.2-fake",
-        protocol: status.protocol ?? 20,
+        version: "0.9.0-fake",
+        protocol: status.protocol ?? 22,
         workspaces: [...workspaces.values()],
         tabs: [...tabs.values()],
         panes: [...panes.values()],

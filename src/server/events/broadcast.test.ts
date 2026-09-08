@@ -86,7 +86,7 @@ function resolverResolvingEverythingToItself(): WorktreeResolver {
 
 async function setup() {
   const gw = createFakeHerdr(snapshot);
-  const state = createHerdrState(gw, undefined, { replaySettleMs: 0, replayMaxMs: 0 });
+  const state = createHerdrState(gw);
   await settle();
   const resolver = resolverResolvingEverythingToItself();
   const focus = createFocusTracker({ state, gateway: gw, resolver, pollMs: 1_000_000 });

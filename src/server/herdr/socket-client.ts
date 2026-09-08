@@ -67,21 +67,22 @@ function ndjsonReader(onLine: (line: string) => void): (chunk: Buffer) => void {
 }
 
 /**
- * Real `HerdrGateway` over herdr's unix-domain-socket NDJSON API (protocol 20).
+ * Real `HerdrGateway` over herdr's unix-domain-socket NDJSON API (protocol 22).
  *
  * herdr's socket transport is **one request per connection**: per the
  * socket-api docs ("Event subscriptions keep the connection open after the
  * initial response" — implying plain requests do not) and confirmed live
- * against a running herdr 0.8.2 (a `ping` request's connection receives its
+ * against a running herdr (a `ping` request's connection receives its
  * response and is then closed by the server), every `request()` call here
  * opens a fresh ephemeral connection, writes one line, reads the matching
  * response, and lets the connection close. `events.subscribe` is the one
  * exception: a single long-lived connection dedicated to it (plan.md §10),
  * reconnected with exponential backoff (500ms -> 10s cap by default) when the
- * socket is missing or drops. On every (re)connect of that subscribe
- * connection we also run an ephemeral `ping` to record the protocol and emit
+ * socket is missing or drops. On (re)connect of that subscribe connection we
+ * send `events.subscribe` first and wait for its `subscription_started` ack
+ * before running an ephemeral `ping` to record the protocol and emit
  * connectivity status (so status naturally goes false while herdr is down and
- * true again once both the socket and `ping` succeed, satisfying N4).
+ * true again once the socket, subscribe, and `ping` all succeed, satisfying N4).
  */
 export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGateway {
   const logger = opts.logger ?? console;
@@ -190,27 +191,18 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     subSocket = sock;
     sock.on("connect", () => {
       subBackoff = backoffInitialMs;
-      // Ping (and its `connected` status flip) must complete before we send
-      // events.subscribe: herdr replays a stale, out-of-order event buffer right
-      // after the subscribe ack, and createHerdrState starts discarding that
-      // replay on the status's false->true transition — sending them concurrently
-      // could let replay events reach subscribers before status (and thus the
-      // replay guard) has flipped on.
-      void pingAndSetStatus().then(() => {
-        if (subSocket !== sock) return; // superseded by a newer connection attempt
-        const id = `hw-sub-${nextId++}`;
-        sock.write(
-          JSON.stringify({
-            id,
-            method: "events.subscribe",
-            params: { subscriptions: HERDR_SUBSCRIPTIONS },
-          }) + "\n",
-        );
-      });
+      const id = `hw-sub-${nextId++}`;
+      sock.write(
+        JSON.stringify({
+          id,
+          method: "events.subscribe",
+          params: { subscriptions: HERDR_SUBSCRIPTIONS },
+        }) + "\n",
+      );
     });
     sock.on(
       "data",
-      ndjsonReader((line) => handleSubscribeLine(line)),
+      ndjsonReader((line) => handleSubscribeLine(sock, line)),
     );
     sock.on("error", (err) => {
       const isEnoent = (err as NodeJS.ErrnoException).code === "ENOENT";
@@ -230,7 +222,7 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
     });
   }
 
-  function handleSubscribeLine(line: string): void {
+  function handleSubscribeLine(sock: net.Socket, line: string): void {
     let msg: unknown;
     try {
       msg = JSON.parse(line);
@@ -249,7 +241,14 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
       logger.error("herdr: events.subscribe rejected", obj.error);
       return;
     }
-    if (obj.id) return; // the subscription_started ack; nothing to do
+    if (obj.id) {
+      // The subscription_started ack: only now is it safe to ping and flip
+      // status to connected. createHerdrState requests session.snapshot as
+      // soon as status flips, so requesting it before the subscription is
+      // actually established would miss any change in between.
+      if (subSocket === sock) void pingAndSetStatus();
+      return;
+    }
     const parsed = v.safeParse(HerdrEventEnvelopeSchema, obj);
     if (!parsed.success) {
       logger.warn("herdr: unrecognized event frame, ignoring", obj);

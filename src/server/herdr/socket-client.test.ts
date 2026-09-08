@@ -233,11 +233,14 @@ describe("createHerdrSocketClient", () => {
   test("a request times out when the server never responds", async () => {
     const server = new FakeHerdrServer(tmpSocketPath());
     server.onLine = (socket, line) => {
-      if (line.method === "ping")
+      if (line.method === "ping") {
         server.send(socket, {
           id: line.id,
           result: { type: "pong", version: "0.8.2", protocol: 20 },
         });
+      } else if (line.method === "events.subscribe") {
+        server.send(socket, { id: line.id, result: { type: "subscription_started" } });
+      }
       // pane.get: never respond
     };
     await server.listen();
@@ -263,6 +266,8 @@ describe("createHerdrSocketClient", () => {
           id: line.id,
           result: { type: "pong", version: "0.8.2", protocol: 20 },
         });
+      } else if (line.method === "events.subscribe") {
+        server.send(socket, { id: line.id, result: { type: "subscription_started" } });
       }
       // agent.prompt: never respond
     };
@@ -323,6 +328,41 @@ describe("createHerdrSocketClient", () => {
     cleanups.push(() => server.stop());
 
     await waitFor(() => client.status().connected, 3000);
+  });
+
+  // Without this, snapshot could be requested before the subscription is
+  // established, losing any change that happens in the gap between them.
+  test("subscribes before pinging, and only reports connected after the subscribe ack", async () => {
+    const server = new FakeHerdrServer(tmpSocketPath());
+    const methodOrder: string[] = [];
+    let sawSubscribeAck = false;
+    server.onLine = (socket, line) => {
+      methodOrder.push(line.method as string);
+      if (line.method === "events.subscribe") {
+        server.send(socket, { id: line.id, result: { type: "subscription_started" } });
+      } else if (line.method === "ping") {
+        server.send(socket, {
+          id: line.id,
+          result: { type: "pong", version: "0.9.0", protocol: 22 },
+        });
+      }
+    };
+    await server.listen();
+    cleanups.push(() => server.stop());
+
+    const client = createHerdrSocketClient({
+      socketPath: server.socketPath,
+      logger: quietLogger(),
+    });
+    cleanups.push(() => client.close());
+    client.onStatus((status) => {
+      if (status.connected) sawSubscribeAck = methodOrder.includes("events.subscribe");
+    });
+    await waitFor(() => client.status().connected);
+
+    expect(methodOrder.indexOf("events.subscribe")).toBeGreaterThanOrEqual(0);
+    expect(methodOrder.indexOf("events.subscribe")).toBeLessThan(methodOrder.indexOf("ping"));
+    expect(sawSubscribeAck).toBe(true);
   });
 
   test("subscribes on a dedicated connection and keeps streaming events after the ack", async () => {
