@@ -4,7 +4,11 @@
 import type { CommitFile, FileStatus } from "@contract/git";
 import type { GitStatus } from "@pierre/trees";
 import type { PathTreeDecoration } from "@/components/tree/PathTree";
-import { ADDITIONS_COLOR, DELETIONS_COLOR } from "@/components/tree/decorationColors";
+import {
+  ADDITIONS_COLOR,
+  DELETIONS_COLOR,
+  joinDecorationParts,
+} from "@/components/tree/decorationColors";
 import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
 
 // C(opied)/T(ype-changed)/U(nmerged) have no direct GitStatus equivalent;
@@ -35,14 +39,14 @@ export function fileDecoration(file: CommitFile): PathTreeDecoration {
   const letter = gitStatusLetter(gitStatus);
   const letterPart = letter ? [{ text: letter, color: gitStatusLetterColor(gitStatus) }] : [];
   if (file.additions === null || file.deletions === null) {
-    const parts = [{ text: "bin" }, ...letterPart];
-    return { text: parts.map((p) => p.text).join(" "), parts };
+    const parts = joinDecorationParts([{ text: "bin" }, ...letterPart]);
+    return { text: parts.map((p) => p.text).join(""), parts };
   }
-  const parts: { text: string; color?: string }[] = [];
-  if (file.additions > 0) parts.push({ text: `+${file.additions}`, color: ADDITIONS_COLOR });
-  if (file.deletions > 0) parts.push({ text: `−${file.deletions}`, color: DELETIONS_COLOR });
-  parts.push(...letterPart);
-  return { text: parts.map((p) => p.text).join(" "), parts };
+  const statsParts: { text: string; color?: string }[] = [];
+  if (file.additions > 0) statsParts.push({ text: `+${file.additions}`, color: ADDITIONS_COLOR });
+  if (file.deletions > 0) statsParts.push({ text: `−${file.deletions}`, color: DELETIONS_COLOR });
+  const parts = joinDecorationParts([...statsParts, ...letterPart]);
+  return { text: parts.map((p) => p.text).join(""), parts };
 }
 
 export function buildDecorations(files: readonly CommitFile[]): Map<string, PathTreeDecoration> {

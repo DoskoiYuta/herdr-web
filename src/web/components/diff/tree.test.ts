@@ -204,6 +204,22 @@ test("buildTree: dirs sort before files, both alphabetically", () => {
   );
 });
 
+// 無いと壊れる: 単純な `<` 比較だと大文字が小文字よりも先に来る・"file10" が
+// "file2" より前に来るため、左の PathTree（@pierre/trees の自然順・小文字化
+// ソート）でクリックした順序と、右ビューア／j-k の順序が食い違う。
+test("buildTree: sorts case-insensitively with natural (numeric-aware) order, matching PathTree", () => {
+  const tree = buildTree([
+    entry("file10.ts"),
+    entry("file2.ts"),
+    entry("Banners.tsx"),
+    entry("annotationVersion.ts"),
+  ]);
+  assert.deepEqual(
+    tree.map((n) => n.label),
+    ["annotationVersion.ts", "Banners.tsx", "file2.ts", "file10.ts"],
+  );
+});
+
 test("buildTree: handles Japanese names", () => {
   const tree = buildTree([entry("ソース/あ.ts"), entry("ソース/い.ts")]);
   assert.equal(tree.length, 1);

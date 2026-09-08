@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { parsePatchFiles } from "@pierre/diffs";
 import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
+import type { GitStatus } from "@pierre/trees";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import type { PatchResponse } from "@contract/git";
@@ -65,6 +66,25 @@ function buildUntrackedMap(files: PatchResponse["files"] | undefined): Map<strin
   const map = new Map<string, boolean>();
   for (const f of files ?? []) map.set(f.name, !!f.untracked);
   return map;
+}
+
+function gitStatusListEqual(
+  a: { path: string; status: GitStatus }[],
+  b: { path: string; status: GitStatus }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((entry, i) => entry.path === b[i]!.path && entry.status === b[i]!.status);
+}
+
+function decorationsMapEqual(
+  a: Map<string, PathTreeDecoration>,
+  b: Map<string, PathTreeDecoration>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [path, decoration] of a) {
+    if (b.get(path)?.text !== decoration.text) return false;
+  }
+  return true;
 }
 
 function isTypingTarget(el: Element | null): boolean {
@@ -304,17 +324,33 @@ export function DiffPanel({
   // PathTree props (Files/Graph's shared component — ui-redesign.md §9):
   // flat paths, per-file git status and a "+n −m <letter>" row decoration.
   const treePaths = useMemo(() => treeEntries.map((e) => e.name), [treeEntries]);
-  const treeGitStatus = useMemo(
+  const rawTreeGitStatus = useMemo(
     () => treeEntries.map((e) => ({ path: e.name, status: toGitStatus(e.status) })),
     [treeEntries],
   );
-  const treeDecorations = useMemo(() => {
+  const rawTreeDecorations = useMemo(() => {
     const map = new Map<string, PathTreeDecoration>();
     for (const e of treeEntries) {
       map.set(e.name, fileDecoration(e.status, { additions: e.additions, deletions: e.deletions }));
     }
     return map;
   }, [treeEntries]);
+  // `items` (and so treeEntries) gets a new array on every applied patch,
+  // even one whose per-file git status/decoration content is unchanged —
+  // PathTree (see its gitStatus/decorations effect) re-renders every row
+  // whenever either prop's *reference* changes, so these are pinned to the
+  // previous reference when the content is equal rather than passing the
+  // freshly computed value straight through.
+  const treeGitStatusRef = useRef(rawTreeGitStatus);
+  if (!gitStatusListEqual(treeGitStatusRef.current, rawTreeGitStatus)) {
+    treeGitStatusRef.current = rawTreeGitStatus;
+  }
+  const treeGitStatus = treeGitStatusRef.current;
+  const treeDecorationsRef = useRef(rawTreeDecorations);
+  if (!decorationsMapEqual(treeDecorationsRef.current, rawTreeDecorations)) {
+    treeDecorationsRef.current = rawTreeDecorations;
+  }
+  const treeDecorations = treeDecorationsRef.current;
 
   // reconcile() (above) preserves object identity for unchanged files —
   // reordering here must not disturb that, so this only permutes the array,

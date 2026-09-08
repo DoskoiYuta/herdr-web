@@ -4,8 +4,14 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { GitStatus } from "@pierre/trees";
 import type { PathTreeDecoration } from "@/components/tree/PathTree";
-import { ADDITIONS_COLOR, DELETIONS_COLOR } from "@/components/tree/decorationColors";
+import {
+  ADDITIONS_COLOR,
+  DELETIONS_COLOR,
+  joinDecorationParts,
+  type DecorationPart,
+} from "@/components/tree/decorationColors";
 import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
+import { compareNatural } from "@/components/tree/naturalSort";
 import { hunkStats } from "./reconcile.ts";
 
 export type FileStatus = "A" | "M" | "D" | "R" | "U";
@@ -23,25 +29,30 @@ export function toGitStatus(status: FileStatus): GitStatus {
   return STATUS_TO_GIT_STATUS[status];
 }
 
-/** Builds a PathTree row decoration ("+n −m") from a file's hunk stats. */
-export function statsDecoration(stats: FileStats): PathTreeDecoration {
-  const parts: { text: string; color?: string }[] = [];
+function statsParts(stats: FileStats): DecorationPart[] {
+  const parts: DecorationPart[] = [];
   if (stats.additions > 0) parts.push({ text: `+${stats.additions}`, color: ADDITIONS_COLOR });
   if (stats.deletions > 0) parts.push({ text: `−${stats.deletions}`, color: DELETIONS_COLOR });
-  return { text: parts.map((p) => p.text).join(" "), parts };
+  return parts;
 }
 
-/** Builds a PathTree row decoration combining `statsDecoration`'s "+n −m"
- * with the trailing colored status letter (kept even when a file has no
- * stats, e.g. a pure rename, so the status is never silently dropped). */
+/** Builds a PathTree row decoration ("+n −m") from a file's hunk stats. */
+export function statsDecoration(stats: FileStats): PathTreeDecoration {
+  const parts = joinDecorationParts(statsParts(stats));
+  return { text: parts.map((p) => p.text).join(""), parts };
+}
+
+/** Builds a PathTree row decoration combining "+n −m" (from a file's hunk
+ * stats) with the trailing colored status letter (kept even when a file has
+ * no stats, e.g. a pure rename, so the status is never silently dropped). */
 export function fileDecoration(status: FileStatus, stats: FileStats): PathTreeDecoration {
   const gitStatus = toGitStatus(status);
   const letter = gitStatusLetter(gitStatus);
-  const parts = [
-    ...(statsDecoration(stats).parts ?? []),
+  const parts = joinDecorationParts([
+    ...statsParts(stats),
     ...(letter ? [{ text: letter, color: gitStatusLetterColor(gitStatus) }] : []),
-  ];
-  return { text: parts.map((p) => p.text).join(" "), parts };
+  ]);
+  return { text: parts.map((p) => p.text).join(""), parts };
 }
 
 /**
@@ -108,11 +119,12 @@ function newDirBuild(): DirBuild {
   return { dirs: new Map(), files: [] };
 }
 
-// Deliberately not localeCompare: sort order must stay identical regardless
-// of the ICU build / default locale available at runtime (spec: "keep the
-// compaction deterministic").
+// Matches PathTree's (the left-hand @pierre/trees list's) own row order —
+// see naturalSort.ts — rather than a naive case-sensitive `<`, so the right
+// pane's order (via order.ts, driven by this same buildTree) doesn't
+// disagree with what's clicked on the left.
 function byLabel<T extends { label: string }>(a: T, b: T): number {
-  return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
+  return compareNatural(a.label, b.label);
 }
 
 /**
