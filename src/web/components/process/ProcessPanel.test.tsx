@@ -71,6 +71,22 @@ test("a child process (ppid within the set) renders nested under its parent", as
   expect(screen.getByText(":5173")).toBeInTheDocument();
 });
 
+// 無いと壊れる: プロセス数や LISTEN 中のポート数がテーブルを数えないと分からない。
+test("shows a summary of process count and listening port count", async () => {
+  listMock.mockResolvedValue({
+    processes: [
+      proc({ pid: 10, ppid: 0, command: "zsh" }),
+      proc({ pid: 20, ppid: 10, command: "bun dev", listen: [{ port: 5173, addr: "*" }] }),
+      proc({ pid: 30, ppid: 0, command: "vite", listen: [{ port: 8080, addr: "*" }] }),
+    ],
+  });
+  render(renderPanel());
+
+  expect(
+    await screen.findByText("3 プロセス · LISTEN 2 ポート · cwd がこの worktree 配下"),
+  ).toBeInTheDocument();
+});
+
 test("ps/lsof missing (CommandUnavailableError) shows a header error", async () => {
   listMock.mockRejectedValue(new CommandUnavailableError("lsof が見つかりません"));
   render(renderPanel());
@@ -107,6 +123,6 @@ test("a later poll timeout keeps the previous process list visible while showing
     </QueryClientProvider>,
   );
 
-  expect(await screen.findByText(/プロセス一覧の取得がタイムアウトしました/)).toBeInTheDocument();
+  expect(await screen.findByText(/タイムアウト/)).toBeInTheDocument();
   expect(screen.getByText("zsh")).toBeInTheDocument();
 });

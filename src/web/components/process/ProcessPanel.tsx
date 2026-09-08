@@ -4,9 +4,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
-import { AlertTriangle, Inbox, Plug, RefreshCw } from "lucide-react";
+import { AlertTriangle, PackageSearch, PackageX, Plug, RefreshCw } from "lucide-react";
 import type { ProcessInfo } from "@contract/proc";
-import { CommandUnavailableError, procApi } from "@/lib/api";
+import {
+  CommandFailedError,
+  CommandTimeoutError,
+  CommandUnavailableError,
+  procApi,
+} from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -34,6 +39,17 @@ function secondsAgo(timestamp: number): number {
   return Math.max(0, Math.round((Date.now() - timestamp) / 1000));
 }
 
+function processCount(tree: ProcessTreeNode[]): number {
+  return tree.reduce((sum, node) => sum + 1 + processCount(node.children), 0);
+}
+
+function listenPortCount(tree: ProcessTreeNode[]): number {
+  return tree.reduce(
+    (sum, node) => sum + node.process.listen.length + listenPortCount(node.children),
+    0,
+  );
+}
+
 function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
   const p: ProcessInfo = node.process;
   return (
@@ -41,7 +57,11 @@ function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
       <TableRow>
         <TableCell className="whitespace-nowrap text-xs">
           {p.listen.map((l) => (
-            <Badge key={l.port} variant="outline" className="font-mono">
+            <Badge
+              key={l.port}
+              variant="outline"
+              className="border-emerald-500/40 bg-emerald-500/10 font-mono text-emerald-600 dark:text-emerald-400"
+            >
               :{l.port}
             </Badge>
           ))}
@@ -49,9 +69,9 @@ function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
         <TableCell className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {p.pid}
         </TableCell>
-        <TableCell className="max-w-0 text-xs" style={{ paddingLeft: depth * 16 + 8 }}>
+        <TableCell className="max-w-0 text-xs" style={{ paddingLeft: 8 }}>
           <span className="block truncate font-mono" title={p.command}>
-            {depth > 0 ? `└ ${p.command}` : p.command}
+            {depth > 0 ? `${"│  ".repeat(depth - 1)}└ ${p.command}` : p.command}
           </span>
         </TableCell>
         <TableCell className="whitespace-nowrap text-right text-xs">{p.cpu.toFixed(1)}%</TableCell>
@@ -71,10 +91,31 @@ function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
 
 function errorPanelState(error: unknown, onRetry: () => void) {
   if (error instanceof CommandUnavailableError) {
-    return <PanelState icon={Plug} title={error.message} tone="error" />;
+    return (
+      <PanelState
+        card
+        icon={PackageX}
+        title={error.message}
+        description="PATH に ps / lsof コマンドがありません（501）。インストールされているか確認してください。"
+        tone="error"
+      />
+    );
+  }
+  if (error instanceof CommandFailedError) {
+    return (
+      <PanelState
+        card
+        icon={Plug}
+        title={error.title}
+        description={`${error.detail}（503）。`}
+        tone="error"
+        action={{ label: "再試行", onClick: onRetry }}
+      />
+    );
   }
   return (
     <PanelState
+      card
       icon={AlertTriangle}
       title={errorMessage(error)}
       tone="error"
@@ -105,9 +146,23 @@ export function ProcessPanel({ root }: ProcessPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {showInlineWarning && (
-        <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
-          {errorMessage(query.error)}
-          {query.dataUpdatedAt > 0 && `（${secondsAgo(query.dataUpdatedAt)}秒前の一覧を表示中）`}
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+          {query.error instanceof CommandTimeoutError
+            ? `タイムアウト${query.dataUpdatedAt > 0 ? ` · ${secondsAgo(query.dataUpdatedAt)}秒前の結果` : ""}`
+            : `${errorMessage(query.error)}${
+                query.dataUpdatedAt > 0
+                  ? `（${secondsAgo(query.dataUpdatedAt)}秒前の一覧を表示中）`
+                  : ""
+              }`}
+        </div>
+      )}
+      {tree.length > 0 && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+          <span>
+            {`${processCount(tree)} プロセス · LISTEN ${listenPortCount(tree)} ポート · cwd がこの worktree 配下`}
+          </span>
+          <span>3 秒ごとに更新</span>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto">
@@ -116,7 +171,12 @@ export function ProcessPanel({ root }: ProcessPanelProps) {
         ) : query.isPending ? (
           <PanelState icon={RefreshCw} title="読み込み中…" />
         ) : tree.length === 0 ? (
-          <PanelState icon={Inbox} title="この worktree を cwd とするプロセスはありません" />
+          <PanelState
+            card
+            icon={PackageSearch}
+            title="この worktree を cwd とするプロセスはありません"
+            description="cwd がこの worktree 配下にあるプロセスをここに表示します。"
+          />
         ) : (
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-background">
