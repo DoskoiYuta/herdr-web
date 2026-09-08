@@ -74,8 +74,14 @@ export function GraphPanel({
   const graphQuery = useGraph(repo, state.all, 500, repoChangedTick, pollMs);
   // uncommitted 行の「N files」用。Files タブの useStatus と同じキャッシュ
   // （["status", repo, repoChangedTick]）を共有するので、Files が既に
-  // フェッチ済みなら追加リクエストは発生しない。
-  const statusQuery = useStatus(repo, repoChangedTick, pollMs);
+  // フェッチ済みなら追加リクエストは発生しない。uncommitted 行が無いときは
+  // 常時ポーリングする理由が無いので、グラフが dirty を報告したときだけ取る。
+  const statusQuery = useStatus(
+    repo,
+    repoChangedTick,
+    pollMs,
+    graphQuery.data?.hasUncommitted ?? false,
+  );
 
   // -----------------------------------------------------------------------
   // fetch (git fetch --prune) — plan.md §4: read-only writes to
