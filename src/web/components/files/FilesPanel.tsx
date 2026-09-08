@@ -197,7 +197,7 @@ export function FilesPanel({
   }
 
   const paths = ls.paths;
-  const status = statusQuery.data?.status ?? [];
+  const status = useMemo(() => statusQuery.data?.status ?? [], [statusQuery.data]);
   const statusDecorations = useMemo(() => {
     const map = new Map<string, { text: string; parts: { text: string; color: string }[] }>();
     for (const entry of status) {
@@ -871,6 +871,9 @@ function FileViewerBody({
           disabled={askDisabled}
           onCancel={onCancelComposer}
           onOpenTargetDialog={onOpenTargetDialog}
+          path={selectedPath ?? undefined}
+          startLine={selection ? Math.min(selection.range.start, selection.range.end) : undefined}
+          endLine={selection ? Math.max(selection.range.start, selection.range.end) : undefined}
         />
       );
     }

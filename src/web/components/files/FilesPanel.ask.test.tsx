@@ -233,6 +233,15 @@ async function selectFileAndDragLines23() {
   screen.getByText("end-selection").click();
 }
 
+// 無いと壊れる: どのファイルの何行目に質問しようとしているかがコンポーザー
+// 自身に出ず、隣に別の質問スレッドが並んでいると取り違えかねない
+// （design.pen P4: 見出し「質問 path:L10–12」）。
+test("the composer shows a 質問 path:L2–3 heading for the dragged range", async () => {
+  render(renderPanel());
+  await selectFileAndDragLines23();
+  expect(await screen.findByText("a.ts:L2–3")).toBeInTheDocument();
+});
+
 test("selecting lines opens the composer; opening the target dialog and submitting the default target creates an ask anchored to those lines", async () => {
   createMock.mockResolvedValue(makeAsk());
   render(renderPanel());
