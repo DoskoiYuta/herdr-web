@@ -17,10 +17,39 @@
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { FILE_TREE_DEFAULT_ITEM_HEIGHT } from "@pierre/trees";
 import type { ContextMenuItem, ContextMenuOpenContext, GitStatus } from "@pierre/trees";
 import { cn } from "@/lib/utils";
 import { HIDE_BUILT_IN_FILE_GIT_STATUS_CSS } from "./gitStatusDecoration";
 import { diffPaths } from "./treeDiff";
+
+/**
+ * Row height (px) @pierre/trees actually renders at. PathTree never passes
+ * `density`/`itemHeight` to `useFileTree`, so the library's own default
+ * applies — re-exported here as the single place a caller that needs to
+ * pre-compute a pixel height (e.g. Graph's commit detail, which sizes its
+ * tree to content instead of a scrolling box — see CommitDetail.tsx) reads
+ * it from, rather than hardcoding it.
+ */
+export const PATH_TREE_ROW_HEIGHT = FILE_TREE_DEFAULT_ITEM_HEIGHT;
+
+/**
+ * Row count @pierre/trees renders for `paths` under `initialExpansion="open"`:
+ * every file plus every distinct ancestor directory. Overcounts slightly
+ * versus the library's own render when it flattens a chain of single-child
+ * directories into one row — acceptable here because callers only use this
+ * to sum a pixel height up front, not to assert an exact row count.
+ */
+export function countFileTreeRows(paths: readonly string[]): number {
+  const directories = new Set<string>();
+  for (const path of paths) {
+    const segments = path.replace(/\/$/, "").split("/");
+    for (let i = 1; i < segments.length; i++) {
+      directories.add(segments.slice(0, i).join("/"));
+    }
+  }
+  return paths.length + directories.size;
+}
 
 export interface PathTreeDecoration {
   text: string;

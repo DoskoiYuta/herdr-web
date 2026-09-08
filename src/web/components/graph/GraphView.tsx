@@ -74,11 +74,15 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
   }, [commits]);
 
   // Shares its query cache entry with the expanded row's own CommitDetail
-  // (same queryKey via useCommit), so its file count becomes available here
-  // as soon as CommitDetail's fetch resolves — without a second request.
+  // (same queryKey via useCommit), so its changed-file paths become
+  // available here as soon as CommitDetail's fetch resolves — without a
+  // second request.
   const expandedHash = detailOpen ? selectedHash : null;
   const expandedDetailQuery = useCommit(repo, expandedHash);
-  const expandedFileCount = expandedDetailQuery.data?.files.length;
+  const expandedPaths = useMemo(
+    () => expandedDetailQuery.data?.files.map((f) => f.path),
+    [expandedDetailQuery.data],
+  );
 
   const virtualizer = useVirtualizer({
     count: layout.rows.length,
@@ -87,7 +91,7 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
       const isExpanded = detailOpen && layout.rows[index]?.hash === selectedHash;
       return estimateRowHeight({
         isExpanded,
-        fileCount: isExpanded ? expandedFileCount : undefined,
+        paths: isExpanded ? expandedPaths : undefined,
       });
     },
     overscan: 10,
@@ -97,14 +101,14 @@ const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function GraphView
   // Rows are fixed-height (24px) except the one currently expanded inline,
   // which react-virtual measures via `measureElement`'s ResizeObserver.
   // That observer only fires on subsequent size *changes* of an already
-  // mounted node — the first time a row expands/collapses, or once the file
-  // count above resolves and changes the estimate, its measured element
+  // mounted node — the first time a row expands/collapses, or once the path
+  // list above resolves and changes the estimate, its measured element
   // identity is unchanged (same DOM node, different children), so force a
   // re-measure explicitly.
   useEffect(() => {
     virtualizer.measure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHash, detailOpen, expandedFileCount]);
+  }, [selectedHash, detailOpen, expandedPaths]);
 
   useImperativeHandle(
     ref,

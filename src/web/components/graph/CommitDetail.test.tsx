@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { CommitDetail as CommitDetailWire } from "@contract/git";
 
-vi.mock("@/components/tree/PathTree", () => ({
+vi.mock("@/components/tree/PathTree", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/tree/PathTree")>()),
   PathTree: ({ paths }: { paths: string[] }) => (
     <div data-testid="path-tree-stub" role="tree">
       {paths.map((p) => (
