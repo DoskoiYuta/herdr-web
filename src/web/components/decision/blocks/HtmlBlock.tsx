@@ -14,6 +14,7 @@ import { useIsDark } from "@/lib/useIsDark";
 
 const MESSAGE_SOURCE = "herdr-html-block";
 const INITIAL_HEIGHT = 48;
+const MAX_HEIGHT = 4000;
 
 function themeVar(name: string): string {
   if (typeof document === "undefined") return "";
@@ -59,8 +60,17 @@ export function HtmlBlock({ html, allowScripts }: { html: string; allowScripts: 
     function onMessage(event: MessageEvent) {
       if (event.source !== iframeRef.current?.contentWindow) return;
       const data = event.data as { source?: string; height?: number } | null;
-      if (data?.source !== MESSAGE_SOURCE || typeof data.height !== "number") return;
-      setHeight(data.height);
+      const reported = data?.height;
+      if (
+        data?.source !== MESSAGE_SOURCE ||
+        typeof reported !== "number" ||
+        !Number.isFinite(reported)
+      )
+        return;
+      // Clamped: the embedded page's own script reports its own
+      // `scrollHeight`, which is not this page's data to trust — an
+      // arbitrary or runaway value must not resize the whole decision view.
+      setHeight(Math.max(INITIAL_HEIGHT, Math.min(reported, MAX_HEIGHT)));
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);

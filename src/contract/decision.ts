@@ -17,6 +17,8 @@ export const BlockSchema = v.variant("kind", [
   v.object({
     kind: v.literal("html"),
     html: v.string(),
+    // `false` also disables the srcdoc's own height-measurement script, so
+    // the rendered iframe keeps its initial height instead of fitting `html`.
     allowScripts: v.optional(v.boolean(), false),
   }),
   v.object({ kind: v.literal("image"), path: v.string() }),

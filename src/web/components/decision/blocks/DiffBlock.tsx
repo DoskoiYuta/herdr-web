@@ -1,5 +1,6 @@
-// `diff` Block: a unified patch, possibly touching several files.
-// `@pierre/diffs` react's `PatchDiff` parses the raw patch text itself (no
+// `diff` Block: a unified patch for a single file (`@pierre/diffs`'s
+// `PatchDiff` throws if the patch touches more than one file — multi-file
+// support is a separate task). It parses the raw patch text itself (no
 // per-file loader — decision patches are display-only snapshots, not
 // hydrated from a live worktree like DiffView.tsx's items). Rendered as a
 // single unified column regardless of viewport — the split view's per-file

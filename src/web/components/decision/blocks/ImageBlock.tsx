@@ -26,6 +26,7 @@ export function ImageBlock({ path, worktreeRoot }: { path: string; worktreeRoot:
       <img
         src={src}
         alt={path}
+        title={zoomed ? "クリックで元のサイズ" : "クリックで実寸表示"}
         className={cn(
           "rounded-sm border border-border",
           zoomed ? "max-w-none cursor-zoom-out" : "h-auto max-w-full cursor-zoom-in",

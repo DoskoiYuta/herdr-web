@@ -18,7 +18,11 @@ export function LocationBlock({
     lines: [number, number] | null;
   }) => void;
 }) {
-  const lineLabel = lines ? `:L${lines[0]}–${lines[1]}` : null;
+  const lineLabel = lines
+    ? lines[0] === lines[1]
+      ? `:L${lines[0]}`
+      : `:L${lines[0]}–${lines[1]}`
+    : null;
   if (worktreeRoot === null || !onOpen) {
     return (
       <span className="inline-flex w-fit shrink-0 items-center gap-1.5 self-start rounded bg-muted px-2 py-1 text-xs text-muted-foreground">

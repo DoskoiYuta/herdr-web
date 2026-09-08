@@ -109,6 +109,17 @@ describe("html Block sandbox", () => {
       }),
     );
     expect(iframe.style.height).toBe("321px");
+
+    // 無いと壊れる: 依頼が埋め込む html が任意の height を送れてしまい、
+    // 依頼ビュー全体をその値まで伸ばせてしまう。
+    fireEvent(
+      window,
+      new MessageEvent("message", {
+        data: { source: "herdr-html-block", height: 1e9 },
+        source: iframe.contentWindow,
+      }),
+    );
+    expect(iframe.style.height).toBe("4000px");
   });
 });
 
@@ -138,6 +149,20 @@ describe("image Block", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByText("画像を読み込めません: docs/missing.png")).toBeInTheDocument();
   });
+
+  // 無いと壊れる: context が入れ替わっても同じ index の image が同一の React
+  // 要素として再利用され、前の画像の読み込み失敗表示が新しい path のまま残る。
+  test("clears the previous path's error state when the path changes", () => {
+    const { rerender } = render(
+      <BlockView block={{ kind: "image", path: "docs/missing.png" }} worktreeRoot="/repo" />,
+    );
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.getByText("画像を読み込めません: docs/missing.png")).toBeInTheDocument();
+
+    rerender(<BlockView block={{ kind: "image", path: "docs/ok.png" }} worktreeRoot="/repo" />);
+    expect(screen.queryByText(/読み込めません/)).not.toBeInTheDocument();
+    expect(screen.getByRole("img")).toBeInTheDocument();
+  });
 });
 
 describe("location Block", () => {
@@ -158,6 +183,13 @@ describe("location Block", () => {
       path: "src/a.ts",
       lines: [3, 5],
     });
+  });
+
+  // 無いと壊れる: 1 行だけを指す location が ":L5–5" という無意味な範囲
+  // 表記になり、依頼を見た人に単一行だと伝わらない。
+  test("shows a single line number instead of a same-line range", () => {
+    render(<BlockView block={{ kind: "location", path: "src/a.ts", lines: [5, 5] }} />);
+    expect(screen.getByText(":L5")).toBeInTheDocument();
   });
 });
 
