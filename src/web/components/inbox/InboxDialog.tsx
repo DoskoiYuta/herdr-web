@@ -46,7 +46,8 @@ const SECTION_LABEL: Record<InboxSection, string> = {
   blocked: "入力待ちのエージェント",
 };
 
-/** design.pen P2: セクションごとに色分けした左枠線 + アイコンで種別を示す。 */
+/** design.pen P2: セクションは色付きアイコン + タイトル + 件数バッジだけで区別する
+ * （角丸要素に border-left は使わない方針。design.pen 側もこの後の版で外した）。 */
 const SECTION_ICON: Record<InboxSection, typeof TriangleAlert> = {
   undelivered: TriangleAlert,
   replied: MessageCircleReply,
@@ -54,11 +55,11 @@ const SECTION_ICON: Record<InboxSection, typeof TriangleAlert> = {
   blocked: Lock,
 };
 
-const SECTION_ACCENT: Record<InboxSection, string> = {
-  undelivered: "border-l-destructive",
-  replied: "border-l-sky-500",
-  unsent: "border-l-violet-500",
-  blocked: "border-l-amber-500",
+const SECTION_ICON_CLASS: Record<InboxSection, string> = {
+  undelivered: "text-destructive",
+  replied: "text-sky-500",
+  unsent: "text-violet-500",
+  blocked: "text-amber-500",
 };
 
 /** `Select` の「すべての worktree」は空文字を渡せない（Radix が空文字を予約している）ため専用の値にする。 */
@@ -265,13 +266,16 @@ export function InboxDialog({ open, onOpenChange }: InboxDialogProps) {
               <section
                 key={section}
                 data-testid={`inbox-section-${section}`}
-                className={`rounded-md border-l-2 bg-muted/30 py-1.5 ${SECTION_ACCENT[section]}`}
+                className="rounded-md bg-muted/30 py-1.5"
               >
                 {(() => {
                   const SectionIcon = SECTION_ICON[section];
                   return (
                     <header className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground">
-                      <SectionIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                      <SectionIcon
+                        className={`size-3.5 shrink-0 ${SECTION_ICON_CLASS[section]}`}
+                        aria-hidden="true"
+                      />
                       <span>{SECTION_LABEL[section]}</span>
                       <Badge variant="outline">{items.length}</Badge>
                     </header>

@@ -54,7 +54,7 @@ export function CompareOptions({
                 toggle(opt.label);
               }
             }}
-            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border p-2 text-left ${
+            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border p-3 text-left ${
               checked ? "border-primary bg-accent ring-1 ring-primary" : "border-border"
             }`}
           >

@@ -139,7 +139,7 @@ test("ReviewsAnnotation resolve/reply wire up to the callbacks", async () => {
   fireEvent.click(screen.getByRole("button", { name: "解決" }));
   expect(onResolve).toHaveBeenCalledWith("r1");
 
-  fireEvent.change(screen.getByPlaceholderText("下書きとして追加"), {
+  fireEvent.change(screen.getByPlaceholderText("返信を下書き…（⌘Enter）"), {
     target: { value: "ok will fix" },
   });
   fireEvent.click(screen.getByRole("button", { name: "送信" }));

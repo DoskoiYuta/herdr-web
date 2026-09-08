@@ -16,6 +16,7 @@ import { useAskCounts } from "@/components/ask/hooks/useAskCounts";
 import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { SendDraftsButton } from "@/components/review/SendDraftsButton";
 import { TabBadge } from "@/components/tool/TabBadge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
 import { PanelState } from "@/components/ui/status/PanelState";
@@ -462,17 +463,17 @@ export function ToolPane() {
         style={{ borderLeft: `3px solid ${worktreeRoot ? "var(--focus)" : "transparent"}` }}
         className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1.5"
       >
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {worktreeRoot ? (
             <>
-              <div className="flex items-baseline gap-2">
-                <span className="truncate text-sm font-semibold">{basename(worktreeRoot)}</span>
-                {worktreeBranch && (
-                  <span className="shrink-0 text-xs text-muted-foreground">{worktreeBranch}</span>
-                )}
-              </div>
-              <div
-                className="truncate text-xs text-muted-foreground/70"
+              <span className="shrink-0 text-sm font-semibold">{basename(worktreeRoot)}</span>
+              {worktreeBranch && (
+                <Badge variant="secondary" className="shrink-0 rounded-md">
+                  {worktreeBranch}
+                </Badge>
+              )}
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
                 title={
                   selectedSubRepo && selectedSubRepo.id !== ""
                     ? `${worktreeRoot}/${selectedSubRepo.id}`
@@ -482,7 +483,7 @@ export function ToolPane() {
                 {selectedSubRepo && selectedSubRepo.id !== ""
                   ? `${worktreeRoot}/${selectedSubRepo.id}`
                   : worktreeRoot}
-              </div>
+              </span>
             </>
           ) : (
             <span className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</span>

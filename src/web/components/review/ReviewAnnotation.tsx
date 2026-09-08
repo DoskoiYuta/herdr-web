@@ -35,7 +35,7 @@ export function ComposerAnnotation({
   };
 
   return (
-    <div className="my-1 flex flex-col gap-2 rounded-md border border-border bg-popover p-2 shadow-sm">
+    <div className="my-1 ml-8 flex flex-col gap-2 rounded-md border border-border bg-popover p-2 shadow-sm">
       <Textarea
         autoFocus
         placeholder="コメントを追加"
@@ -140,7 +140,10 @@ export function ReviewThreadCard({
           onEdit: entry.draft ? (body) => onEditDraft(review.id, entry.seq, body) : undefined,
           onDelete: entry.draft ? () => onDeleteDraft(review.id, entry.seq) : undefined,
         }))}
-        reply={{ placeholder: "下書きとして追加", onSubmit: (body) => onReply(review.id, body) }}
+        reply={{
+          placeholder: "返信を下書き…（⌘Enter）",
+          onSubmit: (body) => onReply(review.id, body),
+        }}
         actions={[
           ...(review.status === "outdated"
             ? [{ label: "再アンカー", onClick: () => onReanchor(review.id) }]
@@ -189,7 +192,7 @@ export function ReviewsAnnotation({
   }, [matches, ranges]);
 
   return (
-    <div ref={rootRef} className="flex flex-col">
+    <div ref={rootRef} className="flex flex-col pl-8">
       {matches.map((match) => (
         <ReviewThreadCard
           key={match.review.id}
