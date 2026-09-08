@@ -138,6 +138,8 @@ export function PathTree({
     flattenEmptyDirectories,
     search,
     gitStatus,
+    // design.pen: monochrome folder/file outlines, not per-language colored icons.
+    icons: { set: "minimal", colored: false },
     // Read once at construction (module comment) — a plain-button trigger
     // lane would otherwise appear on hover even before any menu content is
     // supplied. `enabled` itself is set by the React wrapper (FileTree.js)
