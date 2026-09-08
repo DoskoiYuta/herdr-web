@@ -4,6 +4,7 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ServerEventMessage } from "@contract/events";
 import type { InboxResponse } from "@contract/inbox";
+import { decisionApi } from "@/lib/api";
 import { App } from "./App";
 import { createAppRouter } from "./router";
 
@@ -62,7 +63,7 @@ vi.mock("@/lib/api", () => ({
       byCommit: {},
       worktree: { unresolved: 0, drafts: 0 },
       pendingDrafts: 0,
-      replied: 0,
+      replied: { worktree: 0, commit: 0 },
     })),
   },
   askApi: {
@@ -298,28 +299,33 @@ describe("App", () => {
     expect(sendMock).toHaveBeenCalledWith({ type: "focus-pane", pane: "p1" });
   });
 
-  // 無いと壊れる: 判断依頼は worktree ごとの行でしか見られず、他の worktree の
-  // 依頼を見るには focus を移すしかなくなる (plan F13-8)。ui-redesign.md
-  // §5.4: decisions は ToolPane の通常タブ（バッジはタブ自体に付く。サイドバー
-  // の判断依頼バッジは M12 で廃止した）。
-  test("clicking the Decisions tab lists open decisions across worktrees", async () => {
+  // 無いと壊れる: Decisions タブを押しても、フォーカス中の worktree に
+  // 依頼を絞り込んで API を呼ばず、無関係な worktree の依頼まで混ざって
+  // 出てしまう (ui-redesign.md §5.4)。
+  test("clicking the Decisions tab lists decisions scoped to the focused worktree", async () => {
     await renderApp();
     emit(focusMessage());
     fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
     expect(await screen.findByText("依頼A")).toBeInTheDocument();
-    expect(await screen.findByText("依頼B")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute("data-state", "active");
+    expect(decisionApi.list).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreeRoot: "/Users/dev/project" }),
+    );
   });
 
-  // レビュー指摘（High 1）: Decisions は worktree 横断なので、herdr の focus
-  // が無い（起動直後・全 pane クローズ後）状態でも動くはず。無いと壊れる:
-  // ToolPane が worktree 未選択で早期 return すると、Decisions タブ自体は出ても
-  // 押した先の一覧が表示されない。
-  test("the Decisions tab works with no herdr focus at all", async () => {
+  // 無いと壊れる: herdr の focus が無い（起動直後・全 pane クローズ後）状態で
+  // Decisions タブを押しても、タブ自体は出るが中身が空状態のまま止まらない
+  // ことを確認する — worktree が解決するまでは他タブと同じ空状態を出す。
+  test("the Decisions tab shows the empty-worktree notice with no herdr focus at all", async () => {
     await renderApp();
     fireEvent.mouseDown(screen.getByRole("tab", { name: /^Decisions/ }));
-    expect(await screen.findByText("依頼A")).toBeInTheDocument();
-    expect(await screen.findByText("依頼B")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /^Decisions/ })).toHaveAttribute(
+        "data-state",
+        "active",
+      ),
+    );
+    expect(screen.getByText("worktree を解決できません")).toBeInTheDocument();
   });
 
   // F14-7 の振る舞いテスト（URL が画面状態の正であることの確認）。

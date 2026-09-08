@@ -57,6 +57,8 @@ beforeEach(() => {
   counts.mockResolvedValue({ total: 0 });
 });
 
+const WORKTREE_ROOT = "/repo/a";
+
 describe("DecisionListView", () => {
   // 無いと壊れる: 「回答済み」「すべて」タブに切り替えても常に open だけ
   // （または常に全件）しか見られず、履歴を個別に引けない (plan F13-8)。
@@ -66,8 +68,10 @@ describe("DecisionListView", () => {
   ])(
     "selecting the %s tab passes the matching status to the list API",
     async (testId, expected) => {
-      renderWithStore(<DecisionListView onSelect={vi.fn()} />);
-      await waitFor(() => expect(list).toHaveBeenCalledWith({ status: "open" }));
+      renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
+      await waitFor(() =>
+        expect(list).toHaveBeenCalledWith({ status: "open", worktreeRoot: WORKTREE_ROOT }),
+      );
 
       fireEvent.mouseDown(screen.getByTestId(testId));
 
@@ -75,27 +79,11 @@ describe("DecisionListView", () => {
     },
   );
 
-  // 無いと壊れる: worktree の絞り込みを選んでもサーバーに伝わらず、無関係な
-  // worktree の依頼まで混ざって出てしまう (docs/ui-redesign.md §5.4)。
-  test("choosing a worktree in the filter passes worktreeRoot to the list API", async () => {
-    const store = makeFakeStore({
-      repos: [
-        {
-          key: "/repo/.git",
-          name: "repo",
-          counts: { blocked: 0, done: 0 },
-          worktrees: [
-            { root: "/repo/a", branch: "main", isMain: true, panes: [] },
-            { root: "/repo/b", branch: "feature", isMain: false, panes: [] },
-          ],
-        },
-      ],
-    });
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />, { store });
-    await waitFor(() => expect(list).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole("combobox", { name: "worktree で絞り込み" }));
-    fireEvent.click(await screen.findByRole("option", { name: /\/repo\/b|b/ }));
+  // 無いと壊れる: worktreeRoot が prop から渡らないと、フォーカス中の
+  // worktree に追従できず、無関係な worktree の依頼まで混ざって出てしまう
+  // (docs/ui-redesign.md §5.4)。
+  test("passes the worktreeRoot prop to the list API", async () => {
+    renderWithStore(<DecisionListView worktreeRoot="/repo/b" onSelect={vi.fn()} />);
 
     await waitFor(() =>
       expect(list).toHaveBeenCalledWith(expect.objectContaining({ worktreeRoot: "/repo/b" })),
@@ -110,7 +98,7 @@ describe("DecisionListView", () => {
       decision({ id: "d2", spec: { ...decision().spec, title: "二番目" } }),
     ]);
     const onSelect = vi.fn();
-    renderWithStore(<DecisionListView onSelect={onSelect} />);
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={onSelect} />);
     await screen.findByText("二番目");
 
     fireEvent.keyDown(window, { key: "2" });
@@ -127,7 +115,7 @@ describe("DecisionListView", () => {
     ["cancelled" as const, "回答あり"],
   ])("the %s row's secondary line is not the answered fallback text", async (status, forbidden) => {
     list.mockResolvedValue([decision({ id: "d1", status })]);
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
     fireEvent.mouseDown(screen.getByTestId("decision-status-tab-all"));
 
     const row = await screen.findByTestId("decision-row-d1");
@@ -172,7 +160,9 @@ describe("DecisionListView", () => {
         },
       ],
     });
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />, { store });
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />, {
+      store,
+    });
 
     const row = await screen.findByTestId("decision-row-d1");
     expect(within(row).getByText(/codex/)).toBeInTheDocument();
@@ -187,7 +177,7 @@ describe("DecisionListView", () => {
       decision({ id: "d2", status: "dismissed" }),
       decision({ id: "d3", status: "cancelled" }),
     ]);
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
     fireEvent.mouseDown(screen.getByTestId("decision-status-tab-all"));
 
     await screen.findByTestId("decision-row-d1");
@@ -206,7 +196,7 @@ describe("DecisionListView", () => {
     "delivery chip appears on a row only when delivery has a problem",
     async (delivery, expectChip) => {
       list.mockResolvedValue([decision({ id: "d1", status: "answered", delivery })]);
-      renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+      renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
       fireEvent.mouseDown(screen.getByTestId("decision-status-tab-answered"));
 
       const row = await screen.findByTestId("decision-row-d1");
@@ -229,7 +219,7 @@ describe("DecisionListView", () => {
       }),
     ]);
     resend.mockResolvedValue({});
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
     fireEvent.mouseDown(screen.getByTestId("decision-status-tab-answered"));
 
     const row = await screen.findByTestId("decision-row-d1");
@@ -250,7 +240,7 @@ describe("DecisionListView", () => {
       }),
     ]);
     resend.mockRejectedValue(new Error("network error"));
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
     fireEvent.mouseDown(screen.getByTestId("decision-status-tab-answered"));
 
     const row = await screen.findByTestId("decision-row-d1");
@@ -265,48 +255,26 @@ describe("DecisionListView", () => {
   test("clicking a row calls onSelect with its id", async () => {
     list.mockResolvedValue([decision({ id: "d1" })]);
     const onSelect = vi.fn();
-    renderWithStore(<DecisionListView onSelect={onSelect} />);
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={onSelect} />);
 
     fireEvent.click(await screen.findByTestId("decision-row-d1"));
 
     expect(onSelect).toHaveBeenCalledWith("d1");
   });
 
-  // レビュー指摘（Medium 2）: worktree で絞り込んでも「未回答 N」がグローバル
-  // 件数（useDecisionCounts）のまま動かなかった。無いと壊れる: 特定 worktree
-  // に依頼が無いのに「未回答 3」のような無関係な数が出続ける。
-  test("choosing a worktree updates the 未回答 tab count to the filtered count, not the global one", async () => {
-    counts.mockResolvedValue({ total: 5 });
-    list.mockImplementation((query: { status?: string; worktreeRoot?: string }) => {
-      if (query.status === "open" && query.worktreeRoot === "/repo/b") {
-        return Promise.resolve([decision({ id: "d1" }), decision({ id: "d2" })]);
-      }
-      return Promise.resolve([]);
-    });
-    const store = makeFakeStore({
-      repos: [
-        {
-          key: "/repo/.git",
-          name: "repo",
-          counts: { blocked: 0, done: 0 },
-          worktrees: [
-            { root: "/repo/a", branch: "main", isMain: true, panes: [] },
-            { root: "/repo/b", branch: "feature", isMain: false, panes: [] },
-          ],
-        },
-      ],
-    });
-    renderWithStore(<DecisionListView onSelect={vi.fn()} />, { store });
-    await waitFor(() =>
-      expect(screen.getByTestId("decision-status-tab-open")).toHaveTextContent("5"),
+  // 無いと壊れる: 「未回答 N」が worktreeRoot 引数無しの useDecisionCounts に
+  // 固定されたままだと、フォーカス中の worktree に依頼が無くても他 worktree
+  // 分の件数が出続ける。
+  test("shows the 未回答 tab count from decision/counts scoped to the worktreeRoot prop", async () => {
+    counts.mockImplementation((worktreeRoot?: string) =>
+      Promise.resolve({ total: worktreeRoot === WORKTREE_ROOT ? 2 : 5 }),
     );
-
-    fireEvent.click(screen.getByRole("combobox", { name: "worktree で絞り込み" }));
-    fireEvent.click(await screen.findByRole("option", { name: /\/repo\/b|b/ }));
+    renderWithStore(<DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("decision-status-tab-open")).toHaveTextContent("2"),
     );
+    expect(counts).toHaveBeenCalledWith(WORKTREE_ROOT);
   });
 
   // 無いと壊れる: 一覧の「未回答 N」とタブ側の通知バッジが別々のカウントを
@@ -315,7 +283,9 @@ describe("DecisionListView", () => {
   // GET /api/decision/counts を使い、decision イベントで揃って更新される。
   test("the 未回答 tab count refetches decision/counts on a decision WS event", async () => {
     counts.mockResolvedValue({ total: 1 });
-    const { store } = renderWithStore(<DecisionListView onSelect={vi.fn()} />);
+    const { store } = renderWithStore(
+      <DecisionListView worktreeRoot={WORKTREE_ROOT} onSelect={vi.fn()} />,
+    );
     await waitFor(() => expect(counts).toHaveBeenCalledTimes(1));
 
     const event: DecisionEvent = {

@@ -203,8 +203,8 @@ export function createDecisionService(deps: DecisionServiceDeps) {
     return deps.repository.get(id);
   }
 
-  async function counts(): Promise<DecisionCounts> {
-    const open = await deps.repository.list({ status: ["open"] });
+  async function counts(worktreeRoot?: string): Promise<DecisionCounts> {
+    const open = await deps.repository.list({ status: ["open"], worktreeRoot });
     return { total: open.length };
   }
 

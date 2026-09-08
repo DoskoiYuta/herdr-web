@@ -642,8 +642,10 @@ export const decisionApi = {
     return v.parse(v.array(DecisionSchema), await res.json());
   },
 
-  async counts() {
-    const res = await client.api.decision.counts.$get();
+  async counts(worktreeRoot?: string) {
+    const res = await client.api.decision.counts.$get({
+      query: worktreeRoot !== undefined ? { worktreeRoot } : {},
+    });
     if (!res.ok) throw new Error(`GET /api/decision/counts failed: ${res.status}`);
     return v.parse(DecisionCountsSchema, await res.json());
   },

@@ -187,7 +187,7 @@ herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と
 
 ### 5.4 Tool tabs
 
-タブは Files / Graph / Diff / Decisions / Process / Compose の 6 つ（この順）（表示名はすべて英語。判断依頼は `hw decision` とルート名に合わせて Decisions）。タブには通知バッジを付ける: Diff（返信のあるレビュー件数）、Files（返信のある質問件数）、Decisions（未回答件数）。Inbox はタブではなくフローティングダイアログ（§5.6）。判断依頼はタブだが内容は worktree 横断で、一覧の絞り込みで worktree を選ぶ。
+タブは Files / Graph / Diff / Decisions / Process / Compose の 6 つ（この順）（表示名はすべて英語。判断依頼は `hw decision` とルート名に合わせて Decisions）。タブには通知バッジを付ける: Diff（未コミット対象の返信ありレビュー件数）、Graph（コミット対象の返信ありレビュー件数）、Files（返信のある質問件数）、Decisions（フォーカス中 worktree の未回答件数）。Inbox はタブではなくフローティングダイアログ（§5.6）。Decisions を含む他の観察タブと同様、内容はフォーカス中の worktree に追従する。
 
 `/focus/<tab>` の `<tab>` に `decisions` を加え、`/focus/decisions?id=<id>` で詳細を開く。`/decisions/<id>` はそこへリダイレクトし、`hw decision request` が返す URL は `/decisions/<id>` のまま。Inbox は URL を持たない（`?inbox=1` のような search param で開閉状態だけ持ち、リロードで復元する）。
 
@@ -235,8 +235,8 @@ herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と
 
 #### Decisions（判断依頼タブ）
 
-- 一覧: 状態タブ（未回答 / 回答済み / すべて、既定は未回答）、未回答をカードで上に、その下に「最近の履歴」。却下（人間が Web UI で却下、`dismissed`）と取り下げ（エージェントが `hw decision cancel`、`cancelled`）はタブにせず、行の状態 chip で区別する。行はタイトル・設問数・メタ（worktree · エージェント · 経過時間）と状態 chip、配達に問題があれば配達 chip。1〜9 で開く。
-- header は他のタブと同じ worktree 見出し。一覧の絞り込みに worktree Select を持ち、既定は「すべての worktree」。
+- 一覧はフォーカス中の worktree の依頼のみ（他の観察タブと同じ）。状態タブ（未回答 / 回答済み / すべて、既定は未回答）、未回答をカードで上に、その下に「最近の履歴」。却下（人間が Web UI で却下、`dismissed`）と取り下げ（エージェントが `hw decision cancel`、`cancelled`）はタブにせず、行の状態 chip で区別する。行はタイトル・設問数・メタ（エージェント · 経過時間）と状態 chip、配達に問題があれば配達 chip。1〜9 で開く。
+- header は他のタブと同じ worktree 見出し。worktree での絞り込み Select は持たない。
 
 #### 判断依頼ビュー
 
@@ -367,4 +367,4 @@ design.pen には shadcn の部品ライブラリ（`x:` プレフィックス�
 
 2026-09-07 時点で M10〜M16 はすべて main にマージ済み。各マイルストーンは「実装（TDD）→ 指摘リスト無しの敵対的レビュー → 修正 → 別ポート・別 DB での実走 → マージ」で進めた。設計との既知の差分: ルートコミットのファイル行は Diff へ遷移しない（サーバーが空ツリーとの比較を受けないため）、Files の DnD はドロップ先ディレクトリの行単位ではなくツリー全体の強調、herdr socket のパスは API に無いため設定ダイアログに出さない。
 
-2026-09-08 に design.pen との見た目合わせ込み M17 / M17b / M17c を main にマージ（P0〜P15 すべて比較済み）。追加の既知差分: herdr 未接続時も Tool 領域のタブ列は描画する（Decisions タブは worktree 横断なので未接続でも到達できる必要がある。design P7 ではタブ無し）、Diff の比較範囲 chip にコミット数は出さない（2 点間のコミット数を返す API が無い）、Compose のプロジェクトカードに定義ファイル名は出さない（API が working_dir しか返さない）、Files の DnD はツリー全体の強調のまま、CommitDetail の日時はロケール依存の書式。ツリーの git status 文字（M / ? / A / D の色）は @pierre/trees の組み込みレーンを CSS で隠して自前描画しているため、ライブラリ更新時は seed 実走で二重表示になっていないか確認する。 判断依頼ビューのメモは design では 1 つだが、契約（`DecisionItemAnswer.note`）が設問単位なので設問ごとに出す。Compose のログ本文はテーブルセル内で高さが確定しないため固定高さ（h-56）にしている。
+2026-09-08 に design.pen との見た目合わせ込み M17 / M17b / M17c を main にマージ（P0〜P15 すべて比較済み）。追加の既知差分: herdr 未接続時も Tool 領域のタブ列は描画する（起動直後や全 pane クローズ後でもタブ自体には触れられる必要がある。design P7 ではタブ無し）、Diff の比較範囲 chip にコミット数は出さない（2 点間のコミット数を返す API が無い）、Compose のプロジェクトカードに定義ファイル名は出さない（API が working_dir しか返さない）、Files の DnD はツリー全体の強調のまま、CommitDetail の日時はロケール依存の書式。ツリーの git status 文字（M / ? / A / D の色）は @pierre/trees の組み込みレーンを CSS で隠して自前描画しているため、ライブラリ更新時は seed 実走で二重表示になっていないか確認する。 判断依頼ビューのメモは design では 1 つだが、契約（`DecisionItemAnswer.note`）が設問単位なので設問ごとに出す。Compose のログ本文はテーブルセル内で高さが確定しないため固定高さ（h-56）にしている。

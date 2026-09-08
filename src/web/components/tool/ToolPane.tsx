@@ -123,10 +123,9 @@ function basename(path: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-/** 観察タブ（Files/Graph/Diff/Process/Compose）の worktree 未選択時の空状態。
- * Decisions は worktree 横断なので、この空状態を経由しない（常に動く）。
- * タブ列はこの状態でも常に描画する。起動直後や全 pane クローズ後でも
- * Decisions タブへ到達できるようにするため。 */
+/** 観察タブ（Files/Graph/Diff/Decisions/Process/Compose）の worktree 未選択時の
+ * 空状態。タブ列はこの状態でも常に描画する。起動直後や全 pane クローズ後でも
+ * herdr が再接続してくるまでタブ自体には触れられるようにするため。 */
 function EmptyWorktreeNotice() {
   return (
     <PanelState
@@ -458,8 +457,9 @@ export function ToolPane() {
     ),
   );
 
-  // Decisions タブの通知バッジ（worktree 横断のまま、ui-redesign.md §5.4）。
-  const decisionCountsQuery = useDecisionCounts();
+  // Decisions タブの通知バッジ（フォーカス中の worktree の open 件数、
+  // ui-redesign.md §5.4）。
+  const decisionCountsQuery = useDecisionCounts(worktreeRoot);
   const decisionTotal = decisionCountsQuery.data?.total ?? 0;
 
   // 送信先候補は subRepoRoot ではなく worktreeRoot（実際の git worktree）に
@@ -538,10 +538,13 @@ export function ToolPane() {
             {TAB_LABEL.files}
             <TabBadge count={askReplied} />
           </TabsTrigger>
-          <TabsTrigger value="graph">{TAB_LABEL.graph}</TabsTrigger>
+          <TabsTrigger value="graph">
+            {TAB_LABEL.graph}
+            <TabBadge count={reviewCounts?.replied.commit ?? 0} />
+          </TabsTrigger>
           <TabsTrigger value="diff">
             {TAB_LABEL.diff}
-            <TabBadge count={reviewCounts?.replied ?? 0} />
+            <TabBadge count={reviewCounts?.replied.worktree ?? 0} />
           </TabsTrigger>
           <TabsTrigger value="decisions">
             {TAB_LABEL.decisions}
@@ -648,8 +651,10 @@ export function ToolPane() {
               onFocusPane={handleFocusDecisionPane}
               onOpenLocation={handleOpenDecisionLocation}
             />
+          ) : worktreeRoot ? (
+            <DecisionListView worktreeRoot={worktreeRoot} onSelect={handleSelectDecision} />
           ) : (
-            <DecisionListView onSelect={handleSelectDecision} />
+            <EmptyWorktreeNotice />
           )}
         </TabsContent>
 

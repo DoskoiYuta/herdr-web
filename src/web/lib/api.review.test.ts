@@ -144,7 +144,7 @@ describe("reviewApi", () => {
       byCommit: { abc: { unresolved: 1, drafts: 0 } },
       worktree: { unresolved: 0, drafts: 2 },
       pendingDrafts: 2,
-      replied: 0,
+      replied: { worktree: 0, commit: 0 },
     };
     fetchMock.mockResolvedValueOnce(jsonResponse(body));
     const result = await reviewApi.counts({ repo: "/repo/.git", worktree: "/repo" });

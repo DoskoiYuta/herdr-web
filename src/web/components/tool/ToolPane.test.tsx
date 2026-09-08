@@ -15,7 +15,7 @@ function counts(overrides: Partial<ReviewCountsResponse> = {}): ReviewCountsResp
     byCommit: {},
     worktree: { unresolved: 0, drafts: 0 },
     pendingDrafts: 0,
-    replied: 0,
+    replied: { worktree: 0, commit: 0 },
     ...overrides,
   };
 }
@@ -314,9 +314,8 @@ describe("ToolPane", () => {
     expect(diffPanelMountCount).toBe(2);
   });
 
-  // レビュー指摘（High 1）: worktree 未選択でも Decisions は worktree 横断で
-  // 動くはずなので、タブ列自体は常に描画し、観察タブの中身だけ空状態にする。
-  // 無いと壊れる: 起動直後や全 pane クローズ後、Decisions タブへ到達できない。
+  // 無いと壊れる: 起動直後や全 pane クローズ後、タブ列自体が消えて
+  // Decisions タブへ到達できない。
   test("shows the tab list and an empty-worktree notice in observation tabs when no worktree is selected (F2-3)", async () => {
     await renderFocused({ worktreeRoot: null });
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
@@ -339,10 +338,13 @@ describe("ToolPane", () => {
     );
   });
 
-  test("Decisions tab works with no worktree selected", async () => {
+  // 無いと壊れる: worktree 未解決のまま DecisionListView に空の worktreeRoot
+  // を渡してしまい、無関係な依頼まで表示され得る。
+  test("Decisions tab shows the empty-worktree notice when no worktree is selected", async () => {
     await renderFocused({ worktreeRoot: null });
     await selectTab("Decisions");
-    expect(screen.getByTestId("decision-list-stub")).toBeInTheDocument();
+    expect(screen.getByText("worktree を解決できません")).toBeInTheDocument();
+    expect(screen.queryByTestId("decision-list-stub")).not.toBeInTheDocument();
   });
 
   // ui-redesign.md §5.4: タブは Files/Graph/Diff/Decisions/Process/Compose の
@@ -536,23 +538,29 @@ describe("ToolPane", () => {
   });
 
   describe("tab badges", () => {
-    // ui-redesign.md §5.4: Diff=replied レビュー数、Files=replied 質問数、
-    // Decisions=未回答件数。無いと壊れる: 返信/依頼が来ても気づく場所が無くなる。
-    test("shows the replied review count on Diff and the replied ask count on Files", async () => {
-      countsMock.mockResolvedValueOnce(counts({ replied: 3 }));
+    // 無いと壊れる: commit 対象の replied レビューは Diff からは見えない
+    // ので、Diff と Graph のバッジが同じ数を指してしまうと、Diff を開いても
+    // 中身が無い/Graph 側の返信に気づけない、のどちらかが起きる。
+    test("shows the worktree-target replied count on Diff and the commit-target one on Graph", async () => {
+      countsMock.mockResolvedValueOnce(counts({ replied: { worktree: 3, commit: 1 } }));
       askCountsMock.mockResolvedValueOnce(askCounts({ replied: 2 }));
       await renderFocused({ repoKey: "/Users/dev/project/.git" });
       const diffTab = await screen.findByRole("tab", { name: /^Diff/ });
       await waitFor(() => expect(diffTab).toHaveTextContent("3"));
+      const graphTab = screen.getByRole("tab", { name: /^Graph/ });
+      await waitFor(() => expect(graphTab).toHaveTextContent("1"));
       const filesTab = screen.getByRole("tab", { name: /^Files/ });
       await waitFor(() => expect(filesTab).toHaveTextContent("2"));
     });
 
-    test("shows the decision total count on Decisions, worktree-crossing", async () => {
+    // 無いと壊れる: フォーカス中の worktreeRoot をカウント API に渡さないと、
+    // Decisions のバッジが他 worktree の open 件数を混ぜて出してしまう。
+    test("shows the decision count for the focused worktreeRoot on Decisions", async () => {
       decisionCountsMock.mockResolvedValueOnce(decisionCounts({ total: 5 }));
-      await renderFocused();
+      const { store } = await renderFocused();
       const decisionsTab = await screen.findByRole("tab", { name: /^Decisions/ });
       await waitFor(() => expect(decisionsTab).toHaveTextContent("5"));
+      expect(decisionCountsMock).toHaveBeenCalledWith(store.getState().focus?.worktreeRoot);
     });
 
     test("shows no badge digits when counts are 0", async () => {

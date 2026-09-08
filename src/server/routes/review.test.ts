@@ -348,7 +348,7 @@ describe("reviewRoutes", () => {
       byCommit: {},
       worktree: { unresolved: 0, drafts: 1 },
       pendingDrafts: 1,
-      replied: 0,
+      replied: { worktree: 0, commit: 0 },
     });
 
     await sendDrafts(app);
@@ -357,7 +357,7 @@ describe("reviewRoutes", () => {
       byCommit: {},
       worktree: { unresolved: 1, drafts: 0 },
       pendingDrafts: 0,
-      replied: 0,
+      replied: { worktree: 0, commit: 0 },
     });
   });
 

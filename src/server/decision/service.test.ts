@@ -41,6 +41,7 @@ function setup() {
   const { delivery, scheduled, resent } = fakeDelivery();
   const whoami = fakeWhoami({
     "pane-1": { worktreeRoot: "/repo", repoKey: "/repo/.git", agent: "claude" },
+    "pane-2": { worktreeRoot: "/other", repoKey: "/other/.git", agent: "claude" },
   });
   const service = createDecisionService({
     repository,
@@ -202,5 +203,16 @@ describe("createDecisionService.counts", () => {
     expect(counts.total).toBe(1);
     // sanity: the cancelled one is really gone from the store's open set
     expect((await repository.get(closed.id))?.status).toBe("cancelled");
+  });
+
+  // 無いと壊れる: Decisions タブがフォーカス中の worktree に絞り込んだのに、
+  // バッジだけ他 worktree の open 件数を混ぜて数えてしまう。
+  test("with worktreeRoot given, does not count open decisions from other worktrees", async () => {
+    const { service } = setup();
+    await service.createDecision({ spec, paneId: "pane-1", claudeSessionId: null });
+    await service.createDecision({ spec, paneId: "pane-2", claudeSessionId: null });
+
+    const counts = await service.counts("/repo");
+    expect(counts.total).toBe(1);
   });
 });
