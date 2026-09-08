@@ -36,7 +36,7 @@ export function CompareOptions({
 
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(20rem,1fr))] gap-2">
-      {item.options.map((opt) => {
+      {item.options.map((opt, index) => {
         const checked = answer.selected.includes(opt.label);
         return (
           <div
@@ -59,10 +59,23 @@ export function CompareOptions({
             }`}
           >
             <div className="flex items-center gap-1.5 text-sm font-medium">
-              {opt.label}
+              <span
+                aria-hidden="true"
+                className={`flex size-3.5 shrink-0 items-center justify-center rounded-full border ${
+                  checked ? "border-primary" : "border-muted-foreground"
+                }`}
+              >
+                {checked && <span className="size-1.5 rounded-full bg-primary" />}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{opt.label}</span>
               {opt.recommended && (
-                <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">推奨</span>
+                <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] text-primary">
+                  推奨
+                </span>
               )}
+              <span aria-hidden="true" className="shrink-0 text-[10px] text-muted-foreground">
+                {index + 1}
+              </span>
             </div>
             {opt.description && <p className="text-xs text-muted-foreground">{opt.description}</p>}
             {opt.preview.length > 0 && (

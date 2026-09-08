@@ -319,7 +319,8 @@ describe("ToolPane", () => {
   // 無いと壊れる: 起動直後や全 pane クローズ後、Decisions タブへ到達できない。
   test("shows the tab list and an empty-worktree notice in observation tabs when no worktree is selected (F2-3)", async () => {
     await renderFocused({ worktreeRoot: null });
-    expect(screen.getAllByText("herdr 未接続 / worktree 未選択").length).toBeGreaterThan(0);
+    expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
+    expect(screen.getByText("worktree を解決できません")).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab").map((el) => el.textContent);
     expect(tabs).toEqual(["Files", "Graph", "Diff", "Decisions", "Process", "Compose"]);
     expect(screen.queryByTestId("diff-panel-stub")).not.toBeInTheDocument();

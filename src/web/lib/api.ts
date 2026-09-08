@@ -313,10 +313,13 @@ export class CommandUnavailableError extends Error {
  * message for display. */
 export class CommandFailedError extends Error {
   detail: string;
+  /** 呼び出し側の固定文言のみ（`message` は detail を連結した表示用の全文）。 */
+  title: string;
   constructor(message: string, detail: string) {
     super(detail ? `${message}: ${detail}` : message);
     this.name = "CommandFailedError";
     this.detail = detail;
+    this.title = message;
   }
 }
 

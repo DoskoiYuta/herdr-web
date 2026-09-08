@@ -8,9 +8,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { AlertTriangle, Box, Inbox, Layers, Plug, RefreshCw } from "lucide-react";
+import { AlertTriangle, Box, PackageX, Layers, Plug, PackageSearch, RefreshCw } from "lucide-react";
 import type { DockerContainer, DockerGroup, DockerGroupKind } from "@contract/docker";
-import { CommandUnavailableError, dockerApi } from "@/lib/api";
+import {
+  CommandFailedError,
+  CommandTimeoutError,
+  CommandUnavailableError,
+  dockerApi,
+} from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -47,6 +52,19 @@ const KIND_LABEL: Record<DockerGroupKind, string> = {
   compose: "docker compose",
   devcontainer: "devcontainer",
 };
+
+const SUMMARY_KIND_LABEL: Record<DockerGroupKind, string> = {
+  compose: "compose プロジェクト",
+  devcontainer: "devcontainer",
+};
+
+function projectSummary(groups: DockerGroup[]): string {
+  const parts = (["compose", "devcontainer"] as const)
+    .map((kind) => ({ kind, count: groups.filter((g) => g.kind === kind).length }))
+    .filter(({ count }) => count > 0)
+    .map(({ kind, count }) => `${SUMMARY_KIND_LABEL[kind]} ${count}`);
+  return `この worktree の ${parts.join(" · ")}`;
+}
 
 function groupCounts(containers: DockerContainer[]): { running: number; exited: number } {
   let running = 0;
@@ -137,22 +155,63 @@ function ContainerRow({
   );
 }
 
-function ContainerLogsRow({ root, id }: { root: string; id: string }) {
+function ContainerLogsRow({
+  root,
+  id,
+  name,
+  onClose,
+}: {
+  root: string;
+  id: string;
+  name: string;
+  onClose: () => void;
+}) {
   return (
     <TableRow>
       <TableCell colSpan={5} className="border-l-[3px] p-0 [border-left-color:var(--focus)]">
-        <DockerLogsView root={root} id={id} />
+        <DockerLogsView root={root} id={id} name={name} onClose={onClose} />
       </TableCell>
     </TableRow>
   );
 }
 
+/** `CommandFailedError` は `docker` の非ゼロ終了全般（daemon 不達に限らない）
+ * で投げられる — 「Docker を起動してください」は daemon 不達のときだけ足す。
+ * それ以外は detail をそのまま見せ、detail が空でも「（503）」だけにはしない。 */
+function commandFailedDescription(detail: string): string {
+  if (detail.includes("Cannot connect to the Docker daemon")) {
+    return `${detail}（503）。Docker を起動してください。`;
+  }
+  return detail.length > 0 ? `${detail}（503）。` : "docker コマンドが失敗しました（503）。";
+}
+
 function errorPanelState(error: unknown, onRetry: () => void) {
   if (error instanceof CommandUnavailableError) {
-    return <PanelState icon={Plug} title={error.message} tone="error" />;
+    return (
+      <PanelState
+        card
+        icon={PackageX}
+        title={error.message}
+        description="PATH に docker コマンドがありません（501）。Docker Desktop または docker CLI をインストールしてください。"
+        tone="error"
+      />
+    );
+  }
+  if (error instanceof CommandFailedError) {
+    return (
+      <PanelState
+        card
+        icon={Plug}
+        title={error.title}
+        description={commandFailedDescription(error.detail)}
+        tone="error"
+        action={{ label: "再試行", onClick: onRetry }}
+      />
+    );
   }
   return (
     <PanelState
+      card
       icon={AlertTriangle}
       title={errorMessage(error)}
       tone="error"
@@ -186,9 +245,27 @@ export function ComposePanel({ root }: ComposePanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {showInlineWarning && (
-        <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
-          {errorMessage(query.error)}
-          {query.dataUpdatedAt > 0 && `（${secondsAgo(query.dataUpdatedAt)}秒前の一覧を表示中）`}
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+          {query.error instanceof CommandTimeoutError
+            ? `タイムアウト${query.dataUpdatedAt > 0 ? ` · ${secondsAgo(query.dataUpdatedAt)}秒前の結果` : ""}`
+            : `${errorMessage(query.error)}${
+                query.dataUpdatedAt > 0
+                  ? `（${secondsAgo(query.dataUpdatedAt)}秒前の一覧を表示中）`
+                  : ""
+              }`}
+        </div>
+      )}
+      {groups.length > 0 && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+          <span>{projectSummary(groups)}</span>
+          <span className="inline-flex items-center gap-1">
+            5 秒ごとに更新
+            <RefreshCw
+              className={cn("size-3", query.isFetching && "animate-spin")}
+              aria-hidden="true"
+            />
+          </span>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto">
@@ -198,8 +275,10 @@ export function ComposePanel({ root }: ComposePanelProps) {
           <PanelState icon={RefreshCw} title="読み込み中…" />
         ) : groups.length === 0 ? (
           <PanelState
-            icon={Inbox}
-            title="この worktree に紐づくコンテナはありません（compose / devcontainer のラベルで判定）"
+            card
+            icon={PackageSearch}
+            title="この worktree に紐づくコンテナはありません"
+            description="compose の working_dir または devcontainer の local_folder がこの worktree 配下にあるコンテナを表示します。"
           />
         ) : (
           <Table>
@@ -209,7 +288,7 @@ export function ComposePanel({ root }: ComposePanelProps) {
                 <TableHead className="w-px whitespace-nowrap text-xs">State</TableHead>
                 <TableHead className="w-px whitespace-nowrap text-xs">Ports</TableHead>
                 <TableHead className="w-px whitespace-nowrap text-xs">Image</TableHead>
-                <TableHead className="w-px whitespace-nowrap text-xs">Uptime</TableHead>
+                <TableHead className="w-px whitespace-nowrap text-xs">Up</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -223,7 +302,14 @@ export function ComposePanel({ root }: ComposePanelProps) {
                         expanded={expandedId === c.id}
                         onToggle={() => setExpandedId((prev) => (prev === c.id ? null : c.id))}
                       />
-                      {expandedId === c.id && <ContainerLogsRow root={root} id={c.id} />}
+                      {expandedId === c.id && (
+                        <ContainerLogsRow
+                          root={root}
+                          id={c.id}
+                          name={c.name}
+                          onClose={() => setExpandedId(null)}
+                        />
+                      )}
                     </Fragment>
                   ))}
                 </Fragment>

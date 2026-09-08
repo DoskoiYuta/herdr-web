@@ -199,8 +199,7 @@ describe("App", () => {
     await renderApp();
     expect(screen.getByLabelText("サイドバー")).toBeInTheDocument();
     expect(screen.getByTestId("terminal-stub")).toBeInTheDocument();
-    // ヘッダーと Diff タブの空状態の 2 箇所に出る（ToolPane.test.tsx で検証済み）。
-    expect(screen.getAllByText("herdr 未接続 / worktree 未選択").length).toBeGreaterThan(0);
+    expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
     expect(screen.getAllByRole("separator").length).toBeGreaterThan(0);
   });
 
@@ -216,9 +215,7 @@ describe("App", () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "ツール領域を折りたたむ" }));
     // ツールルートは `hidden` で隠すだけでアンマウントしない。
-    for (const el of screen.getAllByText("herdr 未接続 / worktree 未選択")) {
-      expect(el).not.toBeVisible();
-    }
+    expect(screen.getByText("herdr 未接続 / worktree 未選択")).not.toBeVisible();
     expect(screen.getByRole("button", { name: "ツール領域を開く" })).toBeInTheDocument();
   });
 

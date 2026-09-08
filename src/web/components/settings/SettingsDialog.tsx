@@ -8,7 +8,7 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { healthApi } from "@/lib/api";
+import { configApi, healthApi } from "@/lib/api";
 import { readLayout, LAYOUT_STORAGE_KEY } from "@/lib/layout";
 import { useSettings } from "@/components/diff/state";
 import type { DiffStyle, Overflow } from "@/components/diff/state";
@@ -53,6 +53,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: () => healthApi.get(),
+    enabled: open,
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  const configQuery = useQuery({
+    queryKey: ["config"],
+    queryFn: () => configApi.get(),
     enabled: open,
     retry: false,
     staleTime: Infinity,
@@ -148,7 +156,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
         </section>
 
-        <section className="flex flex-col gap-1.5 text-sm">
+        <section className="flex min-w-0 flex-col gap-1.5 text-sm">
           <h3 className="text-xs font-semibold text-muted-foreground">接続</h3>
           <div className="flex items-center justify-between gap-2">
             <span>herdr socket</span>
@@ -162,6 +170,24 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <span>hw の宛先</span>
             <span className="truncate font-mono text-xs text-muted-foreground">
               {typeof location !== "undefined" ? location.origin : ""}
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="shrink-0">設定ファイル</span>
+            <span
+              className="min-w-0 flex-1 truncate text-right font-mono text-xs text-muted-foreground"
+              title={configQuery.data?.paths.config}
+            >
+              {configQuery.data?.paths.config ?? "…"}
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="shrink-0">DB</span>
+            <span
+              className="min-w-0 flex-1 truncate text-right font-mono text-xs text-muted-foreground"
+              title={configQuery.data?.paths.db}
+            >
+              {configQuery.data?.paths.db ?? "…"}
             </span>
           </div>
         </section>
