@@ -259,7 +259,10 @@ describe("GraphRow", () => {
   // 無いと壊れる: uncommitted 行に変更件数と相対時刻が出ず、コミット済み行と
   // 見分けが付きにくくなる（design.pen P5: 「(uncommitted changes) 4 files」「いま」）。
   test("the uncommitted row shows the file count and 'いま' instead of a relative time/hash", () => {
-    const commits = [{ hash: "UNCOMMITTED", parents: ["c1"] }, { hash: "c1", parents: [] }];
+    const commits = [
+      { hash: "UNCOMMITTED", parents: ["c1"] },
+      { hash: "c1", parents: [] },
+    ];
     const { rows } = layoutGraph({ commits });
     const { getByText, queryByText } = render(
       <GraphRow
