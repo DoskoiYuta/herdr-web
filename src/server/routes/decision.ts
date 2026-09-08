@@ -6,6 +6,7 @@ import {
   CreateDecisionRequestSchema,
   DECISION_SPEC_MAX_BYTES,
   decisionSpecJsonSchema,
+  DecisionCountsQuerySchema,
   ListDecisionQuerySchema,
   type Decision,
   type DecisionStatus,
@@ -42,7 +43,9 @@ async function findDecisionByIdOrSuffix(
 export function decisionRoutes(deps: DecisionRoutesDeps) {
   const app = new Hono()
     .get("/schema", (c) => c.json(decisionSpecJsonSchema()))
-    .get("/counts", async (c) => c.json(await deps.service.counts()))
+    .get("/counts", vValidator("query", DecisionCountsQuerySchema), async (c) =>
+      c.json(await deps.service.counts(c.req.valid("query").worktreeRoot)),
+    )
     .get("/", vValidator("query", ListDecisionQuerySchema), async (c) => {
       const query = c.req.valid("query");
       const status = query.status

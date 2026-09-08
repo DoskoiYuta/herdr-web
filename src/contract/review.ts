@@ -235,8 +235,14 @@ export const ReviewCountsResponseSchema = v.object({
   worktree: ReviewCountSchema,
   /** `POST /send` が送る対象（`worktreeRoot` が `worktree` に一致し、下書きを持つ review）の数 */
   pendingDrafts: v.number(),
-  /** Diff タブの通知バッジ（ui-redesign.md §5.4）: `worktree` から見える replied 件数 */
-  replied: v.number(),
+  /**
+   * Diff/Graph タブの通知バッジ (ui-redesign.md §5.4)。いずれも listVisible と
+   * 同じ可視性内: `worktree` は `target.kind === "worktree"` かつ `root` が
+   * `worktree` に一致する replied 件数（未コミット対象、Diff で見える）、
+   * `commit` は `target.kind === "commit"` の replied 件数（コミット対象、
+   * Graph から辿る）。
+   */
+  replied: v.object({ worktree: v.number(), commit: v.number() }),
 });
 export type ReviewCountsResponse = v.InferOutput<typeof ReviewCountsResponseSchema>;
 

@@ -161,7 +161,13 @@ export const ListDecisionQuerySchema = v.object({
 });
 export type ListDecisionQuery = v.InferOutput<typeof ListDecisionQuerySchema>;
 
+export const DecisionCountsQuerySchema = v.object({
+  worktreeRoot: v.optional(v.string()),
+});
+export type DecisionCountsQuery = v.InferOutput<typeof DecisionCountsQuerySchema>;
+
 export const DecisionCountsSchema = v.object({
+  /** `worktreeRoot` 指定時はその worktree の open 件数、未指定なら全体 */
   total: v.number(),
 });
 export type DecisionCounts = v.InferOutput<typeof DecisionCountsSchema>;

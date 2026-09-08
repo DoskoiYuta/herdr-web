@@ -61,17 +61,30 @@ describe("countsUsecase pendingDrafts", () => {
 });
 
 describe("countsUsecase replied", () => {
-  // 無いと壊れる: M10 で Diff タブに付けるバッジは replied 件数を数えるので、
-  // フィールドが無ければバッジが常に 0/undefined になる。
-  test("counts replied reviews visible from this worktree (listVisible と同じ可視性)", async () => {
-    const replied = makeReview({
-      id: "replied-1",
+  // 無いと壊れる: commit 対象の replied レビューは Diff を開いても見えず
+  // Graph から辿るしかないので、worktree 対象と一緒くたに数えると Diff の
+  // バッジが Graph 分まで含んで過大に出る（逆に Graph 側は何も出ない）。
+  test("counts worktree-target and commit-target replied reviews separately", async () => {
+    const repliedThread = [
+      { seq: 0, author: "user" as const, body: "why?", at: "t", agentSession: null, draft: false },
+    ];
+    const repliedWorktree = makeReview({
+      id: "replied-worktree",
       status: "replied",
-      thread: [{ seq: 0, author: "user", body: "why?", at: "t", agentSession: null, draft: false }],
+      thread: repliedThread,
+    });
+    const repliedCommit = makeReview({
+      id: "replied-commit",
+      status: "replied",
+      target: { kind: "commit", hash: "c1" },
+      thread: repliedThread,
     });
     const open = makeReview({ id: "open-1", status: "open" });
-    await repository.save(replied);
+    await repository.save(repliedWorktree);
+    await repository.save(repliedCommit);
     await repository.save(open);
+    gitHistory.heads.set("/repo", "HEAD");
+    gitHistory.ancestryOf.set("c1", new Set(["HEAD"]));
 
     const counts = countsUsecase({
       repository,
@@ -79,6 +92,6 @@ describe("countsUsecase replied", () => {
     });
     const result = await counts({ repo: "/repo", worktree: "/repo" });
 
-    expect(result._unsafeUnwrap().replied).toBe(1);
+    expect(result._unsafeUnwrap().replied).toEqual({ worktree: 1, commit: 1 });
   });
 });

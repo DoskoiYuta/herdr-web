@@ -69,9 +69,20 @@ function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
         <TableCell className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {p.pid}
         </TableCell>
-        <TableCell className="max-w-0 text-xs" style={{ paddingLeft: 8 }}>
-          <span className="block truncate font-mono" title={p.command}>
-            {depth > 0 ? `${"│  ".repeat(depth - 1)}└ ${p.command}` : p.command}
+        <TableCell className="relative max-w-0 text-xs">
+          {/* ガイドは絶対配置で行の全高を覆う: td の高さは同じ行の他セル（Port の
+           * chip など）で決まるので、flex の stretch では届かない。 */}
+          <div aria-hidden className="absolute inset-y-0 left-0 flex">
+            {Array.from({ length: depth }, (_, i) => (
+              <span key={i} data-testid="indent-guide" className="w-3.5 border-l border-border" />
+            ))}
+          </div>
+          <span
+            className="block truncate font-mono"
+            style={{ paddingLeft: depth * 14 }}
+            title={p.command}
+          >
+            {p.command}
           </span>
         </TableCell>
         <TableCell className="whitespace-nowrap text-right text-xs">{p.cpu.toFixed(1)}%</TableCell>

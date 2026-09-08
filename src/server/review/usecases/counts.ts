@@ -52,11 +52,16 @@ export function countsUsecase(deps: CountsDeps) {
         const pendingDrafts = visible.isOk()
           ? visible.value.filter((r) => r.thread.some((e) => e.draft)).length
           : 0;
-        // Diff タブの通知バッジ (plan/ui-redesign §5.4): この worktree から
-        // 見える（listVisible と同じ可視性の）replied 件数。
-        const replied = visible.isOk()
-          ? visible.value.filter((r) => r.status === "replied").length
-          : 0;
+        // Diff/Graph タブの通知バッジ (plan/ui-redesign §5.4): この worktree
+        // から見える（listVisible と同じ可視性の）replied 件数を、対象の
+        // 種類（未コミット/commit）で分ける。
+        const repliedVisible = visible.isOk()
+          ? visible.value.filter((r) => r.status === "replied")
+          : [];
+        const replied = {
+          worktree: repliedVisible.filter((r) => r.target.kind === "worktree").length,
+          commit: repliedVisible.filter((r) => r.target.kind === "commit").length,
+        };
 
         return {
           byCommit,

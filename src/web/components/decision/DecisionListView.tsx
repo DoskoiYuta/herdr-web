@@ -1,18 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Decision, DecisionSpec, DecisionStatus } from "@contract/decision";
 import type { Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
 import { useDecisionEvents, useHerdrState } from "@/lib/HerdrStoreContext";
 import { relativeTime, useNow } from "@/lib/relativeTime";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { StatusChip } from "@/components/ui/status/StatusChip";
@@ -23,9 +16,6 @@ import { agentLabel, DECISION_STATUS_LABEL } from "./decisionLabels";
 import { useDecisionCounts } from "./hooks/useDecisionCounts";
 
 type StatusTab = "open" | "answered" | "all";
-
-/** Radix `Select` doesn't allow `value=""` — sentinel for「すべての worktree」. */
-const ALL_WORKTREES = "__all__";
 
 const ITEM_KIND_LABEL: Record<DecisionSpec["items"][number]["kind"], string> = {
   single: "単一選択",
@@ -50,7 +40,7 @@ function resultLabel(decision: Decision): string | null {
 }
 
 /** 非 open な行の補足。answered 以外は resultLabel が常に null を返すため、
- * ステータスごとに文言を分ける（レビュー指摘: 全部「回答あり」に落ちていた）。 */
+ * ステータスごとに文言を分ける。 */
 function secondarySummary(decision: Decision): string {
   switch (decision.status) {
     case "open":
@@ -62,13 +52,6 @@ function secondarySummary(decision: Decision): string {
     case "cancelled":
       return "エージェントが取り下げ";
   }
-}
-
-function worktreeBasename(root: string | null): string | null {
-  if (!root) return null;
-  const trimmed = root.replace(/\/+$/, "");
-  const idx = trimmed.lastIndexOf("/");
-  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
 function DecisionRow({
@@ -89,7 +72,6 @@ function DecisionRow({
   const delivery = deliveryOf("decision", decision.delivery);
   const showDelivery = decision.delivery !== null && delivery.state !== "sent";
   const [busy, setBusy] = useState(false);
-  const worktree = worktreeBasename(decision.worktreeRoot);
   const pane = findPane(repos, decision.paneId, decision.agent);
 
   return (
@@ -121,7 +103,7 @@ function DecisionRow({
           </div>
           <div className="truncate text-xs text-muted-foreground">{secondarySummary(decision)}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {[worktree, agentLabel(decision.agent, pane), relativeTime(decision.createdAt, nowMs)]
+            {[agentLabel(decision.agent, pane), relativeTime(decision.createdAt, nowMs)]
               .filter(Boolean)
               .join(" · ")}
           </div>
@@ -149,29 +131,21 @@ function DecisionRow({
   );
 }
 
-export type DecisionListViewProps = { onSelect: (id: string) => void };
+export type DecisionListViewProps = { worktreeRoot: string; onSelect: (id: string) => void };
 
-/** 全 worktree 横断の判断依頼一覧 (docs/ui-redesign.md §5.4)。未回答をカードで
- * 上に、非 open な行は「回答済み」「すべて」タブでのみ「最近の履歴」に出す。 */
-export function DecisionListView({ onSelect }: DecisionListViewProps) {
+/** フォーカス中の worktree の判断依頼一覧 (docs/ui-redesign.md §5.4)。未回答を
+ * カードで上に、非 open な行は「回答済み」「すべて」タブでのみ「最近の履歴」に出す。 */
+export function DecisionListView({ worktreeRoot, onSelect }: DecisionListViewProps) {
   const [statusTab, setStatusTab] = useState<StatusTab>("open");
-  const [worktreeFilter, setWorktreeFilter] = useState<string>(ALL_WORKTREES);
   const queryClient = useQueryClient();
   const state = useHerdrState();
   const nowMs = useNow();
 
-  const worktreeOptions = useMemo(() => {
-    const roots = new Set<string>();
-    for (const repo of state.repos) for (const wt of repo.worktrees) roots.add(wt.root);
-    return [...roots].sort();
-  }, [state.repos]);
-
   const statusParam: DecisionStatus | undefined =
     statusTab === "all" ? undefined : (statusTab as DecisionStatus);
-  const worktreeRoot = worktreeFilter === ALL_WORKTREES ? undefined : worktreeFilter;
 
   const query = useQuery({
-    queryKey: ["decision-list", statusParam ?? "all", worktreeRoot ?? "all"],
+    queryKey: ["decision-list", statusParam ?? "all", worktreeRoot],
     queryFn: () => decisionApi.list({ status: statusParam, worktreeRoot }),
   });
   const decisions = query.data ?? [];
@@ -179,21 +153,8 @@ export function DecisionListView({ onSelect }: DecisionListViewProps) {
   const history = decisions.filter((d) => d.status !== "open");
   const showHistory = statusTab !== "open";
 
-  // レビュー指摘: worktree を絞り込んだら「未回答 N」もその worktree の件数に
-  // 従うべきで、全 worktree 横断の useDecisionCounts に固定したままではいけない
-  // （サーバーに worktree 別カウント API は無いので、絞り込み中はここで
-  // status=open のリストを引いて件数を数える）。この queryKey は statusTab==
-  // "open" のときのメインクエリと一致するため、React Query が 1 回にまとめる。
-  const countsQuery = useDecisionCounts();
-  const openCountForWorktreeQuery = useQuery({
-    queryKey: ["decision-list", "open", worktreeRoot ?? "all"],
-    queryFn: () => decisionApi.list({ status: "open", worktreeRoot }),
-    enabled: worktreeRoot !== undefined,
-  });
-  const openTotal =
-    worktreeRoot !== undefined
-      ? (openCountForWorktreeQuery.data?.length ?? 0)
-      : (countsQuery.data?.total ?? 0);
+  const countsQuery = useDecisionCounts(worktreeRoot);
+  const openTotal = countsQuery.data?.total ?? 0;
 
   useDecisionEvents(
     useCallback(() => {
@@ -244,19 +205,6 @@ export function DecisionListView({ onSelect }: DecisionListViewProps) {
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <Select value={worktreeFilter} onValueChange={setWorktreeFilter}>
-          <SelectTrigger size="sm" className="w-48" aria-label="worktree で絞り込み">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_WORKTREES}>すべての worktree</SelectItem>
-            {worktreeOptions.map((root) => (
-              <SelectItem key={root} value={root}>
-                {worktreeBasename(root) ?? root}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {unanswered.length === 0 && (!showHistory || history.length === 0) && (
