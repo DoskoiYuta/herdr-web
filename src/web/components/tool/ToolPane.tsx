@@ -125,8 +125,8 @@ function basename(path: string): string {
 
 /** 観察タブ（Files/Graph/Diff/Process/Compose）の worktree 未選択時の空状態。
  * Decisions は worktree 横断なので、この空状態を経由しない（常に動く）。
- * タブ列自体はこの状態でも常に描画する — レビュー指摘（High 1）: 起動直後や
- * 全 pane クローズ後に Decisions タブへ到達できなくなるため。 */
+ * タブ列はこの状態でも常に描画する。起動直後や全 pane クローズ後でも
+ * Decisions タブへ到達できるようにするため。 */
 function EmptyWorktreeNotice() {
   return (
     <PanelState
