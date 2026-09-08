@@ -71,7 +71,6 @@ function worktreeBasename(root: string | null): string | null {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-
 function DecisionRow({
   decision,
   index,
