@@ -4,61 +4,71 @@ import type { MigrationMeta } from "drizzle-orm/migrator";
 
 export const embeddedMigrations: MigrationMeta[] = [
   {
-    sql: [
+    "sql": [
       "CREATE TABLE `repos` (\n\t`key` text PRIMARY KEY NOT NULL,\n\t`root_commit` text,\n\t`name` text NOT NULL,\n\t`first_seen_at` text NOT NULL,\n\t`last_seen_at` text NOT NULL\n);\n",
       "\nCREATE TABLE `review_entries` (\n\t`review_id` text NOT NULL,\n\t`seq` integer NOT NULL,\n\t`author` text NOT NULL,\n\t`body` text NOT NULL,\n\t`at` text NOT NULL,\n\t`agent_session` text,\n\tPRIMARY KEY(`review_id`, `seq`),\n\tFOREIGN KEY (`review_id`) REFERENCES `reviews`(`id`) ON UPDATE no action ON DELETE cascade\n);\n",
       "\nCREATE TABLE `reviews` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`repo` text NOT NULL,\n\t`target_kind` text NOT NULL,\n\t`target_value` text NOT NULL,\n\t`worktree_root` text NOT NULL,\n\t`path` text NOT NULL,\n\t`anchor` text NOT NULL,\n\t`created_at_head` text NOT NULL,\n\t`viewed_from` text NOT NULL,\n\t`viewed_to` text NOT NULL,\n\t`status` text NOT NULL,\n\t`created_at` text NOT NULL,\n\t`updated_at` text NOT NULL\n);\n",
       "\nCREATE INDEX `reviews_repo_status_idx` ON `reviews` (`repo`,`status`);",
-      "\nCREATE INDEX `reviews_target_idx` ON `reviews` (`target_kind`,`target_value`);",
+      "\nCREATE INDEX `reviews_target_idx` ON `reviews` (`target_kind`,`target_value`);"
     ],
-    folderMillis: 1788408352827,
-    hash: "3105271d40d3a7c7ccc589bc6f4a05a249ae7fdbf46749d909e23ee0f6ab1f69",
-    bps: true,
+    "folderMillis": 1788408352827,
+    "hash": "3105271d40d3a7c7ccc589bc6f4a05a249ae7fdbf46749d909e23ee0f6ab1f69",
+    "bps": true
   },
   {
-    sql: [
+    "sql": [
       "ALTER TABLE `reviews` ADD `notify_state` text DEFAULT 'none' NOT NULL;",
       "\nALTER TABLE `reviews` ADD `notify_pane` text;",
-      "\nALTER TABLE `reviews` ADD `notify_at` text;",
+      "\nALTER TABLE `reviews` ADD `notify_at` text;"
     ],
-    folderMillis: 1788410630244,
-    hash: "06fb4d3dc7c77b0d8be70d0ae5130560b0a23e68a616552a0dea5836a232d945",
-    bps: true,
+    "folderMillis": 1788410630244,
+    "hash": "06fb4d3dc7c77b0d8be70d0ae5130560b0a23e68a616552a0dea5836a232d945",
+    "bps": true
   },
   {
-    sql: ["ALTER TABLE `review_entries` ADD `draft` integer DEFAULT 0 NOT NULL;"],
-    folderMillis: 1788513031319,
-    hash: "757640d65b660d3124fc81665fa401ce29e7359f73b84219af9a5c7de22669e7",
-    bps: true,
+    "sql": [
+      "ALTER TABLE `review_entries` ADD `draft` integer DEFAULT 0 NOT NULL;"
+    ],
+    "folderMillis": 1788513031319,
+    "hash": "757640d65b660d3124fc81665fa401ce29e7359f73b84219af9a5c7de22669e7",
+    "bps": true
   },
   {
-    sql: [
+    "sql": [
       "CREATE TABLE `ask_entries` (\n\t`ask_id` text NOT NULL,\n\t`seq` integer NOT NULL,\n\t`author` text NOT NULL,\n\t`body` text NOT NULL,\n\t`at` text NOT NULL,\n\t`agent_session` text,\n\tPRIMARY KEY(`ask_id`, `seq`),\n\tFOREIGN KEY (`ask_id`) REFERENCES `asks`(`id`) ON UPDATE no action ON DELETE cascade\n);\n",
       "\nCREATE TABLE `asks` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`repo` text NOT NULL,\n\t`worktree_root` text NOT NULL,\n\t`path` text NOT NULL,\n\t`anchor` text NOT NULL,\n\t`created_at_head` text,\n\t`status` text NOT NULL,\n\t`session` text,\n\t`last_prompt_state` text,\n\t`last_prompt_at` text,\n\t`created_at` text NOT NULL,\n\t`updated_at` text NOT NULL\n);\n",
       "\nCREATE INDEX `asks_repo_status_idx` ON `asks` (`repo`,`status`);",
-      "\nCREATE INDEX `asks_repo_worktree_path_idx` ON `asks` (`repo`,`worktree_root`,`path`);",
+      "\nCREATE INDEX `asks_repo_worktree_path_idx` ON `asks` (`repo`,`worktree_root`,`path`);"
     ],
-    folderMillis: 1788601928877,
-    hash: "07d726cdac9ed82fa08d7345511113d31b81b2e89fe9ba8d01f8371a4fe71d4d",
-    bps: true,
+    "folderMillis": 1788601928877,
+    "hash": "07d726cdac9ed82fa08d7345511113d31b81b2e89fe9ba8d01f8371a4fe71d4d",
+    "bps": true
   },
   {
-    sql: [
+    "sql": [
       "CREATE TABLE `decisions` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`status` text NOT NULL,\n\t`spec` text NOT NULL,\n\t`answer` text,\n\t`pane_id` text,\n\t`claude_session_id` text,\n\t`worktree_root` text,\n\t`repo_key` text,\n\t`agent` text,\n\t`created_at` text NOT NULL,\n\t`answered_at` text,\n\t`delivery` text\n);\n",
       "\nCREATE INDEX `decisions_status_idx` ON `decisions` (`status`);",
-      "\nCREATE INDEX `decisions_worktree_root_idx` ON `decisions` (`worktree_root`);",
+      "\nCREATE INDEX `decisions_worktree_root_idx` ON `decisions` (`worktree_root`);"
     ],
-    folderMillis: 1788697916814,
-    hash: "0d388e768915ecc9751828d772c1c0377f01f0f1c66d9d24465deea200cc78ce",
-    bps: true,
+    "folderMillis": 1788697916814,
+    "hash": "0d388e768915ecc9751828d772c1c0377f01f0f1c66d9d24465deea200cc78ce",
+    "bps": true
   },
   {
-    sql: [
+    "sql": [
       "CREATE TABLE `notes` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`repo_key` text NOT NULL,\n\t`title` text NOT NULL,\n\t`body` text DEFAULT '' NOT NULL,\n\t`created_at` text NOT NULL,\n\t`updated_at` text NOT NULL\n);\n",
-      "\nCREATE INDEX `notes_repo_key_idx` ON `notes` (`repo_key`);",
+      "\nCREATE INDEX `notes_repo_key_idx` ON `notes` (`repo_key`);"
     ],
-    folderMillis: 1788902765554,
-    hash: "1981c1bfeb9eb41f3d61b08557b646e31213c826d52df23c3cdd11b76b9a38dc",
-    bps: true,
+    "folderMillis": 1788902765554,
+    "hash": "1981c1bfeb9eb41f3d61b08557b646e31213c826d52df23c3cdd11b76b9a38dc",
+    "bps": true
   },
+  {
+    "sql": [
+      "CREATE TABLE `pane_worktree_overrides` (\n\t`pane_id` text PRIMARY KEY NOT NULL,\n\t`root` text NOT NULL,\n\t`observed_cwd` text,\n\t`set_at` text NOT NULL\n);\n"
+    ],
+    "folderMillis": 1788905589820,
+    "hash": "7f1b641fa70979e434dfd5fd88da7ad9ac04f33922235c98906f47ce18bb1c79",
+    "bps": true
+  }
 ];

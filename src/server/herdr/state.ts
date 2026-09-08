@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { match } from "ts-pattern";
 import type {
   HerdrEventData,
@@ -16,7 +17,17 @@ export interface HerdrState {
   focusedPaneId: string | null;
   focusedWorkspaceId: string | null;
   focusedTabId: string | null;
+  paneWorktreeOverrides: Map<string, PaneWorktreeOverride>;
 }
+
+/** An agent-declared worktree for a pane (`hw worktree use`), overriding herdr's `foreground_cwd`. */
+export type PaneWorktreeOverride = {
+  paneId: string;
+  root: string;
+  /** The pane's `foreground_cwd ?? cwd` observed when the override was set — used to detect drift (see `withPane`). */
+  observedCwd: string | null;
+  setAt: string;
+};
 
 export type StateChange =
   | { kind: "reset" }
@@ -34,6 +45,7 @@ export function emptyState(): HerdrState {
     focusedPaneId: null,
     focusedWorkspaceId: null,
     focusedTabId: null,
+    paneWorktreeOverrides: new Map(),
   };
 }
 
@@ -45,13 +57,68 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): HerdrState {
     focusedPaneId: snapshot.focused_pane_id ?? null,
     focusedWorkspaceId: snapshot.focused_workspace_id ?? null,
     focusedTabId: snapshot.focused_tab_id ?? null,
+    paneWorktreeOverrides: new Map(),
   };
+}
+
+/**
+ * The single choke point every reader of a pane's worktree must use instead of
+ * `pane.foreground_cwd ?? pane.cwd` directly. `foreground_cwd` tracks the tty's
+ * foreground process — the agent binary itself — so it never reflects a
+ * worktree a subprocess (or a worktree-isolated subagent) actually moved into;
+ * an explicit `hw worktree use` override (§ setWorktreeOverride) takes
+ * precedence over it for exactly that reason.
+ */
+export function effectiveCwd(
+  state: Pick<HerdrState, "paneWorktreeOverrides">,
+  pane: { pane_id: string; foreground_cwd?: string | null; cwd?: string | null } | null | undefined,
+): string | null {
+  if (!pane) return null;
+  const override = state.paneWorktreeOverrides.get(pane.pane_id);
+  if (override) return override.root;
+  return pane.foreground_cwd ?? pane.cwd ?? null;
+}
+
+/**
+ * Normalizes a raw pane cwd before it's stored as (or compared against) an
+ * override's `observedCwd`, so a trailing slash or a `/tmp` vs `/private/tmp`
+ * symlink alias doesn't look like the agent moved when it didn't. Must be the
+ * only place either side of that comparison touches the string.
+ */
+function normalizeCwd(cwd: string | null): string | null {
+  if (cwd == null) return null;
+  const trimmed = cwd.length > 1 && cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
+  try {
+    return realpathSync(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+/** Drops `pane`'s override once its raw cwd no longer matches what was observed when it was set (auto-clear condition 2). */
+function dropDivergedOverride(state: HerdrState, pane: PaneInfo): HerdrState {
+  const override = state.paneWorktreeOverrides.get(pane.pane_id);
+  if (!override) return state;
+  const rawCwd = normalizeCwd(pane.foreground_cwd ?? pane.cwd ?? null);
+  if (rawCwd === override.observedCwd) return state;
+  const paneWorktreeOverrides = new Map(state.paneWorktreeOverrides);
+  paneWorktreeOverrides.delete(pane.pane_id);
+  return { ...state, paneWorktreeOverrides };
 }
 
 function withPane(state: HerdrState, pane: PaneInfo): HerdrState {
   const panes = new Map(state.panes);
   panes.set(pane.pane_id, pane);
-  return { ...state, panes };
+  return dropDivergedOverride({ ...state, panes }, pane);
+}
+
+/** Drops overrides for panes no longer present in `panes` (auto-clear condition 1: pane closed). */
+function dropOverridesForRemovedPanes(
+  overrides: Map<string, PaneWorktreeOverride>,
+  panes: Map<string, PaneInfo>,
+): Map<string, PaneWorktreeOverride> {
+  const filtered = new Map([...overrides].filter(([paneId]) => panes.has(paneId)));
+  return filtered.size === overrides.size ? overrides : filtered;
 }
 
 /**
@@ -80,6 +147,7 @@ function withoutPane(state: HerdrState, paneId: string): HerdrState {
   return {
     ...state,
     panes,
+    paneWorktreeOverrides: dropOverridesForRemovedPanes(state.paneWorktreeOverrides, panes),
     focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
   };
 }
@@ -114,6 +182,7 @@ function withoutWorkspace(state: HerdrState, workspaceId: string): HerdrState {
     workspaces,
     tabs,
     panes,
+    paneWorktreeOverrides: dropOverridesForRemovedPanes(state.paneWorktreeOverrides, panes),
     focusedWorkspaceId: state.focusedWorkspaceId === workspaceId ? null : state.focusedWorkspaceId,
     focusedPaneId:
       state.focusedPaneId && !panes.has(state.focusedPaneId) ? null : state.focusedPaneId,
@@ -147,6 +216,7 @@ function withoutTab(state: HerdrState, tabId: string): HerdrState {
     ...state,
     tabs,
     panes,
+    paneWorktreeOverrides: dropOverridesForRemovedPanes(state.paneWorktreeOverrides, panes),
     focusedPaneId:
       state.focusedPaneId && !panes.has(state.focusedPaneId) ? null : state.focusedPaneId,
   };
@@ -285,6 +355,30 @@ export interface HerdrStateStore {
    * relies on this to avoid misreading a pane as gone).
    */
   isSettled(): boolean;
+  /** `hw worktree use`: declares `root` as pane's worktree, overriding `effectiveCwd`. */
+  setWorktreeOverride(
+    paneId: string,
+    root: string,
+  ): { ok: true } | { ok: false; reason: "pane_not_found" };
+  /** `hw worktree clear`: removes any override for the pane (no-op if none). */
+  clearWorktreeOverride(paneId: string): void;
+}
+
+/** Persistence port for `HerdrState.paneWorktreeOverrides` (`src/server/herdr/worktree-overrides.ts` has the SQLite implementation). */
+export interface PaneWorktreeOverrideRepository {
+  list(): Promise<PaneWorktreeOverride[]>;
+  set(override: PaneWorktreeOverride): Promise<void>;
+  delete(paneId: string): Promise<void>;
+}
+
+function createInMemoryOverrideRepository(): PaneWorktreeOverrideRepository {
+  return {
+    async list() {
+      return [];
+    },
+    async set() {},
+    async delete() {},
+  };
 }
 
 export type Logger = Pick<typeof console, "error" | "warn">;
@@ -301,7 +395,11 @@ export type Logger = Pick<typeof console, "error" | "warn">;
  * no-op for an id the snapshot doesn't know), so replaying them after the
  * snapshot is harmless even though the snapshot already reflects some of them.
  */
-export function createHerdrState(gateway: HerdrGateway, logger: Logger = console): HerdrStateStore {
+export function createHerdrState(
+  gateway: HerdrGateway,
+  logger: Logger = console,
+  overrides: PaneWorktreeOverrideRepository = createInMemoryOverrideRepository(),
+): HerdrStateStore {
   let state = emptyState();
   let hasSnapshot = false;
   let snapshotInFlight = false;
@@ -322,13 +420,26 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
     }
   }
 
+  /** Persists any override the pure reducer already dropped (§ dropDivergedOverride / dropOverridesForRemovedPanes). */
+  function persistOverrideRemovals(prev: HerdrState, next: HerdrState): void {
+    if (prev.paneWorktreeOverrides === next.paneWorktreeOverrides) return;
+    for (const paneId of prev.paneWorktreeOverrides.keys()) {
+      if (next.paneWorktreeOverrides.has(paneId)) continue;
+      void overrides.delete(paneId).catch((err) => {
+        logger.error(`herdr: failed to delete pane worktree override for ${paneId}`, err);
+      });
+    }
+  }
+
   // Agent lifecycle events carry only a few fields (no agent_session, and the
   // status is sometimes a step behind pane.get), so re-read the pane to converge.
   async function refreshPane(paneId: string): Promise<void> {
     try {
       const fresh = await gateway.paneGet(paneId);
       if (!state.panes.has(paneId)) return;
+      const prev = state;
       state = withPane(state, fresh);
+      persistOverrideRemovals(prev, state);
       notify({ kind: "pane", paneId });
     } catch (err) {
       logger.warn(`herdr: pane.get after agent event failed for ${paneId}`, err);
@@ -336,11 +447,45 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
   }
 
   function applyIncoming(event: HerdrEventEnvelope): void {
+    const prev = state;
     state = applyEvent(state, event);
+    persistOverrideRemovals(prev, state);
     const data = event.data;
     if (data.type === "pane_agent_detected" || data.type === "pane_agent_status_changed") {
       void refreshPane(data.pane_id);
     }
+  }
+
+  /**
+   * Re-applies persisted overrides onto a freshly loaded snapshot, dropping (and
+   * persisting the drop of) any whose pane closed or whose cwd drifted while we
+   * had no snapshot to check against (auto-clear conditions 1/2, deferred).
+   */
+  async function reconcileOverridesWithSnapshot(): Promise<void> {
+    let stored: PaneWorktreeOverride[];
+    try {
+      stored = await overrides.list();
+    } catch (err) {
+      logger.error("herdr: failed to load pane worktree overrides", err);
+      return;
+    }
+    if (stored.length === 0) return;
+    const next = new Map(state.paneWorktreeOverrides);
+    for (const override of stored) {
+      const pane = state.panes.get(override.paneId);
+      const rawCwd = pane ? normalizeCwd(pane.foreground_cwd ?? pane.cwd ?? null) : null;
+      if (!pane || rawCwd !== override.observedCwd) {
+        void overrides.delete(override.paneId).catch((err) => {
+          logger.error(
+            `herdr: failed to delete pane worktree override for ${override.paneId}`,
+            err,
+          );
+        });
+        continue;
+      }
+      next.set(override.paneId, override);
+    }
+    state = { ...state, paneWorktreeOverrides: next };
   }
 
   async function loadSnapshot(): Promise<void> {
@@ -350,6 +495,8 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
       const snapshot = await gateway.snapshot();
       if (generation !== snapshotGeneration) return; // superseded by a disconnect since this call started
       state = stateFromSnapshot(snapshot);
+      await reconcileOverridesWithSnapshot();
+      if (generation !== snapshotGeneration) return;
       hasSnapshot = true;
       snapshotInFlight = false;
       const buffered = pendingEvents;
@@ -410,9 +557,39 @@ export function createHerdrState(gateway: HerdrGateway, logger: Logger = console
       return () => listeners.delete(cb);
     },
     patchPane: (pane) => {
+      const prev = state;
       state = withPane(state, pane);
+      persistOverrideRemovals(prev, state);
       notify({ kind: "pane", paneId: pane.pane_id });
     },
     isSettled: () => hasSnapshot,
+    setWorktreeOverride(paneId, root) {
+      const pane = state.panes.get(paneId);
+      if (!pane) return { ok: false, reason: "pane_not_found" };
+      const override: PaneWorktreeOverride = {
+        paneId,
+        root,
+        observedCwd: normalizeCwd(pane.foreground_cwd ?? pane.cwd ?? null),
+        setAt: new Date().toISOString(),
+      };
+      const paneWorktreeOverrides = new Map(state.paneWorktreeOverrides);
+      paneWorktreeOverrides.set(paneId, override);
+      state = { ...state, paneWorktreeOverrides };
+      void overrides.set(override).catch((err) => {
+        logger.error(`herdr: failed to save pane worktree override for ${paneId}`, err);
+      });
+      notify({ kind: "pane", paneId });
+      return { ok: true };
+    },
+    clearWorktreeOverride(paneId) {
+      if (!state.paneWorktreeOverrides.has(paneId)) return;
+      const paneWorktreeOverrides = new Map(state.paneWorktreeOverrides);
+      paneWorktreeOverrides.delete(paneId);
+      state = { ...state, paneWorktreeOverrides };
+      void overrides.delete(paneId).catch((err) => {
+        logger.error(`herdr: failed to delete pane worktree override for ${paneId}`, err);
+      });
+      notify({ kind: "pane", paneId });
+    },
   };
 }

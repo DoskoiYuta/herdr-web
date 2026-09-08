@@ -1,7 +1,7 @@
 import type { FocusMessage } from "../../contract/events";
 import type { PaneInfo } from "../../contract/herdr";
 import type { HerdrGateway } from "./gateway";
-import type { HerdrStateStore, Logger } from "./state";
+import { effectiveCwd, type HerdrStateStore, type Logger } from "./state";
 import type { WorktreeInfo, WorktreeResolver } from "./tree";
 
 export type FocusPayload = Omit<FocusMessage, "type">;
@@ -34,10 +34,6 @@ const emptyPayload: FocusPayload = {
   agentSession: null,
 };
 
-function effectiveCwd(pane: PaneInfo | undefined): string | null {
-  return pane?.foreground_cwd ?? pane?.cwd ?? null;
-}
-
 /**
  * Computes the §9.2 `focus` payload from the herdr-state's currently focused pane,
  * re-resolving the worktree root when it changes (plan.md §6.4, deliverable 6).
@@ -51,7 +47,15 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
   const { state, gateway, resolver, pollMs = 3000, logger = console } = opts;
 
   let payload: FocusPayload = emptyPayload;
-  let lastKnownCwd: string | null = null;
+  /**
+   * Raw `foreground_cwd ?? cwd` (never the override) of the last pane we polled —
+   * used only to detect a silent herdr-side drift (§12-1). Comparing the
+   * *effective* cwd here would never see the drift while an override is active
+   * (the override keeps reporting the same root regardless of the real drift),
+   * so `patchPane` would never run and the reducer's auto-clear-on-divergence
+   * would never get a chance to fire.
+   */
+  let lastKnownRawCwd: string | null = null;
   let lastKnownPaneId: string | null = null;
   let notifiedOnce = false;
   const listeners = new Set<(p: FocusPayload) => void>();
@@ -85,10 +89,10 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
     const paneId = s.focusedPaneId;
     const pane = paneOverride ?? (paneId ? s.panes.get(paneId) : undefined);
     const workspaceId = pane?.workspace_id ?? s.focusedWorkspaceId;
-    const cwd = effectiveCwd(pane);
+    const cwd = effectiveCwd(s, pane);
 
     lastKnownPaneId = paneId;
-    lastKnownCwd = cwd;
+    lastKnownRawCwd = pane?.foreground_cwd ?? pane?.cwd ?? null;
 
     const info = cwd ? await resolveCached(cwd) : null;
 
@@ -136,8 +140,8 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
     if (!paneId) return;
     try {
       const fresh = await gateway.paneGet(paneId);
-      const cwd = effectiveCwd(fresh);
-      if (paneId !== lastKnownPaneId || cwd !== lastKnownCwd) {
+      const rawCwd = fresh.foreground_cwd ?? fresh.cwd ?? null;
+      if (paneId !== lastKnownPaneId || rawCwd !== lastKnownRawCwd) {
         // Write the fresh pane back into the shared store first, so every
         // reader (routes/hw.ts whoami, the notifier, any future recompute()
         // call without a paneOverride) sees it — not just this tracker's

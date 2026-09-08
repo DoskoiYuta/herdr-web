@@ -12,6 +12,9 @@ import { reviewReplyCommand } from "./commands/reply";
 import { reviewShowCommand } from "./commands/show";
 import { statusCommand } from "./commands/status";
 import { type CommandDeps, type CommandResult, EXIT_OK, usageError } from "./commands/types";
+import { worktreeClearCommand } from "./commands/worktree-clear";
+import { worktreeSyncCommand } from "./commands/worktree-sync";
+import { worktreeUseCommand } from "./commands/worktree-use";
 
 export const HELP_TEXT = `hw — herdr-web review CLI (plan §7 F6, F10)
 
@@ -29,6 +32,9 @@ Usage:
   hw decision schema
   hw status [--worktree <path>] [--json]
   hw repo move <old-path> <new-path>
+  hw worktree use [<path>] [--pane <id>]
+  hw worktree clear [--pane <id>]
+  hw worktree sync   (Claude Code hook: PostToolUse, matcher EnterWorktree|ExitWorktree)
   hw --help
 
 Env:
@@ -52,6 +58,14 @@ Usage:
   hw ask list [--all] [--path <p>] [--worktree <path>] [--json]
   hw ask show <id> [--json]   (<id> may be the short id printed by 'hw ask list')
   hw ask reply <id> <text...>
+`;
+
+const WORKTREE_HELP_TEXT = `hw worktree — declare the worktree an agent is working in
+
+Usage:
+  hw worktree use [<path>] [--pane <id>]   (path defaults to cwd)
+  hw worktree clear [--pane <id>]
+  hw worktree sync   (Claude Code hook: PostToolUse, matcher EnterWorktree|ExitWorktree)
 `;
 
 const DECISION_HELP_TEXT = `hw decision — ask a human to decide something (F13)
@@ -117,6 +131,17 @@ export async function runCli(argv: string[], deps: CommandDeps): Promise<Command
     const [sub, ...subArgv] = rest;
     if (sub === "move") return repoMoveCommand(subArgv, deps);
     return usageError(`unknown subcommand: hw repo ${sub ?? ""}`.trimEnd());
+  }
+
+  if (head === "worktree") {
+    const [sub, ...subArgv] = rest;
+    if (sub === undefined || sub === "--help" || sub === "-h") {
+      return helpResult(WORKTREE_HELP_TEXT);
+    }
+    if (sub === "use") return worktreeUseCommand(subArgv, deps);
+    if (sub === "clear") return worktreeClearCommand(subArgv, deps);
+    if (sub === "sync") return worktreeSyncCommand(subArgv, deps);
+    return usageError(`unknown subcommand: hw worktree ${sub}`);
   }
 
   return usageError(`unknown command: ${head}`);

@@ -1,7 +1,7 @@
 import type { PaneInfo } from "../../../contract/herdr";
 import { sendAgentPrompt } from "../../herdr/agent-prompt";
 import type { HerdrGateway } from "../../herdr/gateway";
-import type { HerdrStateStore } from "../../herdr/state";
+import { effectiveCwd, type HerdrStateStore } from "../../herdr/state";
 import type { WorktreeResolver } from "../../herdr/tree";
 import type { AgentNotifier } from "../ports";
 
@@ -13,10 +13,6 @@ export type HerdrNotifierDeps = {
   template: string;
   logger?: Pick<typeof console, "warn" | "error">;
 };
-
-function effectiveCwd(pane: PaneInfo): string | null {
-  return pane.foreground_cwd ?? pane.cwd ?? null;
-}
 
 /**
  * plan §6.5 通知先: レビューの worktree を foreground_cwd に持つ pane だけを候補にする。
@@ -31,7 +27,7 @@ export function createHerdrNotifier(deps: HerdrNotifierDeps): AgentNotifier {
     const result: PaneInfo[] = [];
     for (const pane of s.panes.values()) {
       if (!pane.agent) continue;
-      const cwd = effectiveCwd(pane);
+      const cwd = effectiveCwd(s, pane);
       if (!cwd) continue;
       const info = await deps.resolver.resolve(cwd).catch(() => null);
       if (!info || info.root !== worktreeRoot) continue;

@@ -13,6 +13,7 @@ import type { FetchRunner } from "../git/fetch";
 import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
 import { createHerdrState } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
+import { createSqlitePaneWorktreeOverrideRepository } from "../herdr/worktree-overrides";
 import { createInboxService } from "../inbox/service";
 import { createNotesService } from "../notes/service";
 import { createSqliteNotesRepository } from "../notes/sqlite-repository";
@@ -51,7 +52,11 @@ export function createTestApp(opts: TestAppOptions = {}) {
   const db = openDb(":memory:");
   applyMigrations(db);
   const fake = opts.fake ?? createFakeHerdr(emptySnapshot);
-  const state = createHerdrState(fake, { error() {}, warn() {} });
+  const state = createHerdrState(
+    fake,
+    { error() {}, warn() {} },
+    createSqlitePaneWorktreeOverrideRepository(db),
+  );
   const resolver = opts.resolver ?? gitWorktreeResolver;
   const events: ReviewEvent[] = opts.events ?? [];
   const review = createReviewRuntime({

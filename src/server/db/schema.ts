@@ -100,6 +100,13 @@ export const notes = sqliteTable(
   (t) => [index("notes_repo_key_idx").on(t.repoKey)],
 );
 
+export const paneWorktreeOverrides = sqliteTable("pane_worktree_overrides", {
+  paneId: text("pane_id").primaryKey(),
+  root: text("root").notNull(),
+  observedCwd: text("observed_cwd"),
+  setAt: text("set_at").notNull(),
+});
+
 export const decisions = sqliteTable(
   "decisions",
   {
