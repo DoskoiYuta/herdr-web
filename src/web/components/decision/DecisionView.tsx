@@ -738,10 +738,8 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
             <span className="shrink-0">session {truncateSessionId(decision.claudeSessionId)}</span>
           )}
           <span className="shrink-0">
-            {decision.answeredAt
-              ? `${elapsedMin} 分前に依頼・${answeredElapsedMin} 分前に${
-                  RESOLVED_VERB[decision.status as Exclude<DecisionStatus, "open">]
-                }`
+            {decision.status !== "open" && decision.answeredAt
+              ? `${elapsedMin} 分前に依頼・${answeredElapsedMin} 分前に${RESOLVED_VERB[decision.status]}`
               : `${elapsedMin} 分前に依頼`}
           </span>
           <span className="flex-1" />
