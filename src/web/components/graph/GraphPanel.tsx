@@ -6,6 +6,7 @@ import type { ReviewCountsResponse } from "@contract/review";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import { FetchBusyError, gitApi } from "@/lib/api";
+import { useStatus } from "@/components/files/hooks/useStatus";
 import { formatFetchAgo } from "./fetchAgo";
 import { useGraph } from "./hooks/useGraph";
 import { initialState, reduce } from "./state";
@@ -71,6 +72,10 @@ export function GraphPanel({
   const [anchorHash, setAnchorHash] = useState<string | null>(null);
 
   const graphQuery = useGraph(repo, state.all, 500, repoChangedTick, pollMs);
+  // uncommitted 行の「N files」用。Files タブの useStatus と同じキャッシュ
+  // （["status", repo, repoChangedTick]）を共有するので、Files が既に
+  // フェッチ済みなら追加リクエストは発生しない。
+  const statusQuery = useStatus(repo, repoChangedTick, pollMs);
 
   // -----------------------------------------------------------------------
   // fetch (git fetch --prune) — plan.md §4: read-only writes to
@@ -135,6 +140,9 @@ export function GraphPanel({
   const commits = useMemo(() => graphData?.commits ?? [], [graphData]);
   const refs = useMemo(() => graphData?.refs ?? [], [graphData]);
   const headHash = graphData?.head.hash ?? null;
+  // design.pen (P5): 読み込み済みコミット数 (uncommitted の疑似行を除く) と stash 数。
+  const commitCount = commits.length - (graphData?.hasUncommitted ? 1 : 0);
+  const stashCount = graphData?.stashes.length ?? 0;
 
   const refsByHash = useMemo(() => {
     const map = new Map<string, Ref[]>();
@@ -230,6 +238,11 @@ export function GraphPanel({
           </Tabs>
         </div>
         <div className="flex items-center gap-2">
+          {graphData && (
+            <span className="text-muted-foreground">
+              {commitCount} commits · {stashCount} stash
+            </span>
+          )}
           {lastFetchAt !== null && (
             <span className="text-muted-foreground">
               fetch {formatFetchAgo(Date.now() - lastFetchAt)}
@@ -266,6 +279,7 @@ export function GraphPanel({
           repo={repo}
           detailNote={detailNote}
           reviewCounts={reviewCounts}
+          uncommittedFileCount={statusQuery.data?.status.length}
           onSelect={handleSelect}
           onCloseDetail={handleCloseDetail}
           onOpenDiff={(hash) => {

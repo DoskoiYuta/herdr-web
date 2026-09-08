@@ -47,11 +47,11 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
 
   return (
     <div className="px-2 py-1 text-sm" role="region" aria-label="commit detail">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="font-mono text-xs text-muted-foreground">
-          {hash === UNCOMMITTED_HASH ? hash : hash.slice(0, 12)}
-        </span>
-      </div>
+      {(isUncommitted || query.isLoading || query.isError) && (
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-mono text-xs text-muted-foreground">{hash}</span>
+        </div>
+      )}
 
       {note && (
         <div className="mb-2 rounded-sm border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
@@ -69,20 +69,22 @@ export default function CommitDetail({ repo, hash, onOpenFile, note }: CommitDet
         </div>
       ) : query.data ? (
         <div className="flex flex-col gap-2">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
-            <dt className="text-muted-foreground">hash</dt>
-            <dd className="font-mono">{query.data.hash}</dd>
-            <dt className="text-muted-foreground">parents</dt>
-            <dd className="font-mono">
-              {query.data.parents.length > 0 ? query.data.parents.join(" ") : "(root)"}
-            </dd>
-            <dt className="text-muted-foreground">author</dt>
-            <dd>
-              {query.data.author} &lt;{query.data.authorEmail}&gt;
-            </dd>
-            <dt className="text-muted-foreground">date</dt>
-            <dd>{formatDate(query.data.authorDate)}</dd>
-          </dl>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="truncate">
+              <span className="font-mono text-foreground">{query.data.hash.slice(0, 12)}</span>
+              {" parent "}
+              <span className="font-mono">
+                {query.data.parents.length > 0
+                  ? query.data.parents.map((p) => p.slice(0, 7)).join(" ")
+                  : "(root)"}
+              </span>
+              {"   "}
+              {query.data.author} · {formatDate(query.data.authorDate)}
+            </span>
+            {onOpenFile && (
+              <span className="shrink-0">ファイルをクリックすると Diff の該当ファイルへ</span>
+            )}
+          </div>
           <pre className="whitespace-pre-wrap font-sans text-sm">
             {query.data.subject}
             {query.data.body ? `\n\n${query.data.body}` : ""}

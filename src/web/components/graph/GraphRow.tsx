@@ -33,6 +33,8 @@ export interface GraphRowProps {
   now?: number;
   /** review 件数バッジ用（F5-10）。unresolved/drafts が両方 0 なら何も出さない。 */
   reviewCount?: ReviewCount;
+  /** uncommitted 行だけに出す変更ファイル数（git status の件数）。 */
+  uncommittedFileCount?: number;
   onSelect(hash: string, event: { shiftKey: boolean }): void;
   /** Called when the inline detail block's close button is clicked. */
   onCloseDetail?(): void;
@@ -91,6 +93,7 @@ export default function GraphRow({
   detailNote,
   now,
   reviewCount,
+  uncommittedFileCount,
   onSelect,
   onOpenDiff,
   onOpenFile,
@@ -152,11 +155,14 @@ export default function GraphRow({
           <span className="truncate font-sans">
             {isUncommitted ? "(uncommitted changes)" : commit.subject}
           </span>
+          {isUncommitted && uncommittedFileCount !== undefined && (
+            <span className="shrink-0 text-muted-foreground">{uncommittedFileCount} files</span>
+          )}
         </div>
         {reviewCount && <ReviewCountBadge count={reviewCount} onOpenDiff={triggerOpenDiff} />}
         <div className="w-24 shrink-0 truncate text-muted-foreground">{commit.author}</div>
         <div className="w-16 shrink-0 text-right text-muted-foreground">
-          {isUncommitted ? "" : formatRelative(commit.authorDate, now)}
+          {isUncommitted ? "いま" : formatRelative(commit.authorDate, now)}
         </div>
         <div className="w-16 shrink-0 text-right text-muted-foreground">
           {isUncommitted ? "" : row.hash.slice(0, 7)}

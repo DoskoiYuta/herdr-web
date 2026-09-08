@@ -191,4 +191,22 @@ describe("GraphPanel commit selection", () => {
     await screen.findByText("commit 1");
     await screen.findByText("commit 2");
   });
+
+  // 無いと壊れる: ツールバーに読み込み済みコミット数・stash 数が出ず、
+  // 「さらに読み込む」が必要かの判断材料が無くなる（design.pen P5）。
+  test("shows the loaded commit count and stash count in the toolbar", async () => {
+    const graph = makeGraph();
+    graph.stashes = [{ hash: hash(9), selector: "stash@{0}", subject: "WIP" }];
+    setupFetchMock(graph);
+    render(
+      <GraphPanel
+        repo="/repo"
+        repoChangedTick={0}
+        onSelectCommit={() => {}}
+        virtualizerOptions={virtualizerOptions}
+      />,
+      { wrapper },
+    );
+    expect(await screen.findByText("3 commits · 1 stash")).toBeInTheDocument();
+  });
 });
