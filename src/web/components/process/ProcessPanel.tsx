@@ -69,10 +69,20 @@ function ProcessRow({ node, depth }: { node: ProcessTreeNode; depth: number }) {
         <TableCell className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {p.pid}
         </TableCell>
-        <TableCell className="max-w-0 text-xs" style={{ paddingLeft: 8 }}>
-          <span className="block truncate font-mono" title={p.command}>
-            {depth > 0 ? `${"│  ".repeat(depth - 1)}└ ${p.command}` : p.command}
-          </span>
+        <TableCell className="max-w-0 p-0 text-xs">
+          <div className="flex h-full items-stretch">
+            {Array.from({ length: depth }, (_, i) => (
+              <span
+                key={i}
+                aria-hidden
+                data-testid="indent-guide"
+                className="w-3.5 shrink-0 self-stretch border-l border-border"
+              />
+            ))}
+            <span className="min-w-0 flex-1 truncate py-1.5 pl-2 pr-2 font-mono" title={p.command}>
+              {p.command}
+            </span>
+          </div>
         </TableCell>
         <TableCell className="whitespace-nowrap text-right text-xs">{p.cpu.toFixed(1)}%</TableCell>
         <TableCell className="whitespace-nowrap text-right text-xs">

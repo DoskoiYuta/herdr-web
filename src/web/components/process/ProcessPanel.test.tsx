@@ -72,6 +72,27 @@ test("a child process (ppid within the set) renders nested under its parent", as
   expect(screen.getByText(":5173")).toBeInTheDocument();
 });
 
+// 無いと壊れる: 階層が罫線文字やインデント無しで潰れると、どのプロセスが
+// どの子かテーブルの見た目から分からなくなる (design.pen P10)。
+test("nesting depth is shown as one indent guide per ancestor, root rows have none", async () => {
+  listMock.mockResolvedValue({
+    processes: [
+      proc({ pid: 10, ppid: 0, command: "zsh" }),
+      proc({ pid: 20, ppid: 10, command: "bun dev" }),
+      proc({ pid: 30, ppid: 20, command: "node build.js" }),
+    ],
+  });
+  render(renderPanel());
+
+  const zshRow = (await screen.findByText("zsh")).closest("tr")!;
+  const bunRow = screen.getByText("bun dev").closest("tr")!;
+  const nodeRow = screen.getByText("node build.js").closest("tr")!;
+
+  expect(zshRow.querySelectorAll('[data-testid="indent-guide"]')).toHaveLength(0);
+  expect(bunRow.querySelectorAll('[data-testid="indent-guide"]')).toHaveLength(1);
+  expect(nodeRow.querySelectorAll('[data-testid="indent-guide"]')).toHaveLength(2);
+});
+
 // 無いと壊れる: プロセス数や LISTEN 中のポート数がテーブルを数えないと分からない。
 test("shows a summary of process count and listening port count", async () => {
   listMock.mockResolvedValue({
