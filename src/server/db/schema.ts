@@ -87,6 +87,19 @@ export const askEntries = sqliteTable(
   (t) => [primaryKey({ columns: [t.askId, t.seq] })],
 );
 
+export const notes = sqliteTable(
+  "notes",
+  {
+    id: text("id").primaryKey(),
+    repoKey: text("repo_key").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("notes_repo_key_idx").on(t.repoKey)],
+);
+
 export const decisions = sqliteTable(
   "decisions",
   {

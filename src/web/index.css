@@ -147,8 +147,9 @@
   }
 }
 
-/* Files タブの MarkdownView (@wysimark/react): read-only プレビューなので
- * ツールバーを非表示にする。ツールバーは $OuterContainer の
+/* Files タブの MarkdownView (@wysimark/react) は読み取り専用のときだけ
+ * ツールバーを非表示にする（Notes タブの編集モードは `.md-editable` を
+ * 使い、このセレクタの対象外にして出す）。ツールバーは $OuterContainer の
  * `[data-slate-editor]` を持つ子要素の直前の兄弟としてレンダリングされる
  * (node_modules/@wysimark/react/.dist/browser/index.esm.js の
  * renderEditable) — wysimark に readOnly / hideToolbar プロパティが無いため
@@ -162,7 +163,8 @@
  * 直書きしていて変数を通らない。`:root` と `.dark` は詳細度が同じ（両方
  * 単純なクラス相当）なので、後着の wysimark 側の `:root` に負けないよう
  * `html.dark` で上書きする（型 + クラスで詳細度を確実に上げる）。 */
-.md-readonly {
+.md-readonly,
+.md-editable {
   background: #fff;
   color-scheme: light;
 }
@@ -191,15 +193,17 @@ html.dark {
   --hr-color: rgb(82 82 91);
 }
 
-html.dark .md-readonly {
+html.dark .md-readonly,
+html.dark .md-editable {
   background: var(--background);
   color-scheme: dark;
 }
 
 /* 本文の基準色 (rgb(39 39 42) 直書き) は wysimark の外枠要素自身が持つため、
- * 継承では上書きできない。`.md-readonly` の直下の子（その外枠）を名指しし、
- * 変数を通らない要素にだけ !important を当てる。 */
-html.dark .md-readonly > div {
+ * 継承では上書きできない。`.md-readonly`/`.md-editable` の直下の子
+ * （その外枠）を名指しし、変数を通らない要素にだけ !important を当てる。 */
+html.dark .md-readonly > div,
+html.dark .md-editable > div {
   color: var(--foreground) !important;
 }
 

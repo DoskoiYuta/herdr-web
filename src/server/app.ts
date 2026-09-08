@@ -10,6 +10,7 @@ import { gitRoutes } from "./routes/git";
 import { herdrRoutes, type HerdrRoutesDeps } from "./routes/herdr";
 import { hwRoutes, type HwRoutesDeps } from "./routes/hw";
 import { inboxRoutes, type InboxRoutesDeps } from "./inbox/routes";
+import { notesRoutes, type NotesRoutesDeps } from "./routes/notes";
 import { procRoutes, type ProcRoutesDeps } from "./routes/proc";
 import {
   repoRoutes,
@@ -29,6 +30,7 @@ export type AppDeps = {
   herdr: HerdrRoutesDeps;
   ask: AskRoutesDeps;
   decision: DecisionRoutesDeps;
+  notes: NotesRoutesDeps;
   docker?: DockerRoutesDeps;
   proc?: ProcRoutesDeps;
   inbox: InboxRoutesDeps;
@@ -49,6 +51,7 @@ export function createApp(deps: AppDeps) {
     .route("/api/herdr", herdrRoutes(deps.herdr))
     .route("/api/ask", askRoutes(deps.ask))
     .route("/api/decision", decisionRoutes(deps.decision))
+    .route("/api/notes", notesRoutes(deps.notes))
     .route("/api/docker", dockerRoutes(deps.docker))
     .route("/api/proc", procRoutes(deps.proc))
     .route("/api/inbox", inboxRoutes(deps.inbox));

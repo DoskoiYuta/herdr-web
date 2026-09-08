@@ -51,9 +51,11 @@ import {
   DecisionSchema,
   type ListDecisionQuery,
 } from "../../contract/decision";
+import { type CreateNoteRequest, NoteSchema, type UpdateNoteRequest } from "../../contract/notes";
 export type { ForDiffMatch } from "../../contract/review";
 export type { Ask, AskWithSession, ForFileMatch } from "../../contract/ask";
 export type { Decision } from "../../contract/decision";
+export type { Note } from "../../contract/notes";
 export type { InboxItem, InboxResponse, InboxSection } from "../../contract/inbox";
 
 /**
@@ -678,6 +680,31 @@ export const decisionApi = {
     const res = await client.api.decision[":id"].resend.$post({ param: { id } });
     if (!res.ok) throw await decisionApiError(res, "POST /api/decision/:id/resend failed");
     return v.parse(DecisionSchema, await res.json());
+  },
+};
+
+export const notesApi = {
+  async list(repoKey: string) {
+    const res = await client.api.notes.$get({ query: { repo: repoKey } });
+    if (!res.ok) throw new Error(`GET /api/notes failed: ${res.status}`);
+    return v.parse(v.array(NoteSchema), await res.json());
+  },
+
+  async create(body: CreateNoteRequest) {
+    const res = await client.api.notes.$post({ json: body });
+    if (!res.ok) throw new Error(`POST /api/notes failed: ${res.status}`);
+    return v.parse(NoteSchema, await res.json());
+  },
+
+  async update(id: string, body: UpdateNoteRequest) {
+    const res = await client.api.notes[":id"].$patch({ param: { id }, json: body });
+    if (!res.ok) throw new Error(`PATCH /api/notes/:id failed: ${res.status}`);
+    return v.parse(NoteSchema, await res.json());
+  },
+
+  async delete(id: string) {
+    const res = await client.api.notes[":id"].$delete({ param: { id } });
+    if (!res.ok) throw new Error(`DELETE /api/notes/:id failed: ${res.status}`);
   },
 };
 

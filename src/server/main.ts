@@ -25,6 +25,8 @@ import { spawnDockerLogs } from "./docker/logsSpawn";
 import { createDockerRunner } from "./docker/runner";
 import { ensureHwShim } from "./hw-shim";
 import { createInboxService } from "./inbox/service";
+import { createNotesService } from "./notes/service";
+import { createSqliteNotesRepository } from "./notes/sqlite-repository";
 import { createReviewRuntime, openReviewDb } from "./review/runtime";
 import { spawnHerdr } from "./terminal/pty";
 import { createTermWss } from "./terminal/ws";
@@ -117,6 +119,11 @@ const decision = createDecisionRuntime({
 // F13-9: pick back up any decision whose delivery was mid-backoff when the process last exited.
 await decision.delivery.drainPending();
 
+const notes = createNotesService({
+  repository: createSqliteNotesRepository(reviewDb),
+  clock: { now: () => new Date() },
+});
+
 const inbox = createInboxService({
   reviewRepository: review.repository,
   askRepository: ask.repository,
@@ -155,6 +162,7 @@ const api = createApp({
     ...decision.routes,
     buildUrl: (id) => `http://${config.host}:${config.port}/decisions/${id}`,
   },
+  notes: { service: notes },
   docker: { allowedRoots: config.allowedRoots, cache: dockerCache },
   proc: { allowedRoots: config.allowedRoots },
   inbox: { service: inbox },
