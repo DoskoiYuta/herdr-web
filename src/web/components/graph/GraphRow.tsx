@@ -141,9 +141,9 @@ export default function GraphRow({
             cx={cx}
             cy={cy}
             r={NODE_RADIUS}
-            fill={nodeColor}
-            stroke={isHead ? "var(--foreground)" : "none"}
-            strokeWidth={isHead ? 1.5 : 0}
+            fill={isUncommitted ? "var(--card)" : nodeColor}
+            stroke={isUncommitted ? nodeColor : isHead ? "var(--foreground)" : "none"}
+            strokeWidth={isUncommitted ? 2 : isHead ? 1.5 : 0}
             strokeDasharray={isUncommitted ? "2,2" : undefined}
           />
           {isMerge && <circle cx={cx} cy={cy} r={NODE_RADIUS - 2} fill={nodeColor} stroke="none" />}
