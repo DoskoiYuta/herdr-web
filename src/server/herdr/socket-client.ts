@@ -246,7 +246,16 @@ export function createHerdrSocketClient(opts: HerdrSocketClientOptions): HerdrGa
       // status to connected. createHerdrState requests session.snapshot as
       // soon as status flips, so requesting it before the subscription is
       // actually established would miss any change in between.
-      if (subSocket === sock) void pingAndSetStatus();
+      if (subSocket === sock) {
+        void pingAndSetStatus().then(() => {
+          if (subSocket !== sock) return; // superseded by a newer connection attempt
+          // A failed ping here would otherwise leave the subscription alive
+          // without status ever flipping to connected (so snapshot is never
+          // fetched) until the socket happens to drop on its own: destroy it
+          // now to drive the existing close -> backoff reconnect path.
+          if (!status.connected) sock.destroy();
+        });
+      }
       return;
     }
     const parsed = v.safeParse(HerdrEventEnvelopeSchema, obj);

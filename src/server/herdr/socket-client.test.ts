@@ -365,6 +365,43 @@ describe("createHerdrSocketClient", () => {
     expect(sawSubscribeAck).toBe(true);
   });
 
+  // Without this, a single dropped ping right after the subscribe ack leaves
+  // the client "disconnected" in the UI forever (subscription alive, status
+  // never flips, so snapshot is never fetched) until herdr-web is restarted.
+  test("a failed ping after the subscribe ack drops the socket and reconnects", async () => {
+    const server = new FakeHerdrServer(tmpSocketPath());
+    let subscribeCount = 0;
+    let pingCount = 0;
+    server.onLine = (socket, line) => {
+      if (line.method === "events.subscribe") {
+        subscribeCount++;
+        server.send(socket, { id: line.id, result: { type: "subscription_started" } });
+      } else if (line.method === "ping") {
+        pingCount++;
+        if (pingCount === 1) return; // simulate the first ping never responding
+        server.send(socket, {
+          id: line.id,
+          result: { type: "pong", version: "0.9.0", protocol: 22 },
+        });
+      }
+    };
+    await server.listen();
+    cleanups.push(() => server.stop());
+
+    const client = createHerdrSocketClient({
+      socketPath: server.socketPath,
+      logger: quietLogger(),
+      requestTimeoutMs: 30,
+      backoffInitialMs: 20,
+      backoffMaxMs: 50,
+    });
+    cleanups.push(() => client.close());
+
+    await waitFor(() => client.status().connected, 3000);
+    expect(subscribeCount).toBeGreaterThanOrEqual(2);
+    expect(pingCount).toBeGreaterThanOrEqual(2);
+  });
+
   test("subscribes on a dedicated connection and keeps streaming events after the ack", async () => {
     const server = new FakeHerdrServer(tmpSocketPath());
     let subSocket: net.Socket | null = null;
