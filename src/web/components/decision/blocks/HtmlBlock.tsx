@@ -5,10 +5,12 @@
 // sandbox. Without `allow-same-origin` the iframe document sits in an
 // opaque origin, so this page can never read `contentDocument` — height
 // tracking instead runs a small script *inside* the srcdoc (own-document
-// access is fine there) that posts `scrollHeight` via `postMessage`; that
-// script is inert when `allowScripts` is false, same as any other script in
-// the embedded markup, so a script-less request just keeps the initial
-// height (resize-y still lets a human enlarge it by hand).
+// access is fine there) that posts `scrollHeight` via `postMessage`.
+// `allow-scripts` is therefore always granted; when `allowScripts` is false
+// the embedded markup's own scripts (inline handlers and `javascript:` URLs
+// included) are blocked by a per-render nonce CSP that admits only the
+// measuring script. The nonce is unguessable by the markup because it is
+// generated after the markup was authored.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsDark } from "@/lib/useIsDark";
 
@@ -21,18 +23,22 @@ function themeVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function buildSrcDoc(html: string, isDark: boolean): string {
+function buildSrcDoc(html: string, isDark: boolean, nonce: string | null): string {
   const background = themeVar("--background");
   const foreground = themeVar("--foreground");
+  const csp = nonce
+    ? `<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'">`
+    : "";
   return `<!doctype html>
 <html style="color-scheme:${isDark ? "dark" : "light"}">
 <head>
 <meta charset="utf-8">
+${csp}
 <style>
   html, body { margin: 0; background: ${background}; color: ${foreground}; }
   body { font-family: sans-serif; padding: 8px; }
 </style>
-<script>
+<script${nonce ? ` nonce="${nonce}"` : ""}>
   (function () {
     function post() {
       parent.postMessage(
@@ -54,7 +60,10 @@ export function HtmlBlock({ html, allowScripts }: { html: string; allowScripts: 
   const isDark = useIsDark();
   const [height, setHeight] = useState(INITIAL_HEIGHT);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const srcDoc = useMemo(() => buildSrcDoc(html, isDark), [html, isDark]);
+  const srcDoc = useMemo(
+    () => buildSrcDoc(html, isDark, allowScripts ? null : crypto.randomUUID()),
+    [html, isDark, allowScripts],
+  );
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -81,7 +90,7 @@ export function HtmlBlock({ html, allowScripts }: { html: string; allowScripts: 
       ref={iframeRef}
       title="html block"
       srcDoc={srcDoc}
-      sandbox={allowScripts ? "allow-scripts" : ""}
+      sandbox="allow-scripts"
       style={{ height }}
       className="w-full resize-y self-start rounded-md border border-border"
     />

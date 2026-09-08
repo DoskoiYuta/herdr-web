@@ -84,43 +84,59 @@ describe("diff Block", () => {
 });
 
 describe("html Block sandbox", () => {
-  // 無いと壊れる: allowScripts が既定で true 扱いになり、依頼が埋め込む
-  // 任意の html が同一オリジンの権限まで持って実行できてしまう。
-  test.each<[boolean, string]>([
-    [false, ""],
-    [true, "allow-scripts"],
-  ])("allowScripts=%s -> sandbox=%p", (allowScripts, expected) => {
+  // 無いと壊れる: allow-same-origin が付くと、依頼が埋め込む任意の html が
+  // 同一オリジンの権限（cookie / localStorage / fetch）まで持って実行できてしまう。
+  test.each([false, true])("allowScripts=%s never grants allow-same-origin", (allowScripts) => {
     render(<BlockView block={{ kind: "html", html: "<p>hi</p>", allowScripts }} />);
     const iframe = screen.getByTitle("html block");
-    expect(iframe.getAttribute("sandbox")).toBe(expected);
-    expect(iframe.getAttribute("sandbox")).not.toMatch(/allow-same-origin/);
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+  });
+
+  // 無いと壊れる: allowScripts=false でも埋め込み側の script・インラインハンドラが
+  // 実行され、srcdoc に同居する計測スクリプトと同じ権限を持ってしまう。
+  test("allowScripts=false admits only the nonce'd measuring script", () => {
+    render(<BlockView block={{ kind: "html", html: "<p>hi</p>", allowScripts: false }} />);
+    const srcdoc = (screen.getByTitle("html block") as HTMLIFrameElement).getAttribute("srcdoc")!;
+    const nonce = /script-src 'nonce-([^']+)'/.exec(srcdoc)?.[1];
+    expect(nonce).toBeTruthy();
+    expect(srcdoc).not.toMatch(/unsafe-inline/);
+    expect(srcdoc).toContain(`<script nonce="${nonce}">`);
+  });
+
+  test("allowScripts=true has no CSP so the embedded scripts run", () => {
+    render(<BlockView block={{ kind: "html", html: "<p>hi</p>", allowScripts: true }} />);
+    const srcdoc = (screen.getByTitle("html block") as HTMLIFrameElement).getAttribute("srcdoc")!;
+    expect(srcdoc).not.toMatch(/Content-Security-Policy/);
   });
 
   // 無いと壊れる: srcdoc 内スクリプトの postMessage を無視したままだと、
-  // 中身がどんなに小さくても常に初期の固定高さで表示され続ける。
-  test("grows to the height reported by the srcdoc's own postMessage", () => {
-    render(<BlockView block={{ kind: "html", html: "<p>hi</p>", allowScripts: true }} />);
-    const iframe = screen.getByTitle("html block") as HTMLIFrameElement;
-    fireEvent(
-      window,
-      new MessageEvent("message", {
-        data: { source: "herdr-html-block", height: 321 },
-        source: iframe.contentWindow,
-      }),
-    );
-    expect(iframe.style.height).toBe("321px");
+  // 中身がどんなに大きくても常に初期の固定高さで表示され続ける。
+  test.each([false, true])(
+    "allowScripts=%s grows to the height reported by the srcdoc's own postMessage",
+    (allowScripts) => {
+      render(<BlockView block={{ kind: "html", html: "<p>hi</p>", allowScripts }} />);
+      const iframe = screen.getByTitle("html block") as HTMLIFrameElement;
+      fireEvent(
+        window,
+        new MessageEvent("message", {
+          data: { source: "herdr-html-block", height: 321 },
+          source: iframe.contentWindow,
+        }),
+      );
+      expect(iframe.style.height).toBe("321px");
 
-    // 無いと壊れる: 依頼が埋め込む html が任意の height を送れてしまい、
-    // 依頼ビュー全体をその値まで伸ばせてしまう。
-    fireEvent(
-      window,
-      new MessageEvent("message", {
-        data: { source: "herdr-html-block", height: 1e9 },
-        source: iframe.contentWindow,
-      }),
-    );
-    expect(iframe.style.height).toBe("4000px");
-  });
+      // 無いと壊れる: 依頼が埋め込む html が任意の height を送れてしまい、
+      // 依頼ビュー全体をその値まで伸ばせてしまう。
+      fireEvent(
+        window,
+        new MessageEvent("message", {
+          data: { source: "herdr-html-block", height: 1e9 },
+          source: iframe.contentWindow,
+        }),
+      );
+      expect(iframe.style.height).toBe("4000px");
+    },
+  );
 });
 
 describe("image Block", () => {
