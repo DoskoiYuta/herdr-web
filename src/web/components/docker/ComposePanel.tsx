@@ -8,7 +8,17 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { AlertTriangle, Box, PackageX, Layers, Plug, PackageSearch, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Box,
+  ChevronDown,
+  ChevronRight,
+  PackageX,
+  Layers,
+  Plug,
+  PackageSearch,
+  RefreshCw,
+} from "lucide-react";
 import type { DockerContainer, DockerGroup, DockerGroupKind } from "@contract/docker";
 import {
   CommandFailedError,
@@ -90,24 +100,21 @@ function StateDot({ state }: { state: string }) {
   );
 }
 
-function GroupHeaderRow({ group }: { group: DockerGroup }) {
+function GroupCardHeader({ group }: { group: DockerGroup }) {
   const Icon = KIND_ICON[group.kind];
   const { running, exited } = groupCounts(group.containers);
   return (
-    <TableRow className="hover:bg-muted/40">
-      <TableCell colSpan={5} className="bg-muted/40 text-xs">
-        <span className="inline-flex items-center gap-2">
-          <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-          <span className="font-medium">{group.name}</span>
-          <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
-            {KIND_LABEL[group.kind]}
-          </span>
-          <span className="text-muted-foreground">
-            {running} running · {exited} exited
-          </span>
-        </span>
-      </TableCell>
-    </TableRow>
+    <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-xs">
+      <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+      <span className="font-medium">{group.name}</span>
+      <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
+        {KIND_LABEL[group.kind]}
+      </span>
+      <span className="flex-1" />
+      <span className="text-muted-foreground">
+        {running} running · {exited} exited
+      </span>
+    </div>
   );
 }
 
@@ -131,8 +138,17 @@ function ContainerRow({
       )}
     >
       <TableCell className="whitespace-nowrap text-xs">
-        <span className="font-mono">{c.service ?? ""}</span>{" "}
-        <span className="text-muted-foreground">{c.name}</span>
+        <span className="inline-flex items-center gap-1.5">
+          {expanded ? (
+            <ChevronDown className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
+          <span className="flex flex-col leading-tight">
+            <span className="font-medium">{c.service ?? ""}</span>
+            <span className="font-mono text-muted-foreground">{c.name}</span>
+          </span>
+        </span>
       </TableCell>
       <TableCell className="whitespace-nowrap text-xs">
         <StateDot state={c.state} />
@@ -140,7 +156,7 @@ function ContainerRow({
       </TableCell>
       <TableCell className="whitespace-nowrap font-mono text-xs">
         {c.ports.length > 0
-          ? c.ports.map((p) => `${p.host}→${p.container}/${p.proto}`).join(" ")
+          ? c.ports.map((p) => `${p.host} → ${p.container}/${p.proto}`).join(" ")
           : "—"}
       </TableCell>
       <TableCell className="max-w-0 text-xs text-muted-foreground">
@@ -172,6 +188,54 @@ function ContainerLogsRow({
         <DockerLogsView root={root} id={id} name={name} onClose={onClose} />
       </TableCell>
     </TableRow>
+  );
+}
+
+function ComposeGroupCard({
+  group,
+  root,
+  expandedId,
+  onToggle,
+}: {
+  group: DockerGroup;
+  root: string;
+  expandedId: string | null;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-border">
+      <GroupCardHeader group={group} />
+      <Table>
+        <TableHeader className="bg-background">
+          <TableRow>
+            <TableHead className="w-full text-xs">Service</TableHead>
+            <TableHead className="w-px whitespace-nowrap text-xs">State</TableHead>
+            <TableHead className="w-px whitespace-nowrap text-xs">Ports</TableHead>
+            <TableHead className="w-px whitespace-nowrap text-xs">Image</TableHead>
+            <TableHead className="w-px whitespace-nowrap text-xs">Up</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {group.containers.map((c) => (
+            <Fragment key={c.id}>
+              <ContainerRow
+                container={c}
+                expanded={expandedId === c.id}
+                onToggle={() => onToggle(c.id)}
+              />
+              {expandedId === c.id && (
+                <ContainerLogsRow
+                  root={root}
+                  id={c.id}
+                  name={c.name}
+                  onClose={() => onToggle(c.id)}
+                />
+              )}
+            </Fragment>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -281,41 +345,17 @@ export function ComposePanel({ root }: ComposePanelProps) {
             description="compose の working_dir または devcontainer の local_folder がこの worktree 配下にあるコンテナを表示します。"
           />
         ) : (
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              <TableRow>
-                <TableHead className="w-full text-xs">Service</TableHead>
-                <TableHead className="w-px whitespace-nowrap text-xs">State</TableHead>
-                <TableHead className="w-px whitespace-nowrap text-xs">Ports</TableHead>
-                <TableHead className="w-px whitespace-nowrap text-xs">Image</TableHead>
-                <TableHead className="w-px whitespace-nowrap text-xs">Up</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {groups.map((group) => (
-                <Fragment key={`${group.kind}:${group.name}`}>
-                  <GroupHeaderRow group={group} />
-                  {group.containers.map((c) => (
-                    <Fragment key={c.id}>
-                      <ContainerRow
-                        container={c}
-                        expanded={expandedId === c.id}
-                        onToggle={() => setExpandedId((prev) => (prev === c.id ? null : c.id))}
-                      />
-                      {expandedId === c.id && (
-                        <ContainerLogsRow
-                          root={root}
-                          id={c.id}
-                          name={c.name}
-                          onClose={() => setExpandedId(null)}
-                        />
-                      )}
-                    </Fragment>
-                  ))}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="flex flex-col gap-2 p-2">
+            {groups.map((group) => (
+              <ComposeGroupCard
+                key={`${group.kind}:${group.name}`}
+                group={group}
+                root={root}
+                expandedId={expandedId}
+                onToggle={(id) => setExpandedId((prev) => (prev === id ? null : id))}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>

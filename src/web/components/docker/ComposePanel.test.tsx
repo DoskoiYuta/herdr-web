@@ -71,7 +71,7 @@ test("renders a group's containers with service, state, and ports", async () => 
 
   expect(await screen.findByText("web")).toBeInTheDocument();
   expect(screen.getByText("herdr-web-1")).toBeInTheDocument();
-  expect(screen.getByText("8080→80/tcp")).toBeInTheDocument();
+  expect(screen.getByText("8080 → 80/tcp")).toBeInTheDocument();
 });
 
 test("a container with no published ports shows a placeholder instead of a blank cell", async () => {

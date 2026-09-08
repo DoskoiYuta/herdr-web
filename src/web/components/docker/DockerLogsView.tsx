@@ -80,7 +80,7 @@ export function DockerLogsView({ root, id, name, onClose, className }: DockerLog
   }
 
   return (
-    <div className={cn("flex max-h-64 min-h-0 flex-col", className)}>
+    <div className={cn("flex flex-col", className)}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 font-mono text-xs text-muted-foreground">
         <span className="truncate">docker logs --follow --tail 200 {name}</span>
         <span className="flex shrink-0 items-center gap-2 font-sans">
@@ -106,12 +106,15 @@ export function DockerLogsView({ root, id, name, onClose, className }: DockerLog
           )}
         </span>
       </div>
-      <div className="relative min-h-0 flex-1">
+      {/* Fixed height, not flex-1: this view is embedded in a table cell
+       * (ComposePanel's expanded row), whose height is intrinsic — a
+       * flex-1 child there resolves to 0 and the log body disappears. */}
+      <div className="relative h-56 shrink-0">
         <div
           ref={containerRef}
           data-testid="docker-logs-scroll"
           onScroll={handleScroll}
-          className="h-full overflow-auto whitespace-pre-wrap break-all bg-muted/20 p-2 font-mono text-xs"
+          className="h-56 overflow-auto whitespace-pre-wrap break-all bg-muted/20 p-2 font-mono text-[11px]"
         >
           {lines.map((line, i) => (
             <div key={i} className={line.stream === "stderr" ? "text-destructive" : undefined}>
