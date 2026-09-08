@@ -81,6 +81,25 @@ test("refetches when repoChangedTick changes", async () => {
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
+test("remounting with a new repoChangedTick after unmount fetches fresh data instead of serving the stale cache", async () => {
+  const client = new QueryClient();
+
+  const first = renderHook(() => usePatch({ repo: "/repo", repoChangedTick: 0 }), {
+    wrapper: wrapper(client),
+  });
+  await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  first.unmount();
+
+  fetchMock.mockImplementation(async () => jsonResponse(patchResponseBody("h2")));
+  const second = renderHook(() => usePatch({ repo: "/repo", repoChangedTick: 1 }), {
+    wrapper: wrapper(client),
+  });
+
+  await waitFor(() => expect(second.result.current.data?.hash).toBe("h2"));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
 test("staleTime Infinity means switching repo/from/to keys does not refetch an already-cached key", async () => {
   const client = new QueryClient();
   const { result, rerender } = renderHook(
