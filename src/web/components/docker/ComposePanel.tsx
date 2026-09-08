@@ -175,6 +175,16 @@ function ContainerLogsRow({
   );
 }
 
+/** `CommandFailedError` は `docker` の非ゼロ終了全般（daemon 不達に限らない）
+ * で投げられる — 「Docker を起動してください」は daemon 不達のときだけ足す。
+ * それ以外は detail をそのまま見せ、detail が空でも「（503）」だけにはしない。 */
+function commandFailedDescription(detail: string): string {
+  if (detail.includes("Cannot connect to the Docker daemon")) {
+    return `${detail}（503）。Docker を起動してください。`;
+  }
+  return detail.length > 0 ? `${detail}（503）。` : "docker コマンドが失敗しました（503）。";
+}
+
 function errorPanelState(error: unknown, onRetry: () => void) {
   if (error instanceof CommandUnavailableError) {
     return (
@@ -193,7 +203,7 @@ function errorPanelState(error: unknown, onRetry: () => void) {
         card
         icon={Plug}
         title={error.title}
-        description={`${error.detail}（503）。Docker を起動してください。`}
+        description={commandFailedDescription(error.detail)}
         tone="error"
         action={{ label: "再試行", onClick: onRetry }}
       />
@@ -251,7 +261,6 @@ export function ComposePanel({ root }: ComposePanelProps) {
           <span>{projectSummary(groups)}</span>
           <span className="inline-flex items-center gap-1">
             5 秒ごとに更新
-            {query.dataUpdatedAt > 0 && ` · ${secondsAgo(query.dataUpdatedAt)}秒前`}
             <RefreshCw
               className={cn("size-3", query.isFetching && "animate-spin")}
               aria-hidden="true"

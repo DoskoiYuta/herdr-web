@@ -17,7 +17,8 @@ vi.mock("./DockerLogsView", () => ({
   DockerLogsView: ({ id }: { root: string; id: string }) => <div>logs:{id}</div>,
 }));
 
-const { CommandUnavailableError, CommandTimeoutError } = await import("@/lib/api");
+const { CommandUnavailableError, CommandFailedError, CommandTimeoutError } =
+  await import("@/lib/api");
 const { ComposePanel } = await import("./ComposePanel");
 
 function renderPanel(root = "/repo"): ReactElement {
@@ -221,6 +222,31 @@ test("docker missing (CommandUnavailableError) shows a header error", async () =
   render(renderPanel());
 
   expect(await screen.findByText(/docker が見つかりません/)).toBeInTheDocument();
+});
+
+// 無いと壊れる: CommandFailedError は docker の非ゼロ終了全般で投げられるのに
+// 「Docker を起動してください」が常に出ると、daemon 以外の失敗（権限エラー等）
+// でも誤った対処を促してしまう。
+test("a 503 unrelated to the daemon shows the raw detail, not the daemon-restart hint", async () => {
+  containersMock.mockRejectedValue(
+    new CommandFailedError("Docker daemon に接続できません", "permission denied"),
+  );
+  render(renderPanel());
+
+  expect(await screen.findByText(/permission denied/)).toBeInTheDocument();
+  expect(screen.queryByText(/Docker を起動してください/)).not.toBeInTheDocument();
+});
+
+test("a 503 caused by an unreachable daemon still shows the daemon-restart hint", async () => {
+  containersMock.mockRejectedValue(
+    new CommandFailedError(
+      "Docker daemon に接続できません",
+      "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+    ),
+  );
+  render(renderPanel());
+
+  expect(await screen.findByText(/Docker を起動してください/)).toBeInTheDocument();
 });
 
 test("an empty root does not call the API and shows a placeholder instead", () => {
