@@ -107,7 +107,11 @@ function errorPanelState(error: unknown, onRetry: () => void) {
         card
         icon={Plug}
         title={error.title}
-        description={`${error.detail}（503）。`}
+        description={
+          error.detail.length > 0
+            ? `${error.detail}（503）。`
+            : "プロセス一覧の取得に失敗しました（503）。"
+        }
         tone="error"
         action={{ label: "再試行", onClick: onRetry }}
       />

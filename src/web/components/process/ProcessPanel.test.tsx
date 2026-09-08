@@ -11,7 +11,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   procApi: { list: (...args: [string]) => listMock(...args) },
 }));
 
-const { CommandUnavailableError, CommandTimeoutError } = await import("@/lib/api");
+const { CommandUnavailableError, CommandFailedError, CommandTimeoutError } =
+  await import("@/lib/api");
 const { ProcessPanel } = await import("./ProcessPanel");
 
 function renderPanel(root = "/repo"): ReactElement {
@@ -92,6 +93,16 @@ test("ps/lsof missing (CommandUnavailableError) shows a header error", async () 
   render(renderPanel());
 
   expect(await screen.findByText(/lsof が見つかりません/)).toBeInTheDocument();
+});
+
+// 無いと壊れる: サーバーの stderr が空のとき「（503）。」だけが表示され、
+// 何が起きたのか一切分からなくなる。
+test("a 503 with no stderr detail still shows a meaningful description", async () => {
+  listMock.mockRejectedValue(new CommandFailedError("プロセス一覧の取得に失敗しました", ""));
+  render(renderPanel());
+
+  const description = await screen.findByText(/503/);
+  expect(description.textContent).not.toBe("（503）。");
 });
 
 test("an empty root does not call the API and shows a placeholder instead", () => {
