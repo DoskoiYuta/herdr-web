@@ -381,7 +381,7 @@ test("shows the binary-file message with size", async () => {
   render(renderPanel());
   (await screen.findByText("bin")).click();
   expect(await screen.findByText("バイナリファイル")).toBeInTheDocument();
-  expect(screen.getAllByText("42 bytes").length).toBeGreaterThan(0);
+  expect(screen.getByText("bin · 42 bytes")).toBeInTheDocument();
 });
 
 test("shows the too-large message with size and the cap", async () => {

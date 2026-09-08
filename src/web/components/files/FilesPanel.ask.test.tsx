@@ -309,6 +309,18 @@ test("choosing a pane target in the dialog sends { kind: 'pane', paneId }", asyn
   );
 });
 
+// 無いと壊れる: ファイルヘッダに質問件数が出ないと、コードビューをスクロール
+// して探すまでこのファイルに質問が付いているか分からない。
+test("the file header shows a 質問 N badge counting all for-file matches", async () => {
+  forFileMock.mockResolvedValue([
+    { ask: makeAsk({ id: "anchored-1" }), startLine: 2, endLine: 2 },
+    { ask: makeAsk({ id: "outdated-1" }), startLine: null, endLine: null },
+  ] satisfies ForFileMatch[]);
+  render(renderPanel());
+  (await screen.findByText("a.ts")).click();
+  expect(await screen.findByText("質問 2")).toBeInTheDocument();
+});
+
 test("anchored for-file matches render inline as ask threads", async () => {
   forFileMock.mockResolvedValue([
     { ask: makeAsk({ id: "anchored-1" }), startLine: 2, endLine: 2 },

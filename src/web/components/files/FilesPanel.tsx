@@ -44,6 +44,9 @@ import { agentPanesAt } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import { collectDroppedFiles } from "@/lib/dropEntries";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
+import { formatBytes } from "@/lib/formatBytes";
+import { languageLabel } from "@/lib/languageLabel";
+import { Badge } from "@/components/ui/badge";
 import { AskComposer } from "@/components/ask/AskComposer";
 import { AskMismatchStrip } from "@/components/ask/AskMismatchStrip";
 import { AskTargetDialog } from "@/components/ask/AskTargetDialog";
@@ -621,8 +624,23 @@ export function FilesPanel({
           )}
           {selectedPath !== null && (
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs text-muted-foreground">
-              <span className="truncate">{selectedPath}</span>
+              <span className="truncate">
+                {[
+                  selectedPath,
+                  fileQuery.data && "size" in fileQuery.data
+                    ? formatBytes(fileQuery.data.size)
+                    : null,
+                  languageLabel(selectedPath),
+                ]
+                  .filter((part): part is string => part !== null)
+                  .join(" · ")}
+              </span>
               <div className="flex shrink-0 items-center gap-2">
+                {matches.length > 0 && (
+                  <Badge variant="secondary" className="shrink-0">
+                    質問 {matches.length}
+                  </Badge>
+                )}
                 {previewKind === null && isMarkdownPath(selectedPath) && (
                   <Tabs value={mdMode} onValueChange={(v) => onMdModeChange(v as typeof mdMode)}>
                     <TabsList>
@@ -635,9 +653,6 @@ export function FilesPanel({
                   <span>
                     {imageDims.width}×{imageDims.height}
                   </span>
-                )}
-                {fileQuery.data && "size" in fileQuery.data && (
-                  <span>{fileQuery.data.size} bytes</span>
                 )}
               </div>
             </div>
