@@ -7940,9 +7940,9 @@
                         },
                         {
                           "type": "frame",
-                          "id": "ZK0wM",
-                          "name": "revc",
-                          "fill": "#A78BFA1F",
+                          "id": "q7G73D",
+                          "name": "waiting chip",
+                          "fill": "$x:--muted",
                           "cornerRadius": 10,
                           "gap": 4,
                           "padding": [
@@ -7953,19 +7953,19 @@
                           "children": [
                             {
                               "type": "icon",
-                              "id": "O0gup",
+                              "id": "uK06T",
                               "name": "i",
                               "width": 11,
                               "height": 11,
-                              "icon": "message-square-diff",
+                              "icon": "message-square",
                               "library": "lucide",
-                              "fill": "$kind-review"
+                              "fill": "$x:--muted-foreground"
                             },
                             {
                               "type": "text",
-                              "id": "ftlDg",
+                              "id": "rfzQx",
                               "name": "n",
-                              "fill": "$kind-review",
+                              "fill": "$x:--muted-foreground",
                               "content": "1",
                               "lineHeight": 1.4,
                               "fontFamily": "Inter",
@@ -8172,9 +8172,9 @@
                         },
                         {
                           "type": "frame",
-                          "id": "LndBk",
-                          "name": "revc",
-                          "fill": "#A78BFA1F",
+                          "id": "AQP0U",
+                          "name": "replied chip",
+                          "fill": "#0EA5E91F",
                           "cornerRadius": 10,
                           "gap": 4,
                           "padding": [
@@ -8185,20 +8185,56 @@
                           "children": [
                             {
                               "type": "icon",
-                              "id": "LM7e4",
+                              "id": "jQ72S",
                               "name": "i",
                               "width": 11,
                               "height": 11,
-                              "icon": "message-square-diff",
+                              "icon": "message-circle-reply",
                               "library": "lucide",
-                              "fill": "$kind-review"
+                              "fill": "$replied"
                             },
                             {
                               "type": "text",
-                              "id": "SjPvn",
+                              "id": "hDdDA",
                               "name": "n",
-                              "fill": "$kind-review",
-                              "content": "2",
+                              "fill": "$replied",
+                              "content": "1",
+                              "lineHeight": 1.4,
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "AH6ni",
+                          "name": "waiting chip",
+                          "fill": "$x:--muted",
+                          "cornerRadius": 10,
+                          "gap": 4,
+                          "padding": [
+                            1,
+                            6
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "IxfZJ",
+                              "name": "i",
+                              "width": 11,
+                              "height": 11,
+                              "icon": "message-square",
+                              "library": "lucide",
+                              "fill": "$x:--muted-foreground"
+                            },
+                            {
+                              "type": "text",
+                              "id": "jlyJx",
+                              "name": "n",
+                              "fill": "$x:--muted-foreground",
+                              "content": "1",
                               "lineHeight": 1.4,
                               "fontFamily": "Inter",
                               "fontSize": 10,
@@ -8963,9 +8999,9 @@
                         },
                         {
                           "type": "frame",
-                          "id": "PKqBE",
-                          "name": "revc",
-                          "fill": "#A78BFA1F",
+                          "id": "apRIy",
+                          "name": "replied chip",
+                          "fill": "#0EA5E91F",
                           "cornerRadius": 10,
                           "gap": 4,
                           "padding": [
@@ -8976,19 +9012,19 @@
                           "children": [
                             {
                               "type": "icon",
-                              "id": "NMXvI",
+                              "id": "w7Eek",
                               "name": "i",
                               "width": 11,
                               "height": 11,
-                              "icon": "message-square-diff",
+                              "icon": "message-circle-reply",
                               "library": "lucide",
-                              "fill": "$kind-review"
+                              "fill": "$replied"
                             },
                             {
                               "type": "text",
-                              "id": "QSwYI",
+                              "id": "v0TxOp",
                               "name": "n",
-                              "fill": "$kind-review",
+                              "fill": "$replied",
                               "content": "1",
                               "lineHeight": 1.4,
                               "fontFamily": "Inter",
@@ -18072,6 +18108,7 @@
                       "id": "mWXCK",
                       "name": "p 48213",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18079,7 +18116,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -18126,6 +18163,7 @@
                           "id": "gBkeO",
                           "name": "cmd",
                           "width": "fill_container",
+                          "height": "fill_container",
                           "gap": 4,
                           "alignItems": "center",
                           "children": [
@@ -18208,6 +18246,7 @@
                       "id": "u2pKjX",
                       "name": "p 48290",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18215,7 +18254,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -18262,31 +18301,32 @@
                           "id": "b0obh",
                           "name": "cmd",
                           "width": "fill_container",
-                          "gap": 4,
+                          "height": "fill_container",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "Bba71",
-                              "name": "ind",
+                              "id": "wtFG2",
+                              "name": "indent guide 1",
                               "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "k0VWi8",
+                              "name": "command gap",
+                              "width": 8,
                               "height": 1
                             },
                             {
                               "type": "text",
-                              "id": "Mf5ni",
-                              "name": "tree",
-                              "fill": "$x:--border",
-                              "content": "├",
-                              "lineHeight": 1.5,
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "normal"
-                            },
-                            {
-                              "type": "text",
                               "id": "iq6lJ",
-                              "name": "c",
+                              "name": "command",
                               "fill": "$x:--foreground",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
@@ -18362,6 +18402,7 @@
                       "id": "VgbWN",
                       "name": "p 51002",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18369,7 +18410,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -18416,31 +18457,44 @@
                           "id": "ZbKjy",
                           "name": "cmd",
                           "width": "fill_container",
-                          "gap": 4,
+                          "height": "fill_container",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "kr4cW",
-                              "name": "ind",
-                              "width": 28,
+                              "id": "VjLKW",
+                              "name": "indent guide 1",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "EdGAL",
+                              "name": "indent guide 2",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "SwuO8",
+                              "name": "command gap",
+                              "width": 8,
                               "height": 1
                             },
                             {
                               "type": "text",
-                              "id": "c7Y8XJ",
-                              "name": "tree",
-                              "fill": "$x:--border",
-                              "content": "├",
-                              "lineHeight": 1.5,
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "normal"
-                            },
-                            {
-                              "type": "text",
                               "id": "BhoAc",
-                              "name": "c",
+                              "name": "command",
                               "fill": "$x:--foreground",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
@@ -18516,6 +18570,7 @@
                       "id": "foya2",
                       "name": "p 51010",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18523,7 +18578,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -18577,31 +18632,56 @@
                           "id": "u2m8zq",
                           "name": "cmd",
                           "width": "fill_container",
-                          "gap": 4,
+                          "height": "fill_container",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "p8IiO",
-                              "name": "ind",
-                              "width": 42,
+                              "id": "bdM7F",
+                              "name": "indent guide 1",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "m3vnv",
+                              "name": "indent guide 2",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "X4QgGu",
+                              "name": "indent guide 3",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "eIyXr",
+                              "name": "command gap",
+                              "width": 8,
                               "height": 1
                             },
                             {
                               "type": "text",
-                              "id": "A8URq3",
-                              "name": "tree",
-                              "fill": "$x:--border",
-                              "content": "├",
-                              "lineHeight": 1.5,
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "normal"
-                            },
-                            {
-                              "type": "text",
                               "id": "V82cac",
-                              "name": "c",
+                              "name": "command",
                               "fill": "$x:--foreground",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
@@ -18677,6 +18757,7 @@
                       "id": "wcadu",
                       "name": "p 51011",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18684,7 +18765,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -18738,31 +18819,56 @@
                           "id": "RQQ4E",
                           "name": "cmd",
                           "width": "fill_container",
-                          "gap": 4,
+                          "height": "fill_container",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "rIZ2b",
-                              "name": "ind",
-                              "width": 42,
+                              "id": "MxJat",
+                              "name": "indent guide 1",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "l2kp2",
+                              "name": "indent guide 2",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "J7XwE",
+                              "name": "indent guide 3",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Tnw4B",
+                              "name": "command gap",
+                              "width": 8,
                               "height": 1
                             },
                             {
                               "type": "text",
-                              "id": "P3bb9n",
-                              "name": "tree",
-                              "fill": "$x:--border",
-                              "content": "└",
-                              "lineHeight": 1.5,
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "normal"
-                            },
-                            {
-                              "type": "text",
                               "id": "nLmzT",
-                              "name": "c",
+                              "name": "command",
                               "fill": "$x:--foreground",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
@@ -18838,6 +18944,7 @@
                       "id": "S41iG8",
                       "name": "p 51340",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18845,7 +18952,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -18892,31 +18999,44 @@
                           "id": "LiGPN",
                           "name": "cmd",
                           "width": "fill_container",
-                          "gap": 4,
+                          "height": "fill_container",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "baJGt",
-                              "name": "ind",
-                              "width": 28,
+                              "id": "jehrw",
+                              "name": "indent guide 1",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "iUnCS",
+                              "name": "indent guide 2",
+                              "width": 14,
+                              "height": "fill_container",
+                              "stroke": "$x:--border",
+                              "strokeWidth": {
+                                "left": 1
+                              },
+                              "strokeAlignment": "inner"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "TwXbh",
+                              "name": "command gap",
+                              "width": 8,
                               "height": 1
                             },
                             {
                               "type": "text",
-                              "id": "GR9lg",
-                              "name": "tree",
-                              "fill": "$x:--border",
-                              "content": "└",
-                              "lineHeight": 1.5,
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "normal"
-                            },
-                            {
-                              "type": "text",
                               "id": "O23bKF",
-                              "name": "c",
+                              "name": "command",
                               "fill": "$x:--foreground",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
@@ -18992,6 +19112,7 @@
                       "id": "YwxHW",
                       "name": "p 50001",
                       "width": "fill_container",
+                      "height": 26,
                       "stroke": "$x:--border",
                       "strokeWidth": {
                         "bottom": 1
@@ -18999,7 +19120,7 @@
                       "strokeAlignment": "inner",
                       "gap": 8,
                       "padding": [
-                        5,
+                        0,
                         12
                       ],
                       "alignItems": "center",
@@ -19046,6 +19167,7 @@
                           "id": "JYXSN",
                           "name": "cmd",
                           "width": "fill_container",
+                          "height": "fill_container",
                           "gap": 4,
                           "alignItems": "center",
                           "children": [
@@ -35432,6 +35554,10 @@
     "focus": {
       "type": "color",
       "value": "#8B5CF6"
+    },
+    "replied": {
+      "type": "color",
+      "value": "#0EA5E9"
     }
   },
   "imports": {
