@@ -4,6 +4,7 @@
 // notice, and Terminal's disconnected overlay — anywhere a panel has
 // nothing to show and needs to say why.
 import type { ComponentType, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export interface PanelStateAction {
   label: string;
@@ -18,6 +19,8 @@ export interface PanelStateProps {
   description?: ReactNode;
   action?: PanelStateAction;
   tone?: PanelStateTone;
+  /** 枠線付きカードで囲む（design.pen P10b: Compose/Process の失敗・0 件状態）。 */
+  card?: boolean;
 }
 
 const TONE_CLASS: Record<PanelStateTone, string> = {
@@ -26,25 +29,36 @@ const TONE_CLASS: Record<PanelStateTone, string> = {
   error: "text-destructive",
 };
 
-export function PanelState({ icon: Icon, title, description, action, tone = "muted" }: PanelStateProps) {
+export function PanelState({
+  icon: Icon,
+  title,
+  description,
+  action,
+  tone = "muted",
+  card = false,
+}: PanelStateProps) {
   const role = tone === "error" || tone === "warning" ? "alert" : "status";
   return (
-    <div
-      role={role}
-      className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center"
-    >
-      <Icon className={`size-6 ${TONE_CLASS[tone]}`} aria-hidden="true" />
-      <p className="text-sm font-medium">{title}</p>
-      {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      {action && (
-        <button
-          type="button"
-          className="mt-1 rounded-sm border border-border px-2 py-1 text-xs hover:bg-muted"
-          onClick={action.onClick}
-        >
-          {action.label}
-        </button>
-      )}
+    <div role={role} className="flex h-full w-full items-center justify-center p-4">
+      <div
+        className={cn(
+          "flex flex-col items-center gap-2 text-center",
+          card && "max-w-sm rounded-lg border border-border p-6",
+        )}
+      >
+        <Icon className={`size-6 ${TONE_CLASS[tone]}`} aria-hidden="true" />
+        <p className="text-sm font-medium">{title}</p>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        {action && (
+          <button
+            type="button"
+            className="mt-1 rounded-sm border border-border px-2 py-1 text-xs hover:bg-muted"
+            onClick={action.onClick}
+          >
+            {action.label}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

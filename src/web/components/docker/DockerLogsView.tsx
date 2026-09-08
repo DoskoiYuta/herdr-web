@@ -2,6 +2,7 @@
 // 「展開を閉じる・タブを離れる・worktree を切り替える」の全部を止められる
 // （呼び出し側が key={subRepoRoot} などで再マウントさせる前提、F11-9）。
 
+import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { connectDockerLogsSocket } from "@/lib/dockerLogsSocket";
 import { appendLines, type DockerLogLine } from "@/lib/dockerLogsBuffer";
@@ -10,6 +11,10 @@ import { cn } from "@/lib/utils";
 export type DockerLogsViewProps = {
   root: string;
   id: string;
+  /** ヘッダーに出すコンテナ名（`docker logs` コマンド行の表示専用、実際の
+   * ログ取得は `id` で行う）。 */
+  name: string;
+  onClose?: () => void;
   className?: string;
 };
 
@@ -18,7 +23,7 @@ const MAX_LINES = 2000;
 // (a scrollbar can rest a few px short after a resize/reflow).
 const BOTTOM_THRESHOLD_PX = 4;
 
-export function DockerLogsView({ root, id, className }: DockerLogsViewProps) {
+export function DockerLogsView({ root, id, name, onClose, className }: DockerLogsViewProps) {
   const [lines, setLines] = useState<DockerLogLine[]>([]);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,29 +80,60 @@ export function DockerLogsView({ root, id, className }: DockerLogsViewProps) {
   }
 
   return (
-    <div className={cn("relative flex max-h-64 min-h-0 flex-col", className)}>
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all bg-muted/20 p-2 font-mono text-xs"
-      >
-        {lines.map((line, i) => (
-          <div key={i} className={line.stream === "stderr" ? "text-destructive" : undefined}>
-            {line.text}
-          </div>
-        ))}
-        {exitCode !== null && <div className="text-muted-foreground">終了 (code {exitCode})</div>}
-        {error && <div className="text-destructive">{error}</div>}
+    <div className={cn("flex max-h-64 min-h-0 flex-col", className)}>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 font-mono text-xs text-muted-foreground">
+        <span className="truncate">docker logs --follow --tail 200 {name}</span>
+        <span className="flex shrink-0 items-center gap-2 font-sans">
+          <span className="inline-flex items-center gap-1">
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                following ? "bg-emerald-500" : "bg-muted-foreground",
+              )}
+              aria-hidden="true"
+            />
+            {following ? "フォロー中" : "追従を停止中"}
+          </span>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="閉じる"
+              className="rounded p-0.5 hover:bg-muted"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </span>
       </div>
-      {!following && (
-        <button
-          type="button"
-          onClick={jumpToLatest}
-          className="absolute bottom-2 right-2 rounded bg-primary px-2 py-1 text-xs text-primary-foreground shadow"
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={containerRef}
+          data-testid="docker-logs-scroll"
+          onScroll={handleScroll}
+          className="h-full overflow-auto whitespace-pre-wrap break-all bg-muted/20 p-2 font-mono text-xs"
         >
-          最新へ
-        </button>
-      )}
+          {lines.map((line, i) => (
+            <div key={i} className={line.stream === "stderr" ? "text-destructive" : undefined}>
+              {line.text}
+            </div>
+          ))}
+          {exitCode !== null && <div className="text-muted-foreground">終了 (code {exitCode})</div>}
+          {error && <div className="text-destructive">{error}</div>}
+        </div>
+        {!following && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            className="absolute bottom-2 right-2 rounded bg-primary px-2 py-1 text-xs text-primary-foreground shadow"
+          >
+            最新へ
+          </button>
+        )}
+      </div>
+      <div className="shrink-0 border-t border-border px-2 py-1 text-[11px] text-muted-foreground">
+        末尾 2000 行を保持 · 上にスクロールすると追従を止める
+      </div>
     </div>
   );
 }

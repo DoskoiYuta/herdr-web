@@ -144,6 +144,7 @@ const api = createApp({
       defaultAgent: config.ask.defaultAgent,
       maxSessions: config.ask.maxSessions,
     },
+    paths: { config: loaded.path, db: dbPath },
   }),
   review: review.routes,
   repo: review.repoRoutes,

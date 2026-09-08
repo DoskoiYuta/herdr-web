@@ -82,5 +82,8 @@ export const ClientConfigSchema = v.object({
     /** 専用ワークスペースの同時起動上限（送信先ダイアログの残り枠表示用）。 */
     maxSessions: v.number(),
   }),
+  /** 設定ダイアログの「接続」タブに出す、このサーバーが読んでいるファイルの
+   * 実パス。herdr 自体の socket パスは API に無いのでここには含めない。 */
+  paths: v.object({ config: v.string(), db: v.string() }),
 });
 export type ClientConfig = v.InferOutput<typeof ClientConfigSchema>;

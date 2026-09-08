@@ -40,7 +40,7 @@ import {
 import { buildAnchor } from "@/lib/anchor";
 import { useAskEvents } from "@/lib/HerdrStoreContext";
 import { askEventMatchesRepo } from "@/lib/askEvent";
-import { agentPanesAt } from "@/lib/sendTargets";
+import { agentPanesAt, liveAskSessionCount } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import { collectDroppedFiles } from "@/lib/dropEntries";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
@@ -575,6 +575,7 @@ export function FilesPanel({
           agents={clientConfigQuery.data?.ask.agents ?? []}
           defaultAgent={clientConfigQuery.data?.ask.defaultAgent ?? ""}
           maxSessions={clientConfigQuery.data?.ask.maxSessions ?? 0}
+          activeSessions={liveAskSessionCount(repos)}
           panes={askPanes}
           onCreated={handleAskCreated}
         />

@@ -100,6 +100,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
           defaultAgent: c.ask.defaultAgent,
           maxSessions: c.ask.maxSessions,
         },
+        paths: { config: "/test/config.json", db: "/test/herdr-web.db" },
       };
     },
     review: review.routes,

@@ -2,12 +2,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Health } from "@contract/health";
+import type { ClientConfig } from "@contract/config";
 
 const healthMock = vi.fn<() => Promise<Health>>();
+const configMock = vi.fn<() => Promise<ClientConfig>>();
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   healthApi: { get: () => healthMock() },
+  configApi: { get: () => configMock() },
 }));
 
 const { SettingsDialog } = await import("./SettingsDialog");
@@ -31,6 +34,15 @@ beforeEach(() => {
     ok: true,
     version: "0.0.0",
     herdr: { connected: true, protocol: 20 },
+  });
+  configMock.mockResolvedValue({
+    terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1 },
+    graphInitialCommits: 200,
+    ask: { agents: ["claude"], defaultAgent: "claude", maxSessions: 5 },
+    paths: {
+      config: "/home/u/.config/herdr-web/config.json",
+      db: "/home/u/.config/herdr-web/herdr-web.db",
+    },
   });
 });
 

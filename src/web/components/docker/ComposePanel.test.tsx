@@ -17,7 +17,8 @@ vi.mock("./DockerLogsView", () => ({
   DockerLogsView: ({ id }: { root: string; id: string }) => <div>logs:{id}</div>,
 }));
 
-const { CommandUnavailableError, CommandTimeoutError } = await import("@/lib/api");
+const { CommandUnavailableError, CommandFailedError, CommandTimeoutError } =
+  await import("@/lib/api");
 const { ComposePanel } = await import("./ComposePanel");
 
 function renderPanel(root = "/repo"): ReactElement {
@@ -41,11 +42,7 @@ test("no matching containers shows the empty-state message rather than a bare em
   containersMock.mockResolvedValue({ groups: [] });
   render(renderPanel());
 
-  expect(
-    await screen.findByText(
-      "この worktree に紐づくコンテナはありません（compose / devcontainer のラベルで判定）",
-    ),
-  ).toBeInTheDocument();
+  expect(await screen.findByText("この worktree に紐づくコンテナはありません")).toBeInTheDocument();
 });
 
 test("renders a group's containers with service, state, and ports", async () => {
@@ -141,6 +138,23 @@ test("groups one project's containers under a card showing running/exited counts
   expect(await screen.findByText("1 running · 1 exited")).toBeInTheDocument();
 });
 
+// 無いと壊れる: プロジェクト数・種別の内訳がどこにも出ず、複数プロジェクトが
+// 並んでいてもコンテナ一覧をスクロールして数えるしかなくなる。
+test("shows a summary of how many compose/devcontainer projects this worktree has", async () => {
+  containersMock.mockResolvedValue({
+    groups: [
+      { kind: "compose", name: "a", workingDir: "/repo", containers: [] },
+      { kind: "compose", name: "b", workingDir: "/repo", containers: [] },
+      { kind: "devcontainer", name: "c", workingDir: "/repo", containers: [] },
+    ],
+  });
+  render(renderPanel());
+
+  expect(
+    await screen.findByText("この worktree の compose プロジェクト 2 · devcontainer 1"),
+  ).toBeInTheDocument();
+});
+
 test.each([
   ["compose", "docker compose"],
   ["devcontainer", "devcontainer"],
@@ -210,6 +224,31 @@ test("docker missing (CommandUnavailableError) shows a header error", async () =
   expect(await screen.findByText(/docker が見つかりません/)).toBeInTheDocument();
 });
 
+// 無いと壊れる: CommandFailedError は docker の非ゼロ終了全般で投げられるのに
+// 「Docker を起動してください」が常に出ると、daemon 以外の失敗（権限エラー等）
+// でも誤った対処を促してしまう。
+test("a 503 unrelated to the daemon shows the raw detail, not the daemon-restart hint", async () => {
+  containersMock.mockRejectedValue(
+    new CommandFailedError("Docker daemon に接続できません", "permission denied"),
+  );
+  render(renderPanel());
+
+  expect(await screen.findByText(/permission denied/)).toBeInTheDocument();
+  expect(screen.queryByText(/Docker を起動してください/)).not.toBeInTheDocument();
+});
+
+test("a 503 caused by an unreachable daemon still shows the daemon-restart hint", async () => {
+  containersMock.mockRejectedValue(
+    new CommandFailedError(
+      "Docker daemon に接続できません",
+      "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+    ),
+  );
+  render(renderPanel());
+
+  expect(await screen.findByText(/Docker を起動してください/)).toBeInTheDocument();
+});
+
 test("an empty root does not call the API and shows a placeholder instead", () => {
   render(renderPanel(""));
 
@@ -257,6 +296,6 @@ test("a later poll failure keeps the previous container list visible while showi
     </QueryClientProvider>,
   );
 
-  expect(await screen.findByText(/docker ps がタイムアウトしました/)).toBeInTheDocument();
+  expect(await screen.findByText(/タイムアウト/)).toBeInTheDocument();
   expect(screen.getByText("herdr-web-1")).toBeInTheDocument();
 });

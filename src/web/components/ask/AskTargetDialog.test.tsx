@@ -94,6 +94,7 @@ function renderDialog(overrides: Partial<AskTargetDialogProps> = {}) {
     agents: ["claude", "codex", "gemini"],
     defaultAgent: "claude",
     maxSessions: 5,
+    activeSessions: 0,
     panes: [],
     onCreated: vi.fn(),
     ...overrides,
