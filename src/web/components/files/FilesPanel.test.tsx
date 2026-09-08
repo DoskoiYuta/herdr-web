@@ -264,6 +264,18 @@ test("shows a placeholder when nothing is selected", async () => {
   expect(await screen.findByText("ファイルを選択してください")).toBeInTheDocument();
 });
 
+test("hides the repository's .git directory from the tree", async () => {
+  lsMock.mockResolvedValue(
+    ls([
+      { name: ".git", kind: "dir" },
+      { name: "a.md", kind: "file" },
+    ]),
+  );
+  render(renderPanel());
+  expect(await screen.findByText("a.md")).toBeInTheDocument();
+  expect(screen.queryByText(".git")).not.toBeInTheDocument();
+});
+
 test("selecting a .md file loads and routes it to MarkdownView", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
   fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
