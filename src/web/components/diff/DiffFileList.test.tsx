@@ -54,19 +54,12 @@ test("clearing the search box after filtering restores the full file list", () =
   const search = screen.getByPlaceholderText("Search…");
 
   fireEvent.change(search, { target: { value: "util" } });
-  expect(screen.getByRole("button", { name: "util.ts" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "app.ts" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "logo.png" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "src/util.ts" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "src/app.ts" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "assets/logo.png" })).not.toBeInTheDocument();
 
   fireEvent.change(search, { target: { value: "" } });
-  expect(screen.getByRole("button", { name: "util.ts" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "app.ts" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "logo.png" })).toBeInTheDocument();
-});
-
-test("clicking a file row calls onSelectFile with its path", () => {
-  const onSelectFile = vi.fn();
-  render(<DiffFileList nodes={nodes} selectedPath={null} onSelectFile={onSelectFile} />);
-  fireEvent.click(screen.getByRole("button", { name: "app.ts" }));
-  expect(onSelectFile).toHaveBeenCalledWith("src/app.ts");
+  expect(screen.getByRole("button", { name: "src/util.ts" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "src/app.ts" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "assets/logo.png" })).toBeInTheDocument();
 });

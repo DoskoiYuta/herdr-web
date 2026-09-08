@@ -14,6 +14,8 @@ test("renders file/addition/deletion summary", () => {
   expect(screen.getByText(/3 files \+10 -2/)).toBeInTheDocument();
 });
 
+// 無いと壊れる: title のツールチップが外れると、更新時刻が画面のどこからも
+// 確認できなくなる（本文には出さない設計のため）。
 test("puts the fetch time in a tooltip, showing -- when generatedAt is null", () => {
   render(
     <StatusLine

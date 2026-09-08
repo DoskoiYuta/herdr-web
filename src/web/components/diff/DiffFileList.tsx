@@ -72,7 +72,7 @@ function Rows({
           <button
             key={node.path}
             type="button"
-            aria-label={node.label}
+            aria-label={node.path}
             onClick={() => onSelectFile(node.path)}
             style={{ paddingLeft: 20 + depth * 12 }}
             className={cn(
