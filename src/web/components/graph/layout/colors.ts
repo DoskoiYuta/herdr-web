@@ -6,16 +6,16 @@
  * shades at either extreme).
  */
 export const PALETTE: readonly string[] = [
-  "#d9534f", // red
+  "#9b59b6", // purple
   "#5cb85c", // green
   "#3498db", // blue
   "#f0ad4e", // orange
-  "#9b59b6", // purple
   "#1abc9c", // teal
   "#e67e22", // dark orange
   "#5bc0de", // cyan
   "#e91e8c", // pink
   "#8e9b0c", // olive
+  "#d9534f", // red
 ];
 
 /**
