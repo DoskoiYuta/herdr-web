@@ -95,3 +95,44 @@ describe("countsUsecase replied", () => {
     expect(result._unsafeUnwrap().replied).toEqual({ worktree: 1, commit: 1 });
   });
 });
+
+describe("countsUsecase byCommit/worktree replied", () => {
+  // 無いと壊れる: Graph のレビュー chip が「返信あり」と「返信待ち open」を
+  // 区別できず、unresolved 合計だけの chip しか出せない。
+  test("counts replied separately from open within the same commit and worktree target", async () => {
+    const repliedThread = [
+      { seq: 0, author: "user" as const, body: "why?", at: "t", agentSession: null, draft: false },
+    ];
+    const repliedWorktree = makeReview({
+      id: "replied-worktree",
+      status: "replied",
+      thread: repliedThread,
+    });
+    const openWorktree = makeReview({ id: "open-worktree", status: "open", thread: repliedThread });
+    const repliedCommit = makeReview({
+      id: "replied-commit",
+      status: "replied",
+      target: { kind: "commit", hash: "c1" },
+      thread: repliedThread,
+    });
+    const openCommit = makeReview({
+      id: "open-commit",
+      status: "open",
+      target: { kind: "commit", hash: "c1" },
+      thread: repliedThread,
+    });
+    await repository.save(repliedWorktree);
+    await repository.save(openWorktree);
+    await repository.save(repliedCommit);
+    await repository.save(openCommit);
+
+    const counts = countsUsecase({
+      repository,
+      listVisible: listVisibleUsecase({ repository, gitHistory }),
+    });
+    const result = (await counts({ repo: "/repo", worktree: "/repo" }))._unsafeUnwrap();
+
+    expect(result.worktree).toEqual({ unresolved: 2, replied: 1, drafts: 0 });
+    expect(result.byCommit["c1"]).toEqual({ unresolved: 2, replied: 1, drafts: 0 });
+  });
+});

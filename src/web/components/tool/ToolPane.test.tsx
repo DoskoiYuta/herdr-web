@@ -13,7 +13,7 @@ import { ToolPane } from "./ToolPane";
 function counts(overrides: Partial<ReviewCountsResponse> = {}): ReviewCountsResponse {
   return {
     byCommit: {},
-    worktree: { unresolved: 0, drafts: 0 },
+    worktree: { unresolved: 0, replied: 0, drafts: 0 },
     pendingDrafts: 0,
     replied: { worktree: 0, commit: 0 },
     ...overrides,

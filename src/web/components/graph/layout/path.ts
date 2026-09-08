@@ -8,6 +8,24 @@ export interface Geom {
 /** Fixed row height / lane width. No DOM measurement (must stay virtualization-friendly). */
 export const GEOM: Geom = { laneWidth: 16, rowHeight: 24 };
 
+/** Gutter (lane area) width cap in px, so a highly-branched history doesn't crowd out subject/detail columns. */
+export const MAX_GUTTER_PX = 160;
+/** Lane width floor in px, below which lanes become illegible. */
+export const MIN_LANE_PX = 4;
+
+/**
+ * Lane width and total gutter width for a row with `laneCount` lanes.
+ * Shrinks `laneWidth` below `GEOM.laneWidth` once `laneCount * GEOM.laneWidth`
+ * would exceed `MAX_GUTTER_PX`, down to a floor of `MIN_LANE_PX`; `width` is
+ * `laneCount * laneWidth`, capped at `MAX_GUTTER_PX`.
+ */
+export function gutterGeom(laneCount: number): { laneWidth: number; width: number } {
+  const count = Math.max(1, laneCount);
+  const laneWidth = Math.min(GEOM.laneWidth, Math.max(MIN_LANE_PX, MAX_GUTTER_PX / count));
+  const width = Math.min(count * laneWidth, MAX_GUTTER_PX);
+  return { laneWidth, width };
+}
+
 /** Center point of a row's commit node, in row-local SVG coordinates. */
 export function nodeCenter(row: LayoutRow, geom: Geom = GEOM): { cx: number; cy: number } {
   return { cx: (row.lane + 0.5) * geom.laneWidth, cy: geom.rowHeight / 2 };

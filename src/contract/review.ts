@@ -224,8 +224,16 @@ export const ForDiffMatchSchema = v.object({
 });
 export type ForDiffMatch = v.InferOutput<typeof ForDiffMatchSchema>;
 
-/** `unresolved`: status が open/replied で送信済みメッセージを持つ review 数。`drafts`: 下書きエントリを持つ review 数 */
-export const ReviewCountSchema = v.object({ unresolved: v.number(), drafts: v.number() });
+/**
+ * `unresolved`: status が open/replied で送信済みメッセージを持つ review 数（open + replied の合計）。
+ * `replied`: そのうち status が replied で送信済みメッセージを持つもの。
+ * `drafts`: 下書きエントリを持つ review 数
+ */
+export const ReviewCountSchema = v.object({
+  unresolved: v.number(),
+  replied: v.number(),
+  drafts: v.number(),
+});
 export type ReviewCount = v.InferOutput<typeof ReviewCountSchema>;
 
 export const ReviewCountsResponseSchema = v.object({

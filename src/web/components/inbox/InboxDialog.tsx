@@ -32,7 +32,7 @@ import {
 import { DeliveryChip } from "@/components/ui/status/DeliveryChip";
 import { KindIcon } from "@/components/ui/status/KindIcon";
 import { useToast } from "@/components/ui/toast/ToastProvider";
-import { deliveryOf, type DeliveryResult } from "@/lib/statusVocab";
+import { REPLIED_ICON_CLASS, deliveryOf, type DeliveryResult } from "@/lib/statusVocab";
 import { useHerdrState, useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
 import { useInbox } from "./hooks/useInbox";
@@ -57,7 +57,7 @@ const SECTION_ICON: Record<InboxSection, typeof TriangleAlert> = {
 
 const SECTION_ICON_CLASS: Record<InboxSection, string> = {
   undelivered: "text-destructive",
-  replied: "text-sky-500",
+  replied: REPLIED_ICON_CLASS,
   unsent: "text-violet-500",
   blocked: "text-amber-500",
 };

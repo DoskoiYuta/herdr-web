@@ -3,6 +3,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import GraphRow from "./GraphRow";
 import { layoutGraph } from "./layout/layout";
+import { MAX_GUTTER_PX } from "./layout/path";
 import type { Commit, Ref } from "@contract/git";
 
 function queryWrapper({ children }: { children: React.ReactNode }) {
@@ -186,15 +187,16 @@ describe("GraphRow", () => {
         refs={[]}
         isHead={false}
         selected={false}
-        reviewCount={{ unresolved: 0, drafts: 0 }}
+        reviewCount={{ unresolved: 0, replied: 0, drafts: 0 }}
         onSelect={() => {}}
       />,
     );
-    expect(queryByLabelText(/未解決レビュー/)).not.toBeInTheDocument();
+    expect(queryByLabelText(/返信のあるレビュー/)).not.toBeInTheDocument();
+    expect(queryByLabelText(/返信待ちレビュー/)).not.toBeInTheDocument();
     expect(queryByLabelText(/下書きレビュー/)).not.toBeInTheDocument();
   });
 
-  test("renders an unresolved-count badge and a drafts badge when both are >0", () => {
+  test("renders a 返信待ち badge and a drafts badge when both are >0", () => {
     const commits = [{ hash: "c1", parents: ["p1"] }];
     const { rows } = layoutGraph({ commits });
     const { getByLabelText } = render(
@@ -205,11 +207,11 @@ describe("GraphRow", () => {
         refs={[]}
         isHead={false}
         selected={false}
-        reviewCount={{ unresolved: 2, drafts: 3 }}
+        reviewCount={{ unresolved: 2, replied: 0, drafts: 3 }}
         onSelect={() => {}}
       />,
     );
-    expect(getByLabelText("未解決レビュー 2 件")).toHaveTextContent("2");
+    expect(getByLabelText("返信待ちレビュー 2 件")).toHaveTextContent("2");
     expect(getByLabelText("下書きレビュー 3 件")).toHaveTextContent("下書き 3");
   });
 
@@ -226,14 +228,40 @@ describe("GraphRow", () => {
         refs={[]}
         isHead={false}
         selected={false}
-        reviewCount={{ unresolved: 1, drafts: 0 }}
+        reviewCount={{ unresolved: 1, replied: 0, drafts: 0 }}
         onSelect={onSelect}
         onOpenDiff={onOpenDiff}
       />,
     );
-    fireEvent.click(getByLabelText("未解決レビュー 1 件"));
+    fireEvent.click(getByLabelText("返信待ちレビュー 1 件"));
     expect(onOpenDiff).toHaveBeenCalledWith("c1");
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  // 無いと壊れる: 「エージェントの返信を待っている open」と「返信が届いていて
+  // 自分が見るべき replied」が同じ chip になり、見るべきものを Graph 上で
+  // 見分けられなくなる。
+  test.each([
+    [{ unresolved: 2, replied: 1, drafts: 0 }, "返信のあるレビュー 1 件", "返信待ちレビュー 1 件"],
+    [{ unresolved: 1, replied: 0, drafts: 0 }, null, "返信待ちレビュー 1 件"],
+  ] as const)("shows the right chip(s) for %j", (reviewCount, repliedLabel, waitingLabel) => {
+    const commits = [{ hash: "c1", parents: ["p1"] }];
+    const { rows } = layoutGraph({ commits });
+    const { queryByLabelText } = render(
+      <GraphRow
+        row={rows[0]!}
+        laneCount={1}
+        commit={makeCommit({ hash: "c1", parents: ["p1"] })}
+        refs={[]}
+        isHead={false}
+        selected={false}
+        reviewCount={reviewCount}
+        onSelect={() => {}}
+      />,
+    );
+    if (repliedLabel) expect(queryByLabelText(repliedLabel)).toBeInTheDocument();
+    else expect(queryByLabelText(/返信のあるレビュー/)).not.toBeInTheDocument();
+    expect(queryByLabelText(waitingLabel)).toBeInTheDocument();
   });
 
   test("renders ref badges for refs pointing at this commit", () => {
@@ -254,6 +282,31 @@ describe("GraphRow", () => {
       />,
     );
     expect(getByText("main")).toBeInTheDocument();
+  });
+
+  // 無いと壊れる: ブランチが多いリポジトリで gutter が無制限に広がり、subject
+  // 列が潰れて見えなくなる。
+  test("with many lanes, the gutter width stays capped and the subject still renders", () => {
+    const commits = Array.from({ length: 60 }, (_, i) => ({
+      hash: `c${i}`,
+      parents: i === 0 ? [] : [`c${i - 1}`],
+    }));
+    const { rows } = layoutGraph({ commits });
+    const row = rows[0]!;
+    const { container, getByText } = render(
+      <GraphRow
+        row={row}
+        laneCount={60}
+        commit={makeCommit({ hash: row.hash, parents: [], subject: "Deep in the lanes" })}
+        refs={[]}
+        isHead={false}
+        selected={false}
+        onSelect={() => {}}
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    expect(Number(svg.getAttribute("width"))).toBeLessThanOrEqual(MAX_GUTTER_PX);
+    expect(getByText("Deep in the lanes")).toBeInTheDocument();
   });
 
   // 無いと壊れる: uncommitted 行に変更件数と相対時刻が出ず、コミット済み行と

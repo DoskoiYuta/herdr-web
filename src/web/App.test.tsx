@@ -61,7 +61,7 @@ vi.mock("@/lib/api", () => ({
     list: vi.fn(async () => []),
     counts: vi.fn(async () => ({
       byCommit: {},
-      worktree: { unresolved: 0, drafts: 0 },
+      worktree: { unresolved: 0, replied: 0, drafts: 0 },
       pendingDrafts: 0,
       replied: { worktree: 0, commit: 0 },
     })),
