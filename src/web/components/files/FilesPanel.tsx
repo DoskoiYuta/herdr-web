@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PathTree } from "@/components/tree/PathTree";
+import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
 import { ViewerControls } from "@/components/tool/ViewerControls";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelState } from "@/components/ui/status/PanelState";
@@ -197,6 +198,15 @@ export function FilesPanel({
 
   const paths = ls.paths;
   const status = statusQuery.data?.status ?? [];
+  const statusDecorations = useMemo(() => {
+    const map = new Map<string, { text: string; parts: { text: string; color: string }[] }>();
+    for (const entry of status) {
+      const text = gitStatusLetter(entry.status);
+      if (!text) continue;
+      map.set(entry.path, { text, parts: [{ text, color: gitStatusLetterColor(entry.status) }] });
+    }
+    return map;
+  }, [status]);
   const rootError = ls.errors.find((e) => e.dir === "")?.error;
 
   const queryClient = useQueryClient();
@@ -590,6 +600,7 @@ export function FilesPanel({
                 <PathTree
                   paths={paths}
                   gitStatus={status}
+                  decorations={statusDecorations}
                   initialExpansion="closed"
                   fontSize={settings.fontSize}
                   selectedPath={selectedPath}
