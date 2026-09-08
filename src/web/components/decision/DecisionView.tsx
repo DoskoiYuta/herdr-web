@@ -7,7 +7,7 @@ import type {
 } from "@contract/decision";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaneRow, Repo } from "@contract/events";
 import { decisionApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -186,8 +186,9 @@ function DecisionAnswerView({
 }
 
 /** 選択肢 1 行 (design.pen P3v2)。枠線なし、選択中だけ `bg-accent`。ラジオ/
- * チェックボックスは実要素として残し（既存テストが `role=radio` で拾う）、
- * 見た目は 14px の丸/角に絞る。 */
+ * チェックボックスは実要素として残す（キーボード操作とスクリーンリーダーの
+ * 名前付けをブラウザのネイティブ実装に任せるため）。見た目は 14px の丸/角に
+ * 絞る。 */
 function DecisionOptionRow({
   kind,
   itemId,
@@ -258,6 +259,83 @@ function DecisionOptionRow({
   );
 }
 
+/** 「その他」行 (design.pen P3v2)。`other` は 3 状態: `null`=未選択,
+ * `""`=選択したが未記入, それ以外=記入済み — 未記入は必須判定では
+ * 未回答扱い (`isAnswered`) だが、選択状態（ラジオ/チェックの見た目・
+ * `bg-accent`）には出す。ラジオ/チェックをクリック/Space で押すと選択に
+ * 切り替わり、そのままテキスト欄へ focus が移る。 */
+function DecisionOtherRow({
+  kind,
+  itemId,
+  itemHeader,
+  other,
+  onSelect,
+  onDeselect,
+  onChangeText,
+}: {
+  kind: "single" | "multi";
+  itemId: string;
+  itemHeader: string;
+  other: string | null;
+  onSelect: () => void;
+  onDeselect: () => void;
+  onChangeText: (text: string) => void;
+}) {
+  const textRef = useRef<HTMLInputElement | null>(null);
+  const checked = other !== null;
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-[7px] text-[13px]",
+        checked && "bg-accent",
+      )}
+    >
+      <input
+        type={kind === "single" ? "radio" : "checkbox"}
+        name={`decision-item-${itemId}`}
+        checked={checked}
+        className="size-3.5 shrink-0"
+        onChange={(e) => {
+          if (kind === "multi" && !e.target.checked) {
+            onDeselect();
+            return;
+          }
+          onSelect();
+          textRef.current?.focus();
+        }}
+      />
+      <span className="shrink-0 text-muted-foreground">その他</span>
+      <input
+        ref={textRef}
+        type="text"
+        placeholder="自由記述…"
+        className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-[13px]"
+        value={other ?? ""}
+        onChange={(e) => onChangeText(e.target.value)}
+        aria-label={`${itemHeader} その他`}
+      />
+    </label>
+  );
+}
+
+/** single/multi の選択肢を選ぶ。single は「その他」と排他 (レビュー指摘):
+ * 選択肢を選んだら `other` を消す。multi は選択肢と「その他」が併存できる
+ * ため `other` はそのまま。 */
+function selectOption(
+  kind: "single" | "multi",
+  answer: DecisionItemAnswer,
+  label: string,
+  checked: boolean,
+): DecisionItemAnswer {
+  if (kind === "single") {
+    return { ...answer, selected: checked ? [label] : [], other: checked ? null : answer.other };
+  }
+  return {
+    ...answer,
+    selected: checked ? [...answer.selected, label] : answer.selected.filter((s) => s !== label),
+  };
+}
+
 function DecisionItemForm({
   item,
   index,
@@ -277,176 +355,148 @@ function DecisionItemForm({
   worktreeRoot: string | null;
   onOpenLocation?: OpenLocation;
 }) {
+  // note を持つ依頼を切り替えても畳まれたままにならないよう、呼び出し側が
+  // key に `${decision.id}:${item.id}` を渡してマウントし直す前提 — この
+  // state はマウント時の一度きりの初期値でよい。
   const [noteOpen, setNoteOpen] = useState(answer.note !== null);
-  const setSelected = (selected: string[]) => onChange({ ...answer, selected });
-  const setOther = (other: string) =>
+  const setOtherText = (other: string) =>
+    onChange({ ...answer, other, selected: item.kind === "single" ? [] : answer.selected });
+  const selectOther = () =>
+    onChange({ ...answer, other: "", selected: item.kind === "single" ? [] : answer.selected });
+  const deselectOther = () => onChange({ ...answer, other: null });
+  const setTextAnswer = (other: string) =>
     onChange({ ...answer, other: other.length > 0 ? other : null });
   const setNote = (note: string) => onChange({ ...answer, note: note.length > 0 ? note : null });
-  const otherChecked = (answer.other ?? "").trim().length > 0;
 
   return (
-    <fieldset
-      className="flex flex-col gap-2 border-t border-border pt-3.5"
-      data-testid={`decision-item-${item.id}`}
-    >
-      <legend className="flex items-center gap-1.5">
-        <ItemNumberBadge index={index} />
-        <span className="text-sm font-semibold">{item.header}</span>
-        <span className="text-[11px] text-muted-foreground">
-          {ITEM_KIND_LABEL[item.kind]} · {item.required === false ? "任意" : "必須"}
-        </span>
-      </legend>
-      <p className="text-[13px]">{item.question}</p>
+    <div className="border-t border-border pt-3.5" data-testid={`decision-item-${item.id}`}>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="sr-only">{item.header}</legend>
+        <div className="flex items-center gap-1.5">
+          <ItemNumberBadge index={index} />
+          <span className="text-sm font-semibold">{item.header}</span>
+          <span className="text-[11px] text-muted-foreground">
+            {ITEM_KIND_LABEL[item.kind]} · {item.required === false ? "任意" : "必須"}
+          </span>
+        </div>
+        <p className="text-[13px]">{item.question}</p>
 
-      {(item.kind === "single" || item.kind === "multi") && compare && (
-        <>
-          <CompareOptions
-            item={item}
-            answer={answer}
-            onChange={onChange}
-            worktreeRoot={worktreeRoot}
-            onOpenLocation={onOpenLocation}
-          />
-          {(item.allowOther ?? true) && (
-            <label
-              className={cn(
-                "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-[7px] text-[13px]",
-                otherChecked && "bg-accent",
-              )}
-            >
-              <input
-                type={item.kind === "single" ? "radio" : "checkbox"}
-                name={`decision-item-${item.id}`}
-                checked={otherChecked}
-                readOnly
-                className="size-3.5 shrink-0"
-              />
-              <span className="shrink-0 text-muted-foreground">その他</span>
-              <input
-                type="text"
-                placeholder="自由記述…"
-                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-[13px]"
-                value={answer.other ?? ""}
-                onChange={(e) => setOther(e.target.value)}
-                aria-label={`${item.header} その他`}
-              />
-            </label>
-          )}
-        </>
-      )}
-
-      {(item.kind === "single" || item.kind === "multi") && !compare && (
-        <div className="flex flex-col gap-0.5">
-          {item.options.map((opt, optIndex) => (
-            <DecisionOptionRow
-              key={opt.label}
-              kind={item.kind as "single" | "multi"}
-              itemId={item.id}
-              label={opt.label}
-              index={optIndex}
-              checked={answer.selected.includes(opt.label)}
-              recommended={opt.recommended}
-              description={opt.description}
-              preview={opt.preview}
+        {(item.kind === "single" || item.kind === "multi") && compare && (
+          <>
+            <CompareOptions
+              item={item}
+              answer={answer}
+              onChange={onChange}
               worktreeRoot={worktreeRoot}
               onOpenLocation={onOpenLocation}
-              onToggle={(checked) => {
-                if (item.kind === "single") {
-                  setSelected(checked ? [opt.label] : []);
-                } else {
-                  setSelected(
-                    checked
-                      ? [...answer.selected, opt.label]
-                      : answer.selected.filter((s) => s !== opt.label),
-                  );
-                }
-              }}
             />
-          ))}
-          {(item.allowOther ?? true) && (
-            <label
-              className={cn(
-                "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-[7px] text-[13px]",
-                otherChecked && "bg-accent",
-              )}
-            >
-              <input
-                type={item.kind === "single" ? "radio" : "checkbox"}
-                name={`decision-item-${item.id}`}
-                checked={otherChecked}
-                readOnly
-                className="size-3.5 shrink-0"
+            {(item.allowOther ?? true) && (
+              <DecisionOtherRow
+                kind={item.kind}
+                itemId={item.id}
+                itemHeader={item.header}
+                other={answer.other}
+                onSelect={selectOther}
+                onDeselect={deselectOther}
+                onChangeText={setOtherText}
               />
-              <span className="shrink-0 text-muted-foreground">その他</span>
-              <input
-                type="text"
-                placeholder="自由記述…"
-                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-[13px]"
-                value={answer.other ?? ""}
-                onChange={(e) => setOther(e.target.value)}
-                aria-label={`${item.header} その他`}
+            )}
+          </>
+        )}
+
+        {(item.kind === "single" || item.kind === "multi") && !compare && (
+          <div className="flex flex-col gap-0.5">
+            {item.options.map((opt, optIndex) => (
+              <DecisionOptionRow
+                key={opt.label}
+                kind={item.kind as "single" | "multi"}
+                itemId={item.id}
+                label={opt.label}
+                index={optIndex}
+                checked={answer.selected.includes(opt.label)}
+                recommended={opt.recommended}
+                description={opt.description}
+                preview={opt.preview}
+                worktreeRoot={worktreeRoot}
+                onOpenLocation={onOpenLocation}
+                onToggle={(checked) =>
+                  onChange(
+                    selectOption(item.kind as "single" | "multi", answer, opt.label, checked),
+                  )
+                }
               />
-            </label>
-          )}
-        </div>
-      )}
+            ))}
+            {(item.allowOther ?? true) && (
+              <DecisionOtherRow
+                kind={item.kind}
+                itemId={item.id}
+                itemHeader={item.header}
+                other={answer.other}
+                onSelect={selectOther}
+                onDeselect={deselectOther}
+                onChangeText={setOtherText}
+              />
+            )}
+          </div>
+        )}
 
-      {item.kind === "text" && (
-        <textarea
-          className="min-h-16 rounded-md border border-border bg-background px-1.5 py-1 text-[13px]"
-          value={answer.other ?? ""}
-          onChange={(e) => setOther(e.target.value)}
-          aria-label={item.header}
-        />
-      )}
-
-      {item.kind === "confirm" && (
-        <div className="flex gap-2">
-          {(["yes", "no"] as const).map((value) => {
-            const checked = answer.selected[0] === value;
-            return (
-              <label
-                key={value}
-                className={cn(
-                  "cursor-pointer rounded-md border px-3 py-1.5 text-[13px]",
-                  checked ? "border-transparent bg-accent ring-1 ring-ring" : "border-border",
-                )}
-              >
-                <input
-                  type="radio"
-                  name={`decision-item-${item.id}`}
-                  checked={checked}
-                  onChange={() => setSelected([value])}
-                  className="sr-only"
-                />
-                {value === "yes" ? "はい" : "いいえ"}
-              </label>
-            );
-          })}
-        </div>
-      )}
-
-      {noteOpen ? (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">メモ</span>
+        {item.kind === "text" && (
           <textarea
-            placeholder="エージェントに伝える補足があれば"
-            className="min-h-10 rounded-md border border-border bg-background px-2 py-1.5 text-[13px]"
-            value={answer.note ?? ""}
-            onChange={(e) => setNote(e.target.value)}
-            aria-label={`${item.header} メモ`}
+            className="min-h-16 rounded-md border border-border bg-background px-1.5 py-1 text-[13px]"
+            value={answer.other ?? ""}
+            onChange={(e) => setTextAnswer(e.target.value)}
+            aria-label={item.header}
           />
-        </label>
-      ) : (
-        <button
-          type="button"
-          className="w-fit text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => setNoteOpen(true)}
-        >
-          ＋ メモを追加
-        </button>
-      )}
-    </fieldset>
+        )}
+
+        {item.kind === "confirm" && (
+          <div className="flex gap-2">
+            {(["yes", "no"] as const).map((value) => {
+              const checked = answer.selected[0] === value;
+              return (
+                <label
+                  key={value}
+                  className={cn(
+                    "cursor-pointer rounded-md border px-3 py-1.5 text-[13px]",
+                    checked ? "border-transparent bg-accent ring-1 ring-ring" : "border-border",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`decision-item-${item.id}`}
+                    checked={checked}
+                    onChange={() => onChange({ ...answer, selected: [value] })}
+                    className="sr-only"
+                  />
+                  {value === "yes" ? "はい" : "いいえ"}
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        {noteOpen ? (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">メモ</span>
+            <textarea
+              placeholder="エージェントに伝える補足があれば"
+              className="min-h-10 rounded-md border border-border bg-background px-2 py-1.5 text-[13px]"
+              value={answer.note ?? ""}
+              onChange={(e) => setNote(e.target.value)}
+              aria-label={`${item.header} メモ`}
+            />
+          </label>
+        ) : (
+          <button
+            type="button"
+            className="w-fit text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setNoteOpen(true)}
+          >
+            ＋ メモを追加
+          </button>
+        )}
+      </fieldset>
+    </div>
   );
 }
 
@@ -532,16 +582,9 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
       const opt = item.options[digit - 1];
       if (!opt) return;
       const current = draft.answers[item.id] ?? emptyAnswer();
-      const nextAnswer = (() => {
-        if (item.kind === "single") return { ...current, selected: [opt.label] };
-        const already = current.selected.includes(opt.label);
-        return {
-          ...current,
-          selected: already
-            ? current.selected.filter((s) => s !== opt.label)
-            : [...current.selected, opt.label],
-        };
-      })();
+      const kind = item.kind as "single" | "multi";
+      const checked = kind === "single" ? true : !current.selected.includes(opt.label);
+      const nextAnswer = selectOption(kind, current, opt.label, checked);
       updateDraft({ ...draft, answers: { ...draft.answers, [item.id]: nextAnswer } });
     }
     window.addEventListener("keydown", handleDigit);
@@ -740,7 +783,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         {isOpen ? (
           decision.spec.items.map((item, index) => (
             <DecisionItemForm
-              key={item.id}
+              key={`${decision.id}:${item.id}`}
               item={item}
               index={index}
               answer={answers[item.id] ?? emptyAnswer()}
@@ -757,7 +800,7 @@ export function DecisionView({ id, onClose, onFocusPane, onOpenLocation }: Decis
         ) : (
           <>
             {decision.spec.items.map((item, index) => (
-              <div key={item.id} className={cn("border-border pt-3.5", index > 0 && "border-t")}>
+              <div key={item.id} className="border-t border-border pt-3.5">
                 <DecisionAnswerView
                   item={item}
                   index={index}

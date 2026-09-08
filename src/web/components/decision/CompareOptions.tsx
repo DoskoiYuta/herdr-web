@@ -24,7 +24,8 @@ export function CompareOptions({
 }) {
   function toggle(label: string) {
     if (item.kind === "single") {
-      onChange({ ...answer, selected: [label] });
+      // single では「その他」と排他 (レビュー指摘): カードを選んだら other を消す。
+      onChange({ ...answer, selected: [label], other: null });
       return;
     }
     const already = answer.selected.includes(label);
@@ -54,7 +55,7 @@ export function CompareOptions({
                 toggle(opt.label);
               }
             }}
-            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border border-border p-3 text-left ${
+            className={`flex cursor-pointer flex-col gap-1.5 rounded-md border border-border p-3 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
               checked ? "bg-accent" : ""
             }`}
           >
