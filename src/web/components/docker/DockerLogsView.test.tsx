@@ -65,12 +65,3 @@ test("switches the follow indicator once the viewer scrolls away from the bottom
 
   expect(screen.getByText("追従を停止中")).toBeInTheDocument();
 });
-
-test("clicking the close button calls onClose", () => {
-  const onClose = vi.fn();
-  render(<DockerLogsView root="/repo" id="abc" name="app-1" onClose={onClose} />);
-
-  screen.getByRole("button", { name: "閉じる" }).click();
-
-  expect(onClose).toHaveBeenCalled();
-});

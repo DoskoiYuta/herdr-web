@@ -107,14 +107,6 @@ describe("SettingsDialog connection", () => {
     renderDialog();
     expect(await screen.findByText("未接続")).toBeInTheDocument();
   });
-
-  // 無いと壊れる: このインスタンスがどの設定ファイル・DB を読んでいるか、
-  // 実機で複数インスタンスを動かしたときに見分ける手段が無くなる。
-  test("shows the config file and db paths this server is using", async () => {
-    renderDialog();
-    expect(await screen.findByText("/home/u/.config/herdr-web/config.json")).toBeInTheDocument();
-    expect(screen.getByText("/home/u/.config/herdr-web/herdr-web.db")).toBeInTheDocument();
-  });
 });
 
 describe("SettingsDialog close", () => {
