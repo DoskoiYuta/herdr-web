@@ -20,15 +20,20 @@ export const ListNoteQuerySchema = v.object({
 });
 export type ListNoteQuery = v.InferOutput<typeof ListNoteQuerySchema>;
 
+/** ページ一覧の行として表示できる長さに収める。 */
+export const NOTE_TITLE_MAX_LENGTH = 200;
+/** 1 ページの本文上限（文字数）。 */
+export const NOTE_BODY_MAX_LENGTH = 1_000_000;
+
 export const CreateNoteRequestSchema = v.object({
   repoKey: v.pipe(v.string(), v.minLength(1)),
-  title: v.optional(v.string(), "無題"),
+  title: v.optional(v.pipe(v.string(), v.maxLength(NOTE_TITLE_MAX_LENGTH)), "無題"),
 });
 export type CreateNoteRequest = v.InferOutput<typeof CreateNoteRequestSchema>;
 
 /** title/body の部分更新。どちらか一方だけでもよい。 */
 export const UpdateNoteRequestSchema = v.object({
-  title: v.optional(v.string()),
-  body: v.optional(v.string()),
+  title: v.optional(v.pipe(v.string(), v.maxLength(NOTE_TITLE_MAX_LENGTH))),
+  body: v.optional(v.pipe(v.string(), v.maxLength(NOTE_BODY_MAX_LENGTH))),
 });
 export type UpdateNoteRequest = v.InferOutput<typeof UpdateNoteRequestSchema>;

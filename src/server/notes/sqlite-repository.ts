@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import type { Note } from "../../contract/notes";
 import type { Db } from "../db/client";
 import { notes } from "../db/schema";
-import type { NotesRepository } from "./ports";
+import type { NoteFieldPatch, NotesRepository } from "./ports";
 
 type NoteRow = typeof notes.$inferSelect;
 
@@ -35,6 +35,14 @@ export function createSqliteNotesRepository(db: Db): NotesRepository {
 
     async save(note) {
       await db.insert(notes).values(note).onConflictDoUpdate({ target: notes.id, set: note });
+    },
+
+    async updateFields(id, patch: NoteFieldPatch) {
+      const set: Partial<NoteRow> = { updatedAt: patch.updatedAt };
+      if (patch.title !== undefined) set.title = patch.title;
+      if (patch.body !== undefined) set.body = patch.body;
+      const rows = await db.update(notes).set(set).where(eq(notes.id, id)).returning();
+      return rows[0] ? rowToNote(rows[0]) : null;
     },
 
     async delete(id) {

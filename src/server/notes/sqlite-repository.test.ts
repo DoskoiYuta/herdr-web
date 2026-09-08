@@ -59,6 +59,37 @@ describe("createSqliteNotesRepository", () => {
     expect((await repo.listByRepo("/repo-a")).map((n) => n.id)).toEqual(["b", "a"]);
   });
 
+  // 無いと壊れる: get→merge→save の read-modify-write に戻すと、同時に来た
+  // 2 件の PATCH の一方が他方の書き込みを消しうる。1 本の UPDATE で書けている
+  // ことを、指定していない列（title）が変わらないことで確認する。
+  test("updateFields updates only the given columns in one statement", async () => {
+    const db = openDb(":memory:");
+    applyMigrations(db);
+    const repo = createSqliteNotesRepository(db);
+    await repo.save(makeNote());
+    const updated = await repo.updateFields("note-1", {
+      body: "- [x] a",
+      updatedAt: "2026-09-06T00:00:00.000Z",
+    });
+    expect(updated).toEqual({
+      id: "note-1",
+      repoKey: "/repo/.git",
+      title: "TODO",
+      body: "- [x] a",
+      createdAt: "2026-09-05T00:00:00.000Z",
+      updatedAt: "2026-09-06T00:00:00.000Z",
+    });
+  });
+
+  // 無いと壊れる: 存在しない id への updateFields が例外を投げるか、
+  // 気づかれずに何も更新しないまま成功したように見える。
+  test("updateFields returns null for a missing id", async () => {
+    const db = openDb(":memory:");
+    applyMigrations(db);
+    const repo = createSqliteNotesRepository(db);
+    expect(await repo.updateFields("missing", { title: "x", updatedAt: "t" })).toBeNull();
+  });
+
   // 無いと壊れる: 削除がページ一覧から消えず、ユーザーが消したはずのページが
   // 残り続ける。
   test("delete removes the note", async () => {

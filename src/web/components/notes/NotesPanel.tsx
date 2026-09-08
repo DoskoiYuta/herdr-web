@@ -117,7 +117,13 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
     enabled: repoKey !== null,
   });
   const list = listQuery.data ?? [];
-  const effectiveId = selectedId ?? list[0]?.id ?? null;
+  // URL の `id` が一覧に無ければ（削除済み・別リポジトリの残骸）先頭ページに
+  // 落ちる — 存在しない id をそのまま使うと selectedNote が null になり、
+  // ページがあるのに空状態を出してしまう。
+  const effectiveId =
+    selectedId !== null && list.some((n) => n.id === selectedId)
+      ? selectedId
+      : (list[0]?.id ?? null);
   const selectedNote = list.find((n) => n.id === effectiveId) ?? null;
 
   // 選択中ページのローカル下書き。`draftId` が selectedNote.id と食い違う
@@ -134,15 +140,29 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const focusTitleRef = useRef(false);
+  // サーバーから読み込んだ／直近で保存が確定した本文。wysimark の
+  // `Editable` は `value` prop（`contents`）が自分の直近の markdown と
+  // 食い違うと `editor.children` を差し替えて Slate の onChange を発火させる
+  // ため（`ignoreNextChangeRef` は wysimark 側で参照されておらず効かない）、
+  // ページ切替で `contents` が別ページの本文に変わっただけでも
+  // `onChange(markdown)` が呼ばれうる。`key={draftId}` で毎回再マウントして
+  // その経路自体を避けつつ、ここでも「直近の確定内容と同じなら保存しない」
+  // という二重の防御を持つ。
+  const lastKnownBodyRef = useRef("");
+  // commit 同士の直列化。デバウンスの timeout と切替時の flush が競合すると、
+  // サーバー側は 1 本の UPDATE でも、クライアント側で古い保存が新しい保存を
+  // 追い越して上書きしうる。
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
 
   if (selectedNote && draftId !== selectedNote.id) {
     setDraftId(selectedNote.id);
     setTitle(selectedNote.title);
     setBody(selectedNote.body);
     setSaveStatus({ kind: "idle" });
+    lastKnownBodyRef.current = selectedNote.body;
   }
 
-  const commit = useCallback(async () => {
+  const commitOnce = useCallback(async () => {
     const pending = pendingRef.current;
     if (!pending) return;
     pendingRef.current = null;
@@ -150,6 +170,12 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
     setSaveStatus({ kind: "saving" });
     try {
       const updated = await notesApi.update(id, patch);
+      // 保存が確定した頃にはユーザーが別ページへ切り替えているかもしれない
+      // — その場合、今表示中のページとは無関係な確定値で
+      // lastKnownBodyRef を書き換えてはいけない。
+      if (patch.body !== undefined && id === draftId) {
+        lastKnownBodyRef.current = updated.body;
+      }
       queryClient.setQueryData<Note[]>(["notes-list", repoKey], (old) =>
         old?.map((n) => (n.id === id ? updated : n)),
       );
@@ -158,7 +184,14 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
       setSaveStatus({ kind: "error" });
       toast({ kind: "error", message: "保存に失敗しました" });
     }
-  }, [queryClient, repoKey, toast]);
+  }, [queryClient, repoKey, toast, draftId]);
+
+  const commit = useCallback(() => {
+    // 前の commit が成功/失敗どちらで終わっても、次の commit は必ず走る
+    // （直列化するだけで、一度失敗したら以後 no-op になってはいけない）。
+    saveChainRef.current = saveChainRef.current.then(commitOnce, commitOnce);
+    return saveChainRef.current;
+  }, [commitOnce]);
 
   const flush = useCallback(() => {
     if (timerRef.current) {
@@ -210,6 +243,9 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
     (markdown: string) => {
       if (!draftId) return;
       setBody(markdown);
+      // wysimark が parse→serialize の往復で呼ぶだけの無変化イベント
+      // （ページ切替時の再マウント直後など）は保存をスケジュールしない。
+      if (markdown === lastKnownBodyRef.current) return;
       scheduleSave(draftId, { body: markdown });
     },
     [draftId, scheduleSave],
@@ -289,7 +325,7 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
               />
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
-              <MarkdownView contents={body} onChange={handleBodyChange} />
+              <MarkdownView key={draftId} contents={body} onChange={handleBodyChange} />
             </div>
             <div className="shrink-0 border-t border-border px-2 py-1 text-right text-[11px] text-muted-foreground">
               {saveStatus.kind === "saving" && "保存中…"}

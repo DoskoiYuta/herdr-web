@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import type { Note } from "@/lib/api";
@@ -19,6 +19,12 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+// wysimark の実際の挙動（node_modules/@wysimark/react/.dist/browser/index.esm.js
+// の Editable2）を模す: `contents`（value prop）を受け取るたびに、その内容を
+// そのまま onChange で返す。実物は mount 時も value prop を一度読み込むため、
+// 再マウントであっても「同じ内容の onChange」は起こりうる — NotesPanel 側の
+// 「直近の確定内容と同じなら保存しない」ガードが無いと、ページ切替のたびに
+// 無変化の PATCH が飛ぶ。
 vi.mock("@/components/files/MarkdownView", () => ({
   MarkdownView: ({
     contents,
@@ -26,13 +32,19 @@ vi.mock("@/components/files/MarkdownView", () => ({
   }: {
     contents: string;
     onChange?: (markdown: string) => void;
-  }) => (
-    <textarea
-      data-testid="markdown-editor-stub"
-      value={contents}
-      onChange={(e) => onChange?.(e.target.value)}
-    />
-  ),
+  }) => {
+    useEffect(() => {
+      onChange?.(contents);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [contents]);
+    return (
+      <textarea
+        data-testid="markdown-editor-stub"
+        value={contents}
+        onChange={(e) => onChange?.(e.target.value)}
+      />
+    );
+  },
 }));
 
 const { NotesPanel } = await import("./NotesPanel");
@@ -138,6 +150,27 @@ describe("NotesPanel", () => {
     expect(updateMock).toHaveBeenCalledWith("n1", { body: "edited" });
   });
 
+  // 【実走で確認】無いと壊れる: wysimark の Editable は value prop（contents）が
+  // 変わると parse→serialize した同一内容の onChange を発火しうる
+  // （ignoreNextChangeRef は wysimark 側で参照されておらず効かない）。編集して
+  // いない方のページに切り替えただけで PATCH が飛び、updatedAt が更新される
+  // ＝他ブラウザの編集を無編集側が上書きしうる。
+  test("ページ切替直後は（編集していなくても）PATCH が呼ばれない", async () => {
+    listMock.mockResolvedValue([
+      note({ id: "n1", title: "A", body: "body A" }),
+      note({ id: "n2", title: "B", body: "body B" }),
+    ]);
+    const { rerenderWith } = renderPanel();
+    await screen.findByTestId("markdown-editor-stub");
+
+    fireEvent.click(screen.getByTestId("note-row-n2"));
+    await act(async () => rerenderWith({ selectedId: "n2" }));
+
+    vi.useFakeTimers();
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   // 無いと壊れる: 「＋」を押しても一覧に増えず、新規ページが選択もされない。
   test("新規作成で一覧に増えて選択される", async () => {
     listMock.mockResolvedValue([]);
@@ -151,6 +184,16 @@ describe("NotesPanel", () => {
 
     expect(createMock).toHaveBeenCalledWith({ repoKey: "/repo/.git", title: "無題" });
     expect(onSelectId).toHaveBeenCalledWith("new1");
+  });
+
+  // 無いと壊れる: 削除済み・別リポジトリの残骸など、一覧に無い id が URL に
+  // 残っていると selectedNote が null になり、ページがあるのに空状態を
+  // 出してしまう。
+  test("URL の id が一覧に無いとき先頭ページが表示される", async () => {
+    listMock.mockResolvedValue([note({ id: "n1", title: "A" }), note({ id: "n2", title: "B" })]);
+    renderPanel({ selectedId: "gone" });
+    await screen.findByTestId("markdown-editor-stub");
+    expect(screen.getByDisplayValue("A")).toBeInTheDocument();
   });
 
   // 無いと壊れる: 削除しても一覧からページが消えず、消したはずのページが

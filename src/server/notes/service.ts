@@ -38,15 +38,13 @@ export function createNotesService(deps: NotesServiceDeps) {
     id: string,
     patch: { title?: string; body?: string },
   ): Promise<Result<Note, NotFoundError>> {
-    const note = await deps.repository.get(id);
-    if (!note) return err(notFound(`note ${id} not found`));
-    const updated: Note = {
-      ...note,
-      ...(patch.title !== undefined ? { title: patch.title } : {}),
-      ...(patch.body !== undefined ? { body: patch.body } : {}),
+    // 1 本の UPDATE で書く（get→merge→save の read-modify-write だと、同時に
+    // 来た 2 件の PATCH の一方が他方の書き込みを消しうる）。
+    const updated = await deps.repository.updateFields(id, {
+      ...patch,
       updatedAt: deps.clock.now().toISOString(),
-    };
-    await deps.repository.save(updated);
+    });
+    if (!updated) return err(notFound(`note ${id} not found`));
     return ok(updated);
   }
 

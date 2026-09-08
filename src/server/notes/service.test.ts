@@ -17,6 +17,18 @@ function fakeRepository(initial: Note[] = []): NotesRepository {
     async save(note) {
       rows.set(note.id, note);
     },
+    async updateFields(id, patch) {
+      const note = rows.get(id);
+      if (!note) return null;
+      const updated: Note = {
+        ...note,
+        ...(patch.title !== undefined ? { title: patch.title } : {}),
+        ...(patch.body !== undefined ? { body: patch.body } : {}),
+        updatedAt: patch.updatedAt,
+      };
+      rows.set(id, updated);
+      return updated;
+    },
     async delete(id) {
       rows.delete(id);
     },

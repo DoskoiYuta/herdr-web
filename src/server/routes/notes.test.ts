@@ -79,6 +79,19 @@ describe("PATCH /api/notes/:id", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  // 無いと壊れる: 上限の無い title/body がそのまま DB に入り、一覧行や
+  // レスポンスサイズを無制限に膨らませられる。
+  test("400 when title exceeds the max length", async () => {
+    const { app } = createTestApp();
+    const created = await json(await postNote(app));
+    const res = await app.request(`/api/notes/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "x".repeat(201) }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("DELETE /api/notes/:id", () => {
