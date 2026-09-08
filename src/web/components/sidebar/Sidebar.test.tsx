@@ -181,7 +181,7 @@ describe("Sidebar", () => {
     ["WS connecting", "connecting", false, "サーバーに接続中…"],
     ["WS reconnecting", "reconnecting", false, "再接続中…"],
     ["WS closed", "closed", false, "切断"],
-    ["WS open, herdr not connected", "open", false, "herdr 未接続（socket を待っています）"],
+    ["WS open, herdr not connected", "open", false, "herdr 未接続"],
   ] as const)(
     "shows an empty state (not the tree) with a state-specific message (%s)",
     (_label, connection, herdrConnected, expected) => {
@@ -207,7 +207,7 @@ describe("Sidebar", () => {
   test.each([
     ["fully connected", "open", true, 20, "herdr 接続済み · protocol 20"],
     ["WS reconnecting (herdr state irrelevant)", "reconnecting", true, 20, "再接続中…"],
-    ["WS open, herdr not connected", "open", false, null, "herdr 未接続（socket を待っています）"],
+    ["WS open, herdr not connected", "open", false, null, "herdr 未接続 · 再接続中…"],
   ] as const)(
     "footer shows a state-specific message, not a mix of both axes (%s)",
     (_label, connection, herdrConnected, protocol, expected) => {
@@ -223,7 +223,7 @@ describe("Sidebar", () => {
   test.each([
     ["fully connected", "open", true, "herdr 接続済み"],
     ["WS reconnecting", "reconnecting", false, "再接続中…"],
-    ["WS open, herdr not connected", "open", false, "herdr 未接続（socket を待っています）"],
+    ["WS open, herdr not connected", "open", false, "herdr 未接続"],
   ] as const)(
     "the footer dot's aria-label matches the same state as the message (%s)",
     (_label, connection, herdrConnected, expectedLabel) => {
@@ -264,10 +264,22 @@ describe("Sidebar", () => {
     expect(screen.getByRole("separator")).toBeInTheDocument();
   });
 
-  // 無いと壊れる: 設定ダイアログへの唯一の導線がフッターの歯車。ここが開かないと
-  // テーマ・キーボード一覧・接続情報に一切辿り着けない。
+  // 無いと壊れる: 設定ダイアログへの導線がフッターの歯車だけだと、そこが開かない
+  // 限りテーマ・キーボード一覧・接続情報に一切辿り着けない。
   test("clicking the footer gear icon opens the settings dialog", () => {
     renderWithStore(<Sidebar {...defaultProps()} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("設定"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  // 無いと壊れる: サイドバーを折りたたんでいる間、設定に辿り着く手段が無くなる。
+  test("clicking the gear icon in the collapsed icon rail opens the settings dialog", () => {
+    const props = defaultProps();
+    props.layout = { width: 240, collapsed: true };
+    renderWithStore(<Sidebar {...props} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("設定"));

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Inbox as InboxIcon, PanelLeft, PlugZap, Settings as SettingsIcon } from "lucide-react";
+import { Inbox as InboxIcon, PanelLeft, Unplug, Settings as SettingsIcon } from "lucide-react";
 import type { Repo } from "@contract/events";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +46,7 @@ export type SidebarProps = {
 function connectionStatus(
   connection: SidebarProps["connection"],
   herdrConnected: boolean,
-): { ok: boolean; label: string } {
+): { ok: boolean; label: string; footerLabel: string } {
   if (connection !== "open") {
     const label =
       connection === "connecting"
@@ -54,10 +54,12 @@ function connectionStatus(
         : connection === "reconnecting"
           ? "再接続中…"
           : "切断";
-    return { ok: false, label };
+    return { ok: false, label, footerLabel: label };
   }
-  if (!herdrConnected) return { ok: false, label: "herdr 未接続（socket を待っています）" };
-  return { ok: true, label: "herdr 接続済み" };
+  if (!herdrConnected) {
+    return { ok: false, label: "herdr 未接続", footerLabel: "herdr 未接続 · 再接続中…" };
+  }
+  return { ok: true, label: "herdr 接続済み", footerLabel: "herdr 接続済み" };
 }
 
 /** ui-redesign.md §4.2 D4/D5, §5.2: `Repository > Workspace > Pane` の 1 モード
@@ -125,10 +127,21 @@ export function Sidebar({
         </button>
         {totals.blocked > 0 && <AgentStatusDot status="blocked" label={String(totals.blocked)} />}
         {totals.done > 0 && <AgentStatusDot status="done" label={String(totals.done)} />}
+        <span className="flex-1" />
         <span
           className={cn("size-2 rounded-full", status.ok ? "bg-green-500" : "bg-destructive")}
           aria-label={status.label}
         />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="設定"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <SettingsIcon className="size-3.5" aria-hidden="true" />
+        </Button>
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </aside>
     );
   }
@@ -167,10 +180,21 @@ export function Sidebar({
           {!status.ok && (
             <div
               data-testid="sidebar-empty-state"
-              className="flex flex-col items-center gap-1 p-4 text-center text-xs text-muted-foreground"
+              className="flex flex-col items-center gap-2 p-4 pt-8 text-center"
             >
-              <PlugZap className="size-5" aria-hidden="true" />
-              <p>{status.label}</p>
+              <Unplug className="size-8 text-muted-foreground" aria-hidden="true" />
+              <p className="text-sm font-medium">{status.label}</p>
+              {connection === "open" && (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    herdr に接続できません。herdr
+                    が起動しているか確認してください。接続すると自動で復帰します。
+                  </p>
+                  <code className="mt-1 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+                    herdr --session default
+                  </code>
+                </>
+              )}
             </div>
           )}
 
@@ -205,7 +229,7 @@ export function Sidebar({
             aria-label={status.label}
           />
           <span className="min-w-0 flex-1 truncate">
-            {status.ok ? `herdr 接続済み · protocol ${protocol ?? "?"}` : status.label}
+            {status.ok ? `herdr 接続済み · protocol ${protocol ?? "?"}` : status.footerLabel}
           </span>
           <Button
             type="button"

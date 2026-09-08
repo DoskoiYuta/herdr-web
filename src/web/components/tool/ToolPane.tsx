@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, useRouterState } from "@tanstack/react-router";
-import { Check, Copy, Unplug } from "lucide-react";
+import { Check, Copy, FolderX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubRepo } from "@contract/git";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
@@ -124,9 +124,24 @@ function basename(path: string): string {
 }
 
 /** 観察タブ（Files/Graph/Diff/Process/Compose）の worktree 未選択時の空状態。
- * Decisions は worktree 横断なので、この空状態を経由しない（常に動く）。 */
+ * Decisions は worktree 横断なので、この空状態を経由しない（常に動く）。
+ * タブ列自体はこの状態でも常に描画する — レビュー指摘（High 1）: 起動直後や
+ * 全 pane クローズ後に Decisions タブへ到達できなくなるため。 */
 function EmptyWorktreeNotice() {
-  return <PanelState icon={Unplug} title="herdr 未接続 / worktree 未選択" />;
+  return (
+    <PanelState
+      icon={FolderX}
+      title="worktree を解決できません"
+      description={
+        <>
+          ツール領域は herdr のフォーカス pane が見ている worktree に追従します。herdr に接続して
+          pane をフォーカスすると表示されます。
+          <br />
+          Inbox は接続中も参照できます（回答の配達は再接続後）
+        </>
+      }
+    />
+  );
 }
 
 /** `/focus/$tab` の唯一の下で描画される — URL がタブ・比較範囲・選択サブ
