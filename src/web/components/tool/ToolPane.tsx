@@ -206,6 +206,16 @@ export function ToolPane() {
     }
   }, [searchCleared, navigate, routerIdle]);
 
+  // Files のファイルタブ列（fileTabs.ts）は repoKey 単位で FilesPanel 側が
+  // 持ち、`selectedPath` が null のとき、その repoKey のタブ列の `active` を
+  // 自分で URL へ書き戻す（FilesPanel.tsx 参照）。ここではその書き戻しを
+  // 抑止すべきタイミングだけを教える: `rootPending`（別 worktree への意図した
+  // ジャンプの path 適用待ち）と `searchCleared`（worktree 切り替えで search を
+  // 空にする navigate がまだ commit していない）の間は、FilesPanel が自分の
+  // 判断で path を書き戻すと、この直後/同時に発行される上の navigate と
+  // 競合する（同一 tick の二重 navigate、または無関係な path の上書き）。
+  const filesRestoreSuppressed = rootPending || searchCleared;
+
   const comparison: CommitRange =
     effectiveSearch.from && effectiveSearch.to
       ? { from: effectiveSearch.from, to: effectiveSearch.to }
@@ -557,6 +567,7 @@ export function ToolPane() {
               repos={repos}
               selectedPath={filesSelectedPath}
               onSelectedPathChange={handleFilesSelectedPathChange}
+              restoreSuppressed={filesRestoreSuppressed}
               mdMode={filesMdMode}
               onMdModeChange={handleFilesMdModeChange}
               initialLocation={filesInitialLocation}
