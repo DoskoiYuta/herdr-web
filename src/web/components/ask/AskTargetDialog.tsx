@@ -46,8 +46,10 @@ export type AskTargetDialogProps = {
   createParams: Omit<CreateAskRequest, "target" | "body">;
   agents: string[];
   defaultAgent: string;
-  /** 専用ワークスペースの同時起動上限。実行中の件数を取る API が無いため上限のみ表示する。 */
+  /** 専用ワークスペースの同時起動上限。 */
   maxSessions: number;
+  /** 現在稼働中の質問セッション数（`liveAskSessionCount`）。 */
+  activeSessions: number;
   /** この worktree のエージェント pane（ask セッションは呼び出し側で除外済み）。 */
   panes: PaneRow[];
   onCreated: (ask: Awaited<ReturnType<typeof askApi.create>>) => void;
@@ -77,6 +79,7 @@ export function AskTargetDialog({
   agents,
   defaultAgent,
   maxSessions,
+  activeSessions,
   panes,
   onCreated,
 }: AskTargetDialogProps) {
@@ -162,7 +165,9 @@ export function AskTargetDialog({
                 </Button>
               ))}
             </div>
-            <p className="mt-1 pl-5 text-xs text-muted-foreground">同時 {maxSessions}</p>
+            <p className="mt-1 pl-5 text-xs text-muted-foreground">
+              同時 {activeSessions}/{maxSessions}
+            </p>
           </div>
 
           {panes.length > 0 && (

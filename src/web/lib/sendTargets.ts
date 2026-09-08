@@ -17,6 +17,19 @@ export function agentPanesAt(repos: Repo[], worktreeRoot: string): PaneRow[] {
 }
 
 /**
+ * 現在 herdr 上で動いている「質問」(ask) 専用ワークスペースの数（全 worktree
+ * 横断）。送信先ダイアログの「同時 N/M」表示用 — サーバー側の
+ * `liveAskWorkspaceCount`（src/server/herdr/ask-session.ts）と同じ基準
+ * （`pane.ask`）をクライアントの tree から数える。
+ */
+export function liveAskSessionCount(repos: Repo[]): number {
+  return repos
+    .flatMap((repo) => repo.worktrees)
+    .flatMap((w) => w.panes)
+    .filter((p) => p.ask === true).length;
+}
+
+/**
  * A pane id to move herdr's focus to when opening a file location in a
  * worktree that isn't currently focused — the worktree's own focused pane,
  * or its first pane if none is focused. `null` when herdr has no pane at all

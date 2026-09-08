@@ -94,6 +94,7 @@ function renderDialog(overrides: Partial<AskTargetDialogProps> = {}) {
     agents: ["claude", "codex", "gemini"],
     defaultAgent: "claude",
     maxSessions: 5,
+    activeSessions: 0,
     panes: [],
     onCreated: vi.fn(),
     ...overrides,
@@ -115,6 +116,13 @@ beforeEach(() => {
 });
 
 describe("AskTargetDialog", () => {
+  // 無いと壊れる: 「同時」の残り枠が上限だけになり、他の質問がいくつ動いているか
+  // 分からないまま送信して limit_reached に当たるまで気づけない。
+  test("shows the current session count alongside the limit", () => {
+    renderDialog({ activeSessions: 2, maxSessions: 5 });
+    expect(screen.getByText("同時 2/5")).toBeInTheDocument();
+  });
+
   test("defaults to the new-session target with config's defaultAgent selected", () => {
     renderDialog();
     fireEvent.click(screen.getByText("新規セッションで質問する"));

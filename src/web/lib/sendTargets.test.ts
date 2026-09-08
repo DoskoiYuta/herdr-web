@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { PaneRow, Repo } from "@contract/events";
-import { agentPanesAt } from "./sendTargets";
+import { agentPanesAt, liveAskSessionCount } from "./sendTargets";
 
 function pane(overrides: Partial<PaneRow> = {}): PaneRow {
   return {
@@ -82,5 +82,35 @@ describe("agentPanesAt", () => {
     ];
 
     expect(agentPanesAt(repos, "/wt-a").map((p) => p.paneId)).toEqual(["claude-1"]);
+  });
+});
+
+describe("liveAskSessionCount", () => {
+  // 無いと壊れる: 送信先ダイアログの「同時 N/M」が常に N=0 になり、上限にどれだけ
+  // 近いか（他の質問が動いているか）を利用者が知る手段がなくなる。
+  test("counts ask-session panes across every worktree, not just the current one", () => {
+    const repos: Repo[] = [
+      repo({
+        worktrees: [
+          {
+            root: "/wt-a",
+            branch: "main",
+            isMain: true,
+            panes: [
+              pane({ paneId: "claude-1", agent: "claude" }),
+              pane({ paneId: "ask-1", agent: "claude", ask: true }),
+            ],
+          },
+          {
+            root: "/wt-b",
+            branch: "other",
+            isMain: false,
+            panes: [pane({ paneId: "ask-2", agent: "claude", ask: true })],
+          },
+        ],
+      }),
+    ];
+
+    expect(liveAskSessionCount(repos)).toBe(2);
   });
 });
