@@ -218,6 +218,12 @@ vi.mock("@/components/graph/GraphPanel", () => ({
   ),
 }));
 
+vi.mock("@/components/notes/NotesPanel", () => ({
+  NotesPanel: ({ repoKey }: { repoKey: string | null }) => (
+    <div data-testid="notes-panel-stub">notes:{repoKey}</div>
+  ),
+}));
+
 vi.mock("@/components/decision/DecisionListView", () => ({
   DecisionListView: ({ onSelect }: { onSelect: (id: string) => void }) => (
     <button type="button" data-testid="decision-list-stub" onClick={() => onSelect("d1")}>
@@ -321,7 +327,7 @@ describe("ToolPane", () => {
     expect(screen.getByText("herdr 未接続 / worktree 未選択")).toBeInTheDocument();
     expect(screen.getByText("worktree を解決できません")).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab").map((el) => el.textContent);
-    expect(tabs).toEqual(["Files", "Graph", "Diff", "Decisions", "Process", "Compose"]);
+    expect(tabs).toEqual(["Files", "Graph", "Diff", "Notes", "Decisions", "Process", "Compose"]);
     expect(screen.queryByTestId("diff-panel-stub")).not.toBeInTheDocument();
   });
 
@@ -347,14 +353,14 @@ describe("ToolPane", () => {
     expect(screen.queryByTestId("decision-list-stub")).not.toBeInTheDocument();
   });
 
-  // ui-redesign.md §5.4: タブは Files/Graph/Diff/Decisions/Process/Compose の
-  // 順。無いと壊れる: 並びがずれる、あるいは旧 Docker タブが残る/消える。
-  test("shows the worktree header and tabs in the Files/Graph/Diff/Decisions/Process/Compose order", async () => {
+  // ui-redesign.md §5.4: タブは Files/Graph/Diff/Notes/Decisions/Process/Compose
+  // の順。無いと壊れる: 並びがずれる、あるいは旧 Docker タブが残る/消える。
+  test("shows the worktree header and tabs in the Files/Graph/Diff/Notes/Decisions/Process/Compose order", async () => {
     await renderFocused();
     expect(screen.getByText("project")).toBeInTheDocument();
     expect(screen.getByText("/Users/dev/project")).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab").map((el) => el.textContent);
-    expect(tabs).toEqual(["Files", "Graph", "Diff", "Decisions", "Process", "Compose"]);
+    expect(tabs).toEqual(["Files", "Graph", "Diff", "Notes", "Decisions", "Process", "Compose"]);
     expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
       "/Users/dev/project:WORKTREE:HEAD",
     );

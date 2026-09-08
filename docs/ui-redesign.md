@@ -187,7 +187,7 @@ herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と
 
 ### 5.4 Tool tabs
 
-タブは Files / Graph / Diff / Decisions / Process / Compose の 6 つ（この順）（表示名はすべて英語。判断依頼は `hw decision` とルート名に合わせて Decisions）。タブには通知バッジを付ける: Diff（未コミット対象の返信ありレビュー件数）、Graph（コミット対象の返信ありレビュー件数）、Files（返信のある質問件数）、Decisions（フォーカス中 worktree の未回答件数）。Inbox はタブではなくフローティングダイアログ（§5.6）。Decisions を含む他の観察タブと同様、内容はフォーカス中の worktree に追従する。
+タブは Files / Graph / Diff / Notes / Decisions / Process / Compose の 7 つ（この順）（表示名はすべて英語。判断依頼は `hw decision` とルート名に合わせて Decisions）。タブには通知バッジを付ける: Diff（未コミット対象の返信ありレビュー件数）、Graph（コミット対象の返信ありレビュー件数）、Files（返信のある質問件数）、Decisions（フォーカス中 worktree の未回答件数）。Inbox はタブではなくフローティングダイアログ（§5.6）。Decisions を含む他の観察タブと同様、内容はフォーカス中の worktree に追従する。Notes だけは worktree ではなくリポジトリ単位（`repoKey`）で内容が決まり、worktree を切り替えても同じページが見える。
 
 `/focus/<tab>` の `<tab>` に `decisions` を加え、`/focus/decisions?id=<id>` で詳細を開く。`/decisions/<id>` はそこへリダイレクトし、`hw decision request` が返す URL は `/decisions/<id>` のまま。Inbox は URL を持たない（`?inbox=1` のような search param で開閉状態だけ持ち、リロードで復元する）。
 
@@ -216,6 +216,14 @@ herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と
 - 行選択 → **質問コンポーザー**（見出し「質問」、本文だけ）。「送信先を選ぶ…」でレビュー送信と同じ形の **送信先ダイアログ** を開く: 既定は「新規セッション」（エージェント種別を herdr が対応するものから選ぶ、同時起動数の残りを表示）、その下にこの worktree で動いている pane のカード（ミニマップ・状態・出力末尾）。ダイアログの送信で作成と同時に送信する。
 - 質問スレッドはインライン。内容不一致の質問はビューア上部に「一致しない質問 N 件」を折りたたみで。
 - 状態: 上記ビューア種別 ＋ インポート中 / 衝突（上書き確認ダイアログ）/ ゴミ箱不可（501）。
+
+#### Notes
+
+- 左にページ一覧（幅 200px 程度、「＋」で新規作成）、右にタイトル入力 + WYSIWYG エディタ（`@wysimark/react`、Files の MarkdownView と同じ部品の編集モード）。一覧の下に「N ページ · `<リポジトリ名>` 全体で共有」と出す。
+- リポジトリ単位（`repoKey`）で保存するため、worktree を切り替えても同じページが見える。他の観察タブと違い worktree には追従しない。
+- 選択中ページは URL の search `id`（Decisions と同じ扱い、タブ切替で落とす）。無ければ一覧の先頭を表示。
+- 自動保存: 入力が止まって 1 秒後に PATCH。ページ切替・タブ切替・アンマウント時は未保存分を即 flush。保存状態は右下に 1 行（保存中 / 保存済み HH:MM / 保存に失敗）。
+- 削除は右クリック or 行末の「…」から確認ダイアログ付き。
 
 #### Compose / Process
 

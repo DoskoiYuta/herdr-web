@@ -2,10 +2,18 @@ import { describe, expect, test } from "vitest";
 import { normalizeTab, parseToolSearch, TOOL_TABS } from "./search";
 
 describe("TOOL_TABS", () => {
-  // 無いと壊れる: タブの並びが仕様（Files/Graph/Diff/Decisions/Process/Compose）
+  // 無いと壊れる: タブの並びが仕様（Files/Graph/Diff/Notes/Decisions/Process/Compose）
   // からずれると、TabsList の描画順もずれる。
-  test("is ordered Files, Graph, Diff, Decisions, Process, Compose", () => {
-    expect(TOOL_TABS).toEqual(["files", "graph", "diff", "decisions", "process", "compose"]);
+  test("is ordered Files, Graph, Diff, Notes, Decisions, Process, Compose", () => {
+    expect(TOOL_TABS).toEqual([
+      "files",
+      "graph",
+      "diff",
+      "notes",
+      "decisions",
+      "process",
+      "compose",
+    ]);
   });
 });
 

@@ -18,8 +18,9 @@ const ToolSearchSchema = v.object({
    * `path`/`line` を誤って適用しないためのゲート（別 worktree のファイルを開く
    * 導線専用）。この値が現在の focus worktree と一致した時点で消す。 */
   root: v.optional(v.pipe(v.string(), v.minLength(1))),
-  /** decisions タブ専用: 選択中の判断依頼 id。無ければ一覧を描く。`path`/`line`
-   * と同様、タブ切替で落とす。 */
+  /** decisions/notes タブ専用: 選択中の判断依頼 / ノートページ id。無ければ
+   * 一覧の先頭（notes）/一覧（decisions）を描く。`path`/`line` と同様、タブ切替
+   * で落とす。 */
   id: v.optional(v.pipe(v.string(), v.minLength(1))),
   /** Inbox ダイアログの開閉（docs/ui-redesign.md §5.4）。タブと違い落とさない —
    * リロードで復元、閉じる操作で消す。TanStack Router の search は JSON で
@@ -67,7 +68,15 @@ export function parseToolSearch(raw: Record<string, unknown>): ToolSearch {
   return out as ToolSearch;
 }
 
-export const TOOL_TABS = ["files", "graph", "diff", "decisions", "process", "compose"] as const;
+export const TOOL_TABS = [
+  "files",
+  "graph",
+  "diff",
+  "notes",
+  "decisions",
+  "process",
+  "compose",
+] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 
 /** 旧 `"docker"` タブ値（改名前の URL）は `"compose"` に丸める。 */

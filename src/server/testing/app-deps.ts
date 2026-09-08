@@ -14,6 +14,8 @@ import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
 import { createHerdrState } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
 import { createInboxService } from "../inbox/service";
+import { createNotesService } from "../notes/service";
+import { createSqliteNotesRepository } from "../notes/sqlite-repository";
 import type { ReviewEvent } from "../review/ports";
 import { createReviewRuntime } from "../review/runtime";
 import { createApp, type AppDeps } from "../app";
@@ -75,6 +77,10 @@ export function createTestApp(opts: TestAppOptions = {}) {
     onEvent: (e) => decisionEvents.push(e),
     logger: { info() {}, warn() {}, error() {} },
   });
+  const notes = createNotesService({
+    repository: createSqliteNotesRepository(db),
+    clock: { now: () => new Date() },
+  });
   const inbox = createInboxService({
     reviewRepository: review.repository,
     askRepository: ask.repository,
@@ -105,6 +111,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
     ask: ask.routes,
     decision: { ...decision.routes, buildUrl: (id) => `http://test/decisions/${id}` },
+    notes: { service: notes },
     inbox: { service: inbox },
   };
   return {
@@ -117,6 +124,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     askEvents,
     decision,
     decisionEvents,
+    notes,
     inbox,
     db,
   };

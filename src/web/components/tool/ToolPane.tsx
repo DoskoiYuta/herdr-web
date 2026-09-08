@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, useRouterState } from "@tanstack/react-router";
-import { Check, Copy, FolderX } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SubRepo } from "@contract/git";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { ComposePanel } from "@/components/docker/ComposePanel";
 import { FilesPanel } from "@/components/files/FilesPanel";
 import { GraphPanel } from "@/components/graph/GraphPanel";
+import { NotesPanel } from "@/components/notes/NotesPanel";
 import { ProcessPanel } from "@/components/process/ProcessPanel";
 import { DecisionListView } from "@/components/decision/DecisionListView";
 import { DecisionView } from "@/components/decision/DecisionView";
@@ -15,11 +16,11 @@ import { useDecisionCounts } from "@/components/decision/hooks/useDecisionCounts
 import { useAskCounts } from "@/components/ask/hooks/useAskCounts";
 import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { SendDraftsButton } from "@/components/review/SendDraftsButton";
+import { EmptyWorktreeNotice } from "@/components/tool/EmptyWorktreeNotice";
 import { TabBadge } from "@/components/tool/TabBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
-import { PanelState } from "@/components/ui/status/PanelState";
 import {
   Select,
   SelectContent,
@@ -64,6 +65,7 @@ const TAB_LABEL: Record<ToolTab, string> = {
   files: "Files",
   graph: "Graph",
   diff: "Diff",
+  notes: "Notes",
   decisions: "Decisions",
   process: "Process",
   compose: "Compose",
@@ -121,26 +123,6 @@ function basename(path: string): string {
   const trimmed = path.replace(/\/+$/, "");
   const idx = trimmed.lastIndexOf("/");
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
-}
-
-/** 観察タブ（Files/Graph/Diff/Decisions/Process/Compose）の worktree 未選択時の
- * 空状態。タブ列はこの状態でも常に描画する。起動直後や全 pane クローズ後でも
- * herdr が再接続してくるまでタブ自体には触れられるようにするため。 */
-function EmptyWorktreeNotice() {
-  return (
-    <PanelState
-      icon={FolderX}
-      title="worktree を解決できません"
-      description={
-        <>
-          ツール領域は herdr のフォーカス pane が見ている worktree に追従します。herdr に接続して
-          pane をフォーカスすると表示されます。
-          <br />
-          Inbox は接続中も参照できます（回答の配達は再接続後）
-        </>
-      }
-    />
-  );
 }
 
 /** `/focus/$tab` の唯一の下で描画される — URL がタブ・比較範囲・選択サブ
@@ -245,6 +227,7 @@ export function ToolPane() {
       ? { path: effectiveSearch.path, line: effectiveSearch.line }
       : null;
   const decisionId = tab === "decisions" ? (effectiveSearch.id ?? null) : null;
+  const notesSelectedId = tab === "notes" ? (effectiveSearch.id ?? null) : null;
 
   const handleTabChange = useCallback(
     (nextTab: string) => {
@@ -354,6 +337,13 @@ export function ToolPane() {
   const handleCloseDecision = useCallback(() => {
     void navigate({ search: (prev) => ({ ...prev, id: undefined }) });
   }, [navigate]);
+
+  const handleSelectNote = useCallback(
+    (id: string) => {
+      void navigate({ search: (prev) => ({ ...prev, id }) });
+    },
+    [navigate],
+  );
 
   const handleFocusDecisionPane = useCallback(
     (pane: string) => send({ type: "focus-pane", pane }),
@@ -546,6 +536,7 @@ export function ToolPane() {
             {TAB_LABEL.diff}
             <TabBadge count={reviewCounts?.replied.worktree ?? 0} />
           </TabsTrigger>
+          <TabsTrigger value="notes">{TAB_LABEL.notes}</TabsTrigger>
           <TabsTrigger value="decisions">
             {TAB_LABEL.decisions}
             <TabBadge count={decisionTotal} />
@@ -641,6 +632,15 @@ export function ToolPane() {
           ) : (
             <EmptyWorktreeNotice />
           )}
+        </TabsContent>
+
+        <TabsContent value="notes" className="min-h-0 flex-1 overflow-hidden">
+          <NotesPanel
+            key={resolvedRepoKey ?? "none"}
+            repoKey={resolvedRepoKey}
+            selectedId={notesSelectedId}
+            onSelectId={handleSelectNote}
+          />
         </TabsContent>
 
         <TabsContent value="decisions" className="min-h-0 flex-1 overflow-hidden">

@@ -52,4 +52,13 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "0d388e768915ecc9751828d772c1c0377f01f0f1c66d9d24465deea200cc78ce",
     bps: true,
   },
+  {
+    sql: [
+      "CREATE TABLE `notes` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`repo_key` text NOT NULL,\n\t`title` text NOT NULL,\n\t`body` text DEFAULT '' NOT NULL,\n\t`created_at` text NOT NULL,\n\t`updated_at` text NOT NULL\n);\n",
+      "\nCREATE INDEX `notes_repo_key_idx` ON `notes` (`repo_key`);",
+    ],
+    folderMillis: 1788902765554,
+    hash: "1981c1bfeb9eb41f3d61b08557b646e31213c826d52df23c3cdd11b76b9a38dc",
+    bps: true,
+  },
 ];
