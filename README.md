@@ -105,12 +105,16 @@ tailscale serve --bg 8080
 解決（resolve）の判断はユーザーが行うので、エージェントは resolve しない。
 ```
 
+ユーザーが Notes に書いたメモは `hw notes list` / `hw notes show <id>` で読める（エージェントからの書き込みは無い）。
+
 ### `hw` CLI
 
 ```
 hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unreachable] [--json]
 hw review show <id> [--json]   # <id> は `hw review list` が出す短縮 id（末尾一致）でよい
 hw review reply <id> <text>
+hw notes list [--worktree <path>] [--json]
+hw notes show <id> [--json]   # <id> は `hw notes list` が出す短縮 id（末尾一致）でよい
 hw status
 hw repo move <old-path> <new-path>
 ```

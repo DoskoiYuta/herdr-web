@@ -9,6 +9,12 @@ import { MarkdownView } from "@/components/files/MarkdownView";
 import { EmptyWorktreeNotice } from "@/components/tool/EmptyWorktreeNotice";
 import { Button } from "@/components/ui/button";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -16,6 +22,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PanelState } from "@/components/ui/status/PanelState";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import { notesApi, type Note } from "@/lib/api";
@@ -48,53 +60,95 @@ function repoDisplayName(repoKey: string): string {
   return idx === -1 ? withoutGitDir : withoutGitDir.slice(idx + 1);
 }
 
+/** `hw notes show <id>` の `<id>` — サーバーの短縮 id 解決（末尾一致 4 文字以上）に
+ * 合わせて、行から一意に引ける長さの末尾 8 文字を使う（review/ask 一覧と同じ）。 */
+function noteShowCommand(note: Note): string {
+  return `hw notes show ${note.id.slice(-8)}`;
+}
+
+type NoteMenuItem = {
+  key: string;
+  label: string;
+  onSelect: () => void;
+  variant?: "destructive";
+};
+
+function noteMenuItems(handlers: {
+  onCopyCommand: () => void;
+  onRequestDelete: () => void;
+}): NoteMenuItem[] {
+  return [
+    { key: "copy", label: "コマンドをコピー", onSelect: handlers.onCopyCommand },
+    { key: "delete", label: "削除", onSelect: handlers.onRequestDelete, variant: "destructive" },
+  ];
+}
+
 function NoteRow({
   note,
   selected,
   onSelect,
+  onCopyCommand,
   onRequestDelete,
 }: {
   note: Note;
   selected: boolean;
   onSelect: () => void;
+  onCopyCommand: () => void;
   onRequestDelete: () => void;
 }) {
+  const items = noteMenuItems({ onCopyCommand, onRequestDelete });
+
   return (
     <li>
-      <div
-        role="button"
-        tabIndex={0}
-        data-testid={`note-row-${note.id}`}
-        onClick={onSelect}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect();
-          }
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onRequestDelete();
-        }}
-        className={cn(
-          "flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-muted",
-          selected && "bg-muted font-medium",
-        )}
-      >
-        <span className="min-w-0 flex-1 truncate">{note.title}</span>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          aria-label={`「${note.title}」を削除`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRequestDelete();
-          }}
-        >
-          <MoreHorizontal className="size-3.5" />
-        </Button>
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            role="button"
+            tabIndex={0}
+            data-testid={`note-row-${note.id}`}
+            onClick={onSelect}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect();
+              }
+            }}
+            className={cn(
+              "flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-muted",
+              selected && "bg-muted font-medium",
+            )}
+          >
+            <span className="min-w-0 flex-1 truncate">{note.title}</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={`「${note.title}」のメニュー`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {items.map((item) => (
+                  <DropdownMenuItem key={item.key} variant={item.variant} onSelect={item.onSelect}>
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {items.map((item) => (
+            <ContextMenuItem key={item.key} variant={item.variant} onSelect={item.onSelect}>
+              {item.label}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
     </li>
   );
 }
@@ -279,6 +333,17 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
     }
   }, [deleteTarget, queryClient, repoKey, draftId, toast]);
 
+  const handleCopyCommand = useCallback(
+    async (note: Note) => {
+      try {
+        await navigator.clipboard.writeText(noteShowCommand(note));
+      } catch {
+        toast({ kind: "error", message: "クリップボードにコピーできませんでした" });
+      }
+    },
+    [toast],
+  );
+
   if (!repoKey) return <EmptyWorktreeNotice />;
 
   return (
@@ -303,6 +368,7 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
               note={note}
               selected={note.id === effectiveId}
               onSelect={() => onSelectId(note.id)}
+              onCopyCommand={() => void handleCopyCommand(note)}
               onRequestDelete={() => setDeleteTarget(note)}
             />
           ))}

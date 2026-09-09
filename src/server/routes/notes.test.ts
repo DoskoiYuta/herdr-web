@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createSqliteNotesRepository } from "../notes/sqlite-repository";
 import { createTestApp } from "../testing/app-deps";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +38,49 @@ describe("GET /api/notes", () => {
     const body = await json(res);
     expect(body).toHaveLength(1);
     expect(body[0].repoKey).toBe("/repo-a");
+  });
+});
+
+describe("GET /api/notes/:id", () => {
+  // 無いと壊れる: 一覧行からコピーした短縮 id (末尾 8 文字) で `hw notes show`
+  // からノートを開けない。
+  test("resolves a short (suffix) id", async () => {
+    const { app } = createTestApp();
+    const created = await json(await postNote(app));
+
+    const res = await app.request(`/api/notes/${created.id.slice(-8)}`);
+    expect(res.status).toBe(200);
+    expect((await json(res)).id).toBe(created.id);
+  });
+
+  // 無いと壊れる: 末尾一致が複数リポジトリのノートをまたいで走査されず、
+  // 衝突していても片方を勝手に返してしまう / 存在しない id が 200 になる。
+  test.each([
+    [
+      "ambiguous when the suffix matches more than one note",
+      ["note-aaaa-1111", "note-bbbb-1111"],
+      "1111",
+      409,
+      "ambiguous",
+    ],
+    ["not_found for an unknown id", ["note-aaaa-1111"], "zzzz", 404, null],
+  ] as const)("%s", async (_name, seedIds, suffix, expectedStatus, expectedType) => {
+    const { app, db } = createTestApp();
+    const repo = createSqliteNotesRepository(db);
+    for (const id of seedIds) {
+      await repo.save({
+        id,
+        repoKey: "/repo",
+        title: "t",
+        body: "",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    }
+
+    const res = await app.request(`/api/notes/${suffix}`);
+    expect(res.status).toBe(expectedStatus);
+    if (expectedType) expect((await json(res)).type).toBe(expectedType);
   });
 });
 

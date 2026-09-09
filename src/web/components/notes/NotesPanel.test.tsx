@@ -198,13 +198,19 @@ describe("NotesPanel", () => {
 
   // 無いと壊れる: 削除しても一覧からページが消えず、消したはずのページが
   // 開けてしまう。
+  // Radix のメニュー描画は jsdom ではフルスイートの並走時に既定の 5s を
+  // 超えることがある（WorktreeSelect.open.test.tsx と同じ理由）。
   test("削除確認後に一覧から消える", async () => {
     listMock.mockResolvedValue([note({ id: "n1", title: "A" })]);
     deleteMock.mockResolvedValue(undefined);
     renderPanel();
     await screen.findByTestId("note-row-n1");
 
-    fireEvent.click(screen.getByRole("button", { name: "「A」を削除" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "「A」のメニュー" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "削除" }));
     await screen.findByRole("dialog");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "削除" }));
@@ -212,5 +218,28 @@ describe("NotesPanel", () => {
 
     expect(deleteMock).toHaveBeenCalledWith("n1");
     await waitFor(() => expect(screen.queryByTestId("note-row-n1")).not.toBeInTheDocument());
-  });
+  }, 20_000);
+
+  // 無いと壊れる: 行のメニューから id をコピーする手段が無く、エージェントに
+  // `hw notes show <id>` を伝えるのに本文中の id を手打ちさせることになる。
+  test("メニューの「コマンドをコピー」で hw notes show <短縮 id> がコピーされる", async () => {
+    listMock.mockResolvedValue([note({ id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", title: "A" })]);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderPanel();
+    await screen.findByTestId("note-row-01ARZ3NDEKTSV4RRFFQ69G5FAV");
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "「A」のメニュー" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "コマンドをコピー" }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith("hw notes show Q69G5FAV");
+  }, 20_000);
 });

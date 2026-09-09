@@ -130,8 +130,9 @@ const decision = createDecisionRuntime({
 // F13-9: pick back up any decision whose delivery was mid-backoff when the process last exited.
 await decision.delivery.drainPending();
 
+const notesRepository = createSqliteNotesRepository(reviewDb);
 const notes = createNotesService({
-  repository: createSqliteNotesRepository(reviewDb),
+  repository: notesRepository,
   clock: { now: () => new Date() },
 });
 
@@ -182,7 +183,7 @@ const api = createApp({
     ...decision.routes,
     buildUrl: (id) => `http://${config.host}:${config.port}/decisions/${id}`,
   },
-  notes: { service: notes },
+  notes: { service: notes, repository: notesRepository },
   docker: { allowedRoots: config.allowedRoots, cache: dockerCache },
   proc: { allowedRoots: config.allowedRoots },
   inbox: { service: inbox },

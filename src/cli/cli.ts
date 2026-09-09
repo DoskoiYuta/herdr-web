@@ -7,6 +7,8 @@ import { decisionRequestCommand } from "./commands/decision-request";
 import { decisionSchemaCommand } from "./commands/decision-schema";
 import { decisionShowCommand } from "./commands/decision-show";
 import { reviewListCommand } from "./commands/list";
+import { notesListCommand } from "./commands/notes-list";
+import { notesShowCommand } from "./commands/notes-show";
 import { repoMoveCommand } from "./commands/repo-move";
 import { reviewReplyCommand } from "./commands/reply";
 import { reviewShowCommand } from "./commands/show";
@@ -27,6 +29,8 @@ Usage:
   hw decision list [--status <s1,s2>|all] [--worktree <path>] [--json]  (既定: open のみ)
   hw decision cancel <id>
   hw decision schema
+  hw notes list [--worktree <path>] [--json]
+  hw notes show <id> [--json]   (<id> may be the short id printed by 'hw notes list')
   hw status [--worktree <path>] [--json]
   hw repo move <old-path> <new-path>
   hw --help
@@ -62,6 +66,13 @@ Usage:
   hw decision list [--status <s1,s2>|all] [--worktree <path>] [--json]  (既定: open のみ)
   hw decision cancel <id>
   hw decision schema
+`;
+
+const NOTES_HELP_TEXT = `hw notes — read the repository's Notes pages (written by the user, not the agent)
+
+Usage:
+  hw notes list [--worktree <path>] [--json]
+  hw notes show <id> [--json]   (<id> may be the short id printed by 'hw notes list')
 `;
 
 function helpResult(text: string): CommandResult {
@@ -109,6 +120,16 @@ export async function runCli(argv: string[], deps: CommandDeps): Promise<Command
     if (sub === "cancel") return decisionCancelCommand(subArgv, deps);
     if (sub === "schema") return decisionSchemaCommand(subArgv, deps);
     return usageError(`unknown subcommand: hw decision ${sub}`);
+  }
+
+  if (head === "notes") {
+    const [sub, ...subArgv] = rest;
+    if (sub === undefined || sub === "--help" || sub === "-h") {
+      return helpResult(NOTES_HELP_TEXT);
+    }
+    if (sub === "list") return notesListCommand(subArgv, deps);
+    if (sub === "show") return notesShowCommand(subArgv, deps);
+    return usageError(`unknown subcommand: hw notes ${sub}`);
   }
 
   if (head === "status") return statusCommand(rest, deps);
