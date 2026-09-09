@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -147,70 +148,72 @@
   }
 }
 
-/* Files タブの MarkdownView (@wysimark/react) は読み取り専用のときだけ
- * ツールバーを非表示にする（Notes タブの編集モードは `.md-editable` を
- * 使い、このセレクタの対象外にして出す）。ツールバーは $OuterContainer の
- * `[data-slate-editor]` を持つ子要素の直前の兄弟としてレンダリングされる
- * (node_modules/@wysimark/react/.dist/browser/index.esm.js の
- * renderEditable) — wysimark に readOnly / hideToolbar プロパティが無いため
- * DOM 構造に依存したセレクタで隠す。 */
-.md-readonly div:has(> [data-slate-editor]) > :first-child:not([data-slate-editor]) {
-  display: none;
+/* MarkdownView (Tiptap). `.ProseMirror` gets the outline reset and edit
+ * padding; typography (headings/lists/tables) comes from the `prose` plugin
+ * classes applied by the component. */
+.ProseMirror {
+  outline: none;
+  padding: 0.5rem 0.75rem;
 }
 
-/* wysimark はコード・表・引用などのほとんどの色を `--shade-*` 等の CSS 変数
- * (:root に自前で定義) 経由で持つが、本文の基準色だけは `rgb(39 39 42)` を
- * 直書きしていて変数を通らない。`:root` と `.dark` は詳細度が同じ（両方
- * 単純なクラス相当）なので、後着の wysimark 側の `:root` に負けないよう
- * `html.dark` で上書きする（型 + クラスで詳細度を確実に上げる）。 */
-.md-readonly,
-.md-editable {
-  background: #fff;
-  color-scheme: light;
+/* `prose` decorates inline code with literal backticks and blockquotes with
+ * curly quotes (::before/::after); markdown already shows code with its own
+ * background, and quotes are not part of the source text. */
+.prose :where(code):not(:where([class~="not-prose"] *))::before,
+.prose :where(code):not(:where([class~="not-prose"] *))::after,
+.prose :where(blockquote p:first-of-type):not(:where([class~="not-prose"] *))::before,
+.prose :where(blockquote p:last-of-type):not(:where([class~="not-prose"] *))::after {
+  content: none;
 }
 
-html.dark {
-  --shade-50: rgb(39 39 42);
-  --shade-100: rgb(63 63 70);
-  --shade-200: rgb(82 82 91);
-  --shade-300: rgb(113 113 122);
-  --shade-400: rgb(161 161 170);
-  --shade-500: rgb(212 212 216);
-  --shade-600: rgb(228 228 231);
-  --shade-700: rgb(244 244 245);
-  --shade-800: rgb(250 250 250);
-  --shade-900: rgb(255 255 255);
-  --code-block-bgcolor: rgb(39 39 42);
-  --code-block-border-color: rgb(82 82 91);
-  --inline-code-bgcolor: rgb(63 63 70);
-  --inline-code-border-color: rgb(82 82 91);
-  --table-border-color: rgb(82 82 91);
-  --table-row-border-color: rgb(82 82 91);
-  --table-column-border-color: rgb(63 63 70);
-  --table-head-bgcolor: rgb(39 39 42);
-  --table-menu-bgcolor: rgb(63 63 70);
-  --table-menu-hover-bgcolor: rgb(82 82 91);
-  --hr-color: rgb(82 82 91);
+/* Tiptap renders every list item / table cell body as a <p>; prose's
+ * paragraph margins would then pad each item and cell as if it were a
+ * standalone paragraph. */
+.ProseMirror :is(li, td, th) > p,
+.ProseMirror li > div > p {
+  margin: 0;
 }
 
-html.dark .md-readonly,
-html.dark .md-editable {
-  background: var(--background);
-  color-scheme: dark;
+.ProseMirror :is(ul, ol) > li {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
 }
 
-/* 本文の基準色 (rgb(39 39 42) 直書き) は wysimark の外枠要素自身が持つため、
- * 継承では上書きできない。`.md-readonly`/`.md-editable` の直下の子
- * （その外枠）を名指しし、変数を通らない要素にだけ !important を当てる。 */
-html.dark .md-readonly > div,
-html.dark .md-editable > div {
-  color: var(--foreground) !important;
+/* Task items: the checkbox <label> and the text <div> come as siblings, so
+ * they need a flex row to sit on one line, and the list bullet is redundant. */
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+
+.ProseMirror ul[data-type="taskList"] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.ProseMirror ul[data-type="taskList"] > li > label {
+  flex: none;
+  padding-top: 0.2em;
+}
+
+.ProseMirror ul[data-type="taskList"] > li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ProseMirror ul[data-type="taskList"] > li[data-checked="true"] > div {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.ProseMirror[contenteditable="false"] {
+  cursor: default;
 }
 
 /* decision context/preview Blocks (BlockView) render markdown inline among
- * text-sm UI copy — wysimark's document-scale headings (h1 など) otherwise
- * dwarf everything around them (docs/ui-redesign.md §5.4 P3/P13). */
-.md-readonly-compact,
+ * text-sm UI copy — document-scale headings (h1 など) otherwise dwarf
+ * everything around them (docs/ui-redesign.md §5.4 P3/P13). */
 .md-readonly-compact :is(p, li, td, th, blockquote) {
   font-size: 0.8125rem !important;
   line-height: 1.5 !important;
@@ -220,21 +223,6 @@ html.dark .md-editable > div {
   margin: 0.25rem 0 !important;
   font-size: 0.875rem !important;
   font-weight: 600 !important;
-}
-
-/* wysimark はエディタ本体を枠線+角丸付きのカード (32px パディング) として
- * 描く — ドキュメント編集面としては妥当だが、decision の設問と地続きに
- * 流れる本文としては枠と余白が過大 (design.pen P3v2)。emotion のハッシュ
- * class は当てにできないので、構造 (最初の子要素 / data-slate-editor) で
- * 選ぶ。 */
-.md-readonly-compact > div:first-child {
-  border: none !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-}
-
-.md-readonly-compact [data-slate-editor] {
-  padding: 0 !important;
 }
 
 /* ThreadCard: 要対応（turn=action）で未読のカードは、バッジではなく枠線の
