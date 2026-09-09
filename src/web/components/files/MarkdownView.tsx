@@ -1,17 +1,10 @@
-// Markdown viewer/editor via @wysimark/react (chosen — see plan.md F9). With
-// no `onChange` prop this stays read-only: wysimark 3 has no `readOnly` prop,
-// so read-only-ness is forced by hand — after mount, and again whenever
-// `contents` changes, this sets contenteditable="false" on the rendered
-// Slate root. React never fights this back to "true" because Slate owns
-// that DOM node imperatively (via slate-react's own effects) rather than
-// through a prop React re-renders from — see
-// node_modules/@wysimark/react/.dist/browser/index.esm.js's `Editable2`.
-// Passing `onChange` (Notes tab) skips that override and lets Slate keep
-// contenteditable, and switches the toolbar-hiding CSS class (index.css) so
-// the toolbar shows.
-
-import { Editable, useEditor } from "@wysimark/react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { TaskItem } from "@tiptap/extension-task-item";
+import { TaskList } from "@tiptap/extension-task-list";
+import { Markdown } from "@tiptap/markdown";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { StarterKit } from "@tiptap/starter-kit";
+import { TableKit } from "@tiptap/extension-table";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export interface MarkdownViewProps {
@@ -21,7 +14,7 @@ export interface MarkdownViewProps {
    * than a document-sized preview (Files tab). */
   compact?: boolean;
   /** Presence (not value) selects edit vs. read-only mode. Called with the
-   * document's markdown serialization on each Slate change. */
+   * document's markdown serialization on each edit. */
   onChange?: (markdown: string) => void;
   /** Scroll position to restore on mount (fileScroll.ts). Callers that need
    * per-file restoration must remount this component on file change (e.g.
@@ -31,22 +24,6 @@ export interface MarkdownViewProps {
   onScrollTopChange?: (top: number) => void;
 }
 
-/** Nearest scrolling ancestor of Slate's root inside `container` (falls back
- * to `container` itself, e.g. before wysimark has mounted). */
-function findScroller(container: HTMLElement): HTMLElement {
-  let el = container.querySelector<HTMLElement>("[data-slate-editor]");
-  while (el && el !== container) {
-    const overflowY = getComputedStyle(el).overflowY;
-    if (overflowY === "auto" || overflowY === "scroll") return el;
-    el = el.parentElement;
-  }
-  return container;
-}
-
-function noop() {
-  // read-only: edits are discarded rather than fed back into `contents`
-}
-
 export function MarkdownView({
   contents,
   compact = false,
@@ -54,53 +31,56 @@ export function MarkdownView({
   scrollTop,
   onScrollTopChange,
 }: MarkdownViewProps) {
-  const editor = useEditor({ height: compact ? "auto" : "100%" });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editable = onChange !== undefined;
 
-  // The element that actually scrolls is wysimark's own editable wrapper (an
-  // emotion-styled div with a generated class name, `overflow-y: auto`,
-  // height 100%), not this container — so the scroller is located by walking
-  // up from Slate's root instead of by class name.
-  const scrollerRef = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    scrollerRef.current = findScroller(container);
-    if (scrollTop !== undefined) scrollerRef.current.scrollTop = scrollTop;
+  // Markdown last exchanged with the caller, in either direction. The editor's
+  // own serialization of `contents` differs from `contents` itself (table
+  // padding, blank lines), so comparing against `getMarkdown()` would re-set
+  // the document on every mount and echo a normalized copy back through
+  // `onChange`.
+  const lastMarkdownRef = useRef(contents);
+
+  const editor = useEditor({
+    editable,
+    extensions: [StarterKit, TableKit, TaskList, TaskItem.configure({ nested: false }), Markdown],
+    content: contents,
+    contentType: "markdown",
+    onUpdate: onChange
+      ? ({ editor: e }) => {
+          const markdown = e.getMarkdown();
+          lastMarkdownRef.current = markdown;
+          onChange(markdown);
+        }
+      : undefined,
+  });
+
+  // Round-trips through markdown drop table-cell line breaks (marked has no
+  // block-level cell content) — not exercised by this app's editor UI.
+  useEffect(() => {
+    if (!editor || contents === lastMarkdownRef.current) return;
+    lastMarkdownRef.current = contents;
+    editor.commands.setContent(contents, { contentType: "markdown", emitUpdate: false });
+  }, [editor, contents]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el && scrollTop !== undefined) el.scrollTop = scrollTop;
     // mount-only: restoration relies on the caller remounting via `key`
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (editable) return;
-    const node = containerRef.current?.querySelector<HTMLElement>("[data-slate-editor]");
-    node?.setAttribute("contenteditable", "false");
-    // `contents` isn't read in the body — it's a proxy for "Slate just
-    // re-parsed and re-rendered its DOM node", which can drop the attribute
-    // set above (see the file-level comment).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contents, editable]);
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        editable ? "md-editable" : "md-readonly",
+        "prose prose-sm max-w-none dark:prose-invert",
         "overflow-auto",
-        compact ? "h-auto" : "h-full min-h-0",
-        compact && "md-readonly-compact",
+        compact ? "h-auto md-readonly-compact" : "h-full min-h-0",
       )}
-      onScrollCapture={
-        onScrollTopChange
-          ? (e) => {
-              if (e.target === scrollerRef.current)
-                onScrollTopChange(scrollerRef.current.scrollTop);
-            }
-          : undefined
-      }
+      onScroll={onScrollTopChange ? (e) => onScrollTopChange(e.currentTarget.scrollTop) : undefined}
     >
-      <Editable editor={editor} value={contents} onChange={onChange ?? noop} />
+      <EditorContent editor={editor} />
     </div>
   );
 }

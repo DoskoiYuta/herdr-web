@@ -305,8 +305,7 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
     (markdown: string) => {
       if (!draftId) return;
       setBody(markdown);
-      // wysimark が parse→serialize の往復で呼ぶだけの無変化イベント
-      // （ページ切替時の再マウント直後など）は保存をスケジュールしない。
+      // エディタが往復で呼ぶだけの無変化イベントは保存をスケジュールしない。
       if (markdown === lastKnownBodyRef.current) return;
       scheduleSave(draftId, { body: markdown });
     },
