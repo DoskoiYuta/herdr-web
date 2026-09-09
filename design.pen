@@ -2091,6 +2091,46 @@
                       "fontWeight": "600"
                     },
                     {
+                      "type": "frame",
+                      "id": "L3el6c",
+                      "name": "worktree select",
+                      "fill": "$x:--background",
+                      "cornerRadius": 4,
+                      "stroke": "$x:--input",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        2,
+                        6,
+                        2,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "A3wIq",
+                          "name": "value",
+                          "fill": "$x:--foreground",
+                          "content": "main",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 12,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "T1Hxu",
+                          "name": "chevron",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "chevron-down",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    },
+                    {
                       "id": "EmQbD",
                       "type": "ref",
                       "ref": "x:3IiAS",
@@ -2099,6 +2139,7 @@
                         0,
                         6
                       ],
+                      "enabled": false,
                       "descendants": {
                         "x:zHpCv": {
                           "content": "main",
@@ -2197,7 +2238,10 @@
                     {
                       "type": "text",
                       "id": "A74O2x",
+                      "x": 506,
+                      "y": 0.5,
                       "name": "subrepo",
+                      "enabled": false,
                       "fill": "$x:--muted-foreground",
                       "content": "サブリポジトリ: なし",
                       "lineHeight": 1.4,
@@ -35508,6 +35552,1485 @@
                   ]
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "JFkOt",
+      "x": 3928,
+      "y": 3909,
+      "name": "P16 Tool header — リポジトリ / worktree の選択",
+      "theme": {
+        "x:Mode": "Dark",
+        "x:Base": "Zinc"
+      },
+      "clip": true,
+      "width": 1400,
+      "height": 900,
+      "fill": "$x:--background",
+      "layout": "vertical",
+      "gap": 28,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "i6nb4",
+          "name": "Title",
+          "fill": "$x:--foreground",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "P16 Tool header: ツール領域は「フォーカス pane のリポジトリ」に追従し、worktree とサブリポジトリは Select で人間が選ぶ（cwd 検知・hw worktree use は廃止）",
+          "fontFamily": "Inter",
+          "fontSize": 13,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "eSBAu",
+          "name": "A: worktree 1 件・サブリポジトリなし",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 6,
+          "children": [
+            {
+              "type": "text",
+              "id": "ynBks",
+              "name": "Caption",
+              "fill": "$x:--muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "A. worktree が 1 件でサブリポジトリも無い: Select は出さない（現行と同じ見え方。「サブリポジトリ: なし」の文言は廃止）",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "pfAl6",
+              "name": "Tool header box",
+              "width": 640,
+              "cornerRadius": 4,
+              "stroke": "$x:--border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "M2n4Rb",
+                  "name": "Tool Header",
+                  "width": "fill_container",
+                  "stroke": "$x:--border",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "strokeAlignment": "inner",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    10,
+                    14,
+                    8,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Vodm9",
+                      "name": "Worktree line",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "g53MPJ",
+                          "name": "focus bar",
+                          "fill": "$focus",
+                          "width": 3,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "cZkp1",
+                          "name": "wt name",
+                          "fill": "$x:--foreground",
+                          "content": "herdr-web",
+                          "lineHeight": 1.4,
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "Z1qoW",
+                          "type": "ref",
+                          "ref": "x:3IiAS",
+                          "name": "branch",
+                          "padding": [
+                            0,
+                            6
+                          ],
+                          "descendants": {
+                            "x:zHpCv": {
+                              "content": "main",
+                              "fontSize": 11,
+                              "fontWeight": "500",
+                              "fill": "$x:--muted-foreground"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "txCX6",
+                          "name": "wt path",
+                          "fill": "$x:--muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "~/github.com/DoskoiYuta/herdr-web",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "PNgDm",
+                          "name": "maximize",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "maximize-2",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "NYLof",
+                          "name": "collapse",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "panel-right-close",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "UdU5T",
+                      "name": "Pane line",
+                      "width": "fill_container",
+                      "gap": 10,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "ETEAB",
+                          "type": "ref",
+                          "ref": "nXsyo",
+                          "name": "agent status",
+                          "descendants": {
+                            "F4HIRv": {
+                              "fill": "$working"
+                            },
+                            "VwwWa": {
+                              "content": "claude · working · tab 1",
+                              "fill": "$x:--foreground"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Rawdf",
+                          "name": "resume",
+                          "fill": "$x:--muted-foreground",
+                          "content": "session 9f3c…e21a",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "YK7zh",
+                          "name": "copy",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "copy",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "SB67X",
+                          "name": "spacer",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "JECp3",
+                          "x": 506,
+                          "y": 0.5,
+                          "name": "subrepo",
+                          "enabled": false,
+                          "fill": "$x:--muted-foreground",
+                          "content": "サブリポジトリ: なし",
+                          "lineHeight": 1.4,
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "c6TJCC",
+                      "name": "Tabs row",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "oA7iU",
+                          "type": "ref",
+                          "ref": "x:PbofX",
+                          "name": "Tabs",
+                          "width": "fit_content",
+                          "height": "fit_content",
+                          "children": [
+                            {
+                              "id": "Fuyl4",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Files",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Files"
+                                }
+                              }
+                            },
+                            {
+                              "id": "uIIeU",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Graph",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Graph"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "PtMCY",
+                              "type": "ref",
+                              "ref": "vQ8AY",
+                              "name": "Tab Diff",
+                              "descendants": {
+                                "mSFlm": {
+                                  "content": "Diff"
+                                }
+                              }
+                            },
+                            {
+                              "id": "Dd2LI",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab 判断依頼",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Decisions"
+                                }
+                              }
+                            },
+                            {
+                              "id": "j6Ybmo",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Process",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Process"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "t3gsG7",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Compose",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Compose"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "qc7Dt",
+          "name": "B: worktree 複数",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 6,
+          "children": [
+            {
+              "type": "text",
+              "id": "dcScl",
+              "name": "Caption",
+              "fill": "$x:--muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "B. サブリポジトリが無く worktree が 2 件以上: Select は 1 つで、開くと worktree 一覧だけが出る（サブメニュー無し）。パスは選択中 worktree のもの",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "dEnRE",
+              "name": "Tool header box",
+              "width": 640,
+              "cornerRadius": 4,
+              "stroke": "$x:--border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "b624wn",
+                  "name": "Tool Header",
+                  "width": "fill_container",
+                  "stroke": "$x:--border",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "strokeAlignment": "inner",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    10,
+                    14,
+                    8,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "t0Bihw",
+                      "name": "Worktree line",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "REPVD",
+                          "name": "focus bar",
+                          "fill": "$focus",
+                          "width": 3,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "di3hf",
+                          "name": "wt name",
+                          "fill": "$x:--foreground",
+                          "content": "herdr-web",
+                          "lineHeight": 1.4,
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Xda1n",
+                          "name": "worktree select",
+                          "fill": "$x:--background",
+                          "cornerRadius": 4,
+                          "stroke": "$x:--input",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "gap": 6,
+                          "padding": [
+                            2,
+                            6,
+                            2,
+                            8
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "nMpiu",
+                              "name": "value",
+                              "fill": "$x:--foreground",
+                              "content": "feat/review-anchor",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "nP9rD",
+                              "name": "chevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$x:--muted-foreground"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "aqzGS",
+                          "type": "ref",
+                          "ref": "x:3IiAS",
+                          "name": "branch",
+                          "padding": [
+                            0,
+                            6
+                          ],
+                          "enabled": false,
+                          "descendants": {
+                            "x:zHpCv": {
+                              "content": "main",
+                              "fontSize": 11,
+                              "fontWeight": "500",
+                              "fill": "$x:--muted-foreground"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "ZFk3c",
+                          "name": "wt path",
+                          "fill": "$x:--muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "…/herdr-web/.claude/worktrees/feat-review",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "hZovU",
+                          "name": "maximize",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "maximize-2",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "JYaA7",
+                          "name": "collapse",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "panel-right-close",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ZMdXH",
+                      "name": "Pane line",
+                      "width": "fill_container",
+                      "gap": 10,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "XTkLV",
+                          "type": "ref",
+                          "ref": "nXsyo",
+                          "name": "agent status",
+                          "descendants": {
+                            "F4HIRv": {
+                              "fill": "$working"
+                            },
+                            "VwwWa": {
+                              "content": "claude · working · tab 1",
+                              "fill": "$x:--foreground"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Q14q2",
+                          "name": "resume",
+                          "fill": "$x:--muted-foreground",
+                          "content": "session 9f3c…e21a",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "P5qSsS",
+                          "name": "copy",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "copy",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "P8bk9",
+                          "name": "spacer",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "zEM9O",
+                          "x": 506,
+                          "y": 0.5,
+                          "name": "subrepo",
+                          "enabled": false,
+                          "fill": "$x:--muted-foreground",
+                          "content": "サブリポジトリ: なし",
+                          "lineHeight": 1.4,
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "O6PzPK",
+                      "name": "Tabs row",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "doDf3",
+                          "type": "ref",
+                          "ref": "x:PbofX",
+                          "name": "Tabs",
+                          "width": "fit_content",
+                          "height": "fit_content",
+                          "children": [
+                            {
+                              "id": "BblTF",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Files",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Files"
+                                }
+                              }
+                            },
+                            {
+                              "id": "U7yfA2",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Graph",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Graph"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "YrcAy",
+                              "type": "ref",
+                              "ref": "vQ8AY",
+                              "name": "Tab Diff",
+                              "descendants": {
+                                "mSFlm": {
+                                  "content": "Diff"
+                                }
+                              }
+                            },
+                            {
+                              "id": "X2Foef",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab 判断依頼",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Decisions"
+                                }
+                              }
+                            },
+                            {
+                              "id": "wHjoU",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Process",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Process"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "R6p4W",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Compose",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Compose"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "z7OsQ",
+          "name": "C: サブリポジトリ + worktree",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 6,
+          "children": [
+            {
+              "type": "text",
+              "id": "edRtz",
+              "name": "Caption",
+              "fill": "$x:--muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "C. サブリポジトリが 1 件以上: Select は 1 つ。表示は「リポジトリ › ブランチ」。開くとリポジトリ一覧（root + submodule / .repos）が出て、行をホバーすると右に worktree 一覧のサブメニューが開き、そこをクリックで確定",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "MJldJ",
+              "name": "Tool header box",
+              "width": 640,
+              "cornerRadius": 4,
+              "stroke": "$x:--border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "pd6vc",
+                  "name": "Tool Header",
+                  "width": "fill_container",
+                  "stroke": "$x:--border",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "strokeAlignment": "inner",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    10,
+                    14,
+                    8,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Ym9T7",
+                      "name": "Worktree line",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "JStPM",
+                          "name": "focus bar",
+                          "fill": "$focus",
+                          "width": 3,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "Qfj8c",
+                          "name": "wt name",
+                          "fill": "$x:--foreground",
+                          "content": "herdr-web",
+                          "lineHeight": 1.4,
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "UwdKs",
+                          "name": "repo/worktree select",
+                          "fill": "$x:--background",
+                          "cornerRadius": 4,
+                          "stroke": "$x:--input",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "gap": 6,
+                          "padding": [
+                            2,
+                            6,
+                            2,
+                            8
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "nD51Q",
+                              "name": "value",
+                              "fill": "$x:--foreground",
+                              "content": "herdr › fix/events-replay",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "lTv4Z",
+                              "name": "chevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$x:--muted-foreground"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "x20ZO",
+                          "type": "ref",
+                          "ref": "x:3IiAS",
+                          "name": "branch",
+                          "padding": [
+                            0,
+                            6
+                          ],
+                          "enabled": false,
+                          "descendants": {
+                            "x:zHpCv": {
+                              "content": "main",
+                              "fontSize": 11,
+                              "fontWeight": "500",
+                              "fill": "$x:--muted-foreground"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Lg2B8",
+                          "name": "wt path",
+                          "fill": "$x:--muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "…/sub/herdr/.claude/worktrees/events-fix",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "PN7eD",
+                          "name": "maximize",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "maximize-2",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "p0w53",
+                          "name": "collapse",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "panel-right-close",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Yk9UA",
+                      "name": "Pane line",
+                      "width": "fill_container",
+                      "gap": 10,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "d2lWF",
+                          "type": "ref",
+                          "ref": "nXsyo",
+                          "name": "agent status",
+                          "descendants": {
+                            "F4HIRv": {
+                              "fill": "$working"
+                            },
+                            "VwwWa": {
+                              "content": "claude · working · tab 1",
+                              "fill": "$x:--foreground"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "X6YKf",
+                          "name": "resume",
+                          "fill": "$x:--muted-foreground",
+                          "content": "session 9f3c…e21a",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "M2wsXE",
+                          "name": "copy",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "copy",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Tr80G",
+                          "name": "spacer",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "F8gw1h",
+                          "x": 506,
+                          "y": 0.5,
+                          "name": "subrepo",
+                          "enabled": false,
+                          "fill": "$x:--muted-foreground",
+                          "content": "サブリポジトリ: なし",
+                          "lineHeight": 1.4,
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "KJvLM",
+                      "name": "Tabs row",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "bNwVb",
+                          "type": "ref",
+                          "ref": "x:PbofX",
+                          "name": "Tabs",
+                          "width": "fit_content",
+                          "height": "fit_content",
+                          "children": [
+                            {
+                              "id": "go6As",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Files",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Files"
+                                }
+                              }
+                            },
+                            {
+                              "id": "s80sgD",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Graph",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Graph"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "u39Xh",
+                              "type": "ref",
+                              "ref": "vQ8AY",
+                              "name": "Tab Diff",
+                              "descendants": {
+                                "mSFlm": {
+                                  "content": "Diff"
+                                }
+                              }
+                            },
+                            {
+                              "id": "FQran",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab 判断依頼",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Decisions"
+                                }
+                              }
+                            },
+                            {
+                              "id": "YzeV5",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Process",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Process"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "VWIdM",
+                              "type": "ref",
+                              "ref": "cHCvl",
+                              "name": "Tab Compose",
+                              "descendants": {
+                                "mgmad": {
+                                  "content": "Compose"
+                                },
+                                "YgHra": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "kSYWG",
+              "name": "menu (open)",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "lR1OP",
+                  "name": "repo menu",
+                  "width": 240,
+                  "fill": "$x:--popover",
+                  "cornerRadius": 6,
+                  "stroke": "$x:--border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000001a",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 6,
+                    "spread": -1
+                  },
+                  "layout": "vertical",
+                  "gap": 2,
+                  "padding": 4,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "EKIsE",
+                      "name": "repo herdr-web",
+                      "width": "fill_container",
+                      "cornerRadius": 4,
+                      "gap": 8,
+                      "padding": [
+                        6,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "DGHdk",
+                          "name": "texts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 1,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Zg0Py",
+                              "name": "name",
+                              "fill": "$x:--foreground",
+                              "content": "herdr-web",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZcjVj",
+                              "name": "meta",
+                              "fill": "$x:--muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "root · worktree 2 · 選択中: main",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "icon",
+                          "id": "ij73w",
+                          "name": "chevron",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "iKXJR",
+                      "name": "repo herdr",
+                      "width": "fill_container",
+                      "fill": "$x:--accent",
+                      "cornerRadius": 4,
+                      "gap": 8,
+                      "padding": [
+                        6,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Z0bWqC",
+                          "name": "texts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 1,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "vEKGE",
+                              "name": "name",
+                              "fill": "$x:--foreground",
+                              "content": "herdr",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "P6YDlT",
+                              "name": "meta",
+                              "fill": "$x:--muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "submodule sub/herdr · worktree 3 · 選択中: fix/events-replay",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "icon",
+                          "id": "VntuS",
+                          "name": "chevron",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "gcxMK",
+                      "name": "repo tools/vcs-helper",
+                      "width": "fill_container",
+                      "cornerRadius": 4,
+                      "gap": 8,
+                      "padding": [
+                        6,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "YJC5R",
+                          "name": "texts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 1,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Y5qCz",
+                              "name": "name",
+                              "fill": "$x:--foreground",
+                              "content": "tools/vcs-helper",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "i53K7c",
+                              "name": "meta",
+                              "fill": "$x:--muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "vcstool tools.repos · worktree 1",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "icon",
+                          "id": "FRgsy",
+                          "name": "chevron",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$x:--muted-foreground"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kdokD",
+                  "name": "worktree submenu (herdr)",
+                  "width": 320,
+                  "fill": "$x:--popover",
+                  "cornerRadius": 6,
+                  "stroke": "$x:--border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000001a",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 6,
+                    "spread": -1
+                  },
+                  "layout": "vertical",
+                  "gap": 2,
+                  "padding": 4,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xY1rv",
+                      "name": "row main",
+                      "width": "fill_container",
+                      "cornerRadius": 4,
+                      "gap": 8,
+                      "padding": [
+                        5,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "B7uD6p",
+                          "name": "check",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "check",
+                          "library": "lucide",
+                          "fill": "$x:--popover"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ci1JL",
+                          "name": "texts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 1,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "UEqiH",
+                              "name": "branch",
+                              "fill": "$x:--foreground",
+                              "content": "main",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "mLbUY",
+                              "name": "path",
+                              "fill": "$x:--muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "sub/herdr",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "fvM1P",
+                          "type": "ref",
+                          "ref": "x:3IiAS",
+                          "name": "tag",
+                          "padding": [
+                            0,
+                            6
+                          ],
+                          "descendants": {
+                            "x:zHpCv": {
+                              "content": "main",
+                              "fontSize": 10,
+                              "fontWeight": "500",
+                              "fill": "$x:--muted-foreground"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XKreb",
+                      "name": "row fix/events-replay",
+                      "width": "fill_container",
+                      "fill": "$x:--accent",
+                      "cornerRadius": 4,
+                      "gap": 8,
+                      "padding": [
+                        5,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "WugoC",
+                          "name": "check",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "check",
+                          "library": "lucide",
+                          "fill": "$x:--foreground"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ORUGB",
+                          "name": "texts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 1,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "C7xL0g",
+                              "name": "branch",
+                              "fill": "$x:--foreground",
+                              "content": "fix/events-replay",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "n6yFzp",
+                              "name": "path",
+                              "fill": "$x:--muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "sub/herdr/.claude/worktrees/events-fix",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "WdD7J",
+                      "name": "row feat/close-group",
+                      "width": "fill_container",
+                      "cornerRadius": 4,
+                      "gap": 8,
+                      "padding": [
+                        5,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "oYJWR",
+                          "name": "check",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "check",
+                          "library": "lucide",
+                          "fill": "$x:--popover"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "TOVPV",
+                          "name": "texts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 1,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "gjcvw",
+                              "name": "branch",
+                              "fill": "$x:--foreground",
+                              "content": "feat/close-group",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Z3gcZ",
+                              "name": "path",
+                              "fill": "$x:--muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "sub/herdr/.claude/worktrees/close-group",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "rNBv4",
+                      "name": "divider",
+                      "fill": "$x:--border",
+                      "width": "fill_container",
+                      "height": 1
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NmRzg",
+                      "name": "hint",
+                      "width": "fill_container",
+                      "padding": [
+                        4,
+                        8
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "F6AqVF",
+                          "name": "hint text",
+                          "fill": "$x:--muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "git worktree list の結果。消えた worktree は一覧から外れ、選択は main に戻る",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "Xlay9",
+              "name": "Caption2",
+              "fill": "$x:--muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "サブメニューの行はブランチ（mono）とリポジトリからの相対パス。main には chip、選択中の行は塗り + チェック。worktree が 1 件だけのリポジトリはサブメニューを出さずクリックで確定。一覧はサーバーの `git worktree list --porcelain`（新規 API）から",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "normal"
             }
           ]
         }
