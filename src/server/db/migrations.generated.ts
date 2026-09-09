@@ -69,4 +69,13 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "7f1b641fa70979e434dfd5fd88da7ad9ac04f33922235c98906f47ce18bb1c79",
     bps: true,
   },
+  {
+    sql: [
+      "CREATE TABLE `workspace_worktree_selections` (\n\t`workspace_id` text NOT NULL,\n\t`repo_key` text NOT NULL,\n\t`worktree_root` text NOT NULL,\n\t`sub_repo_id` text,\n\t`sub_worktree_root` text,\n\t`updated_at` text NOT NULL,\n\tPRIMARY KEY(`workspace_id`, `repo_key`)\n);\n",
+      "\nDROP TABLE `pane_worktree_overrides`;",
+    ],
+    folderMillis: 1788919755833,
+    hash: "88ceb45ab5c0757a75142b7a2c8e2be0767c0e8906040164d6578c7ed98adcc4",
+    bps: true,
+  },
 ];

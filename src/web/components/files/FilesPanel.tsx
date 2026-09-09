@@ -41,7 +41,7 @@ import {
 import { buildAnchor } from "@/lib/anchor";
 import { useAskEvents } from "@/lib/HerdrStoreContext";
 import { askEventMatchesRepo } from "@/lib/askEvent";
-import { agentPanesAt, liveAskSessionCount } from "@/lib/sendTargets";
+import { liveAskSessionCount, sendTargetsFor } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import { collectDroppedFiles } from "@/lib/dropEntries";
 import { closeTab, useFileTabs } from "@/lib/fileTabs";
@@ -88,9 +88,6 @@ export interface FilesPanelProps {
   /** リポジトリキー（git-common-dir 絶対パス）。ask API の `repo`。null/未指定なら
    * herdr 未接続などでまだ解決できていない。 */
   repoKey?: string | null;
-  /** 送信先候補（agentPanesAt）を引くための実際の git worktree root。
-   * サブリポジトリ選択時は `repo`（=表示中のサブリポジトリ root）と異なる。 */
-  worktreeRoot?: string | null;
   repos?: Repo[];
   /** 選択中のファイル。URL の `path` (plan.md F14-4) に置く — 消費したら null に
    * 戻す契約は無く、常に呼び出し側 (ToolPane) が URL から渡す。 */
@@ -120,7 +117,6 @@ export function FilesPanel({
   repoChangedTick,
   pollMs,
   repoKey = null,
-  worktreeRoot = null,
   repos = [],
   selectedPath,
   onSelectedPathChange,
@@ -409,9 +405,12 @@ export function FilesPanel({
     ),
   );
 
+  // `repo`/`repoKey` はすでに実効値（サブリポジトリ選択中はそのもの） —
+  // サーバーの通知宛先探索（herdr-notifier.ts）と同じスコープで候補を絞る
+  // （§10.6）。
   const askPanes = useMemo(
-    () => (worktreeRoot ? agentPanesAt(repos, worktreeRoot) : []),
-    [repos, worktreeRoot],
+    () => (repoKey ? sendTargetsFor(repos, repo, repoKey) : []),
+    [repos, repo, repoKey],
   );
 
   // A composer only makes sense while there's a stable (non-in-progress)

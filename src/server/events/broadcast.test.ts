@@ -89,10 +89,27 @@ async function setup() {
   const state = createHerdrState(gw);
   await settle();
   const resolver = resolverResolvingEverythingToItself();
-  const focus = createFocusTracker({ state, gateway: gw, resolver, pollMs: 1_000_000 });
+  const listWorktrees = async () => [];
+  const listSubRepos = async () => [];
+  const focus = createFocusTracker({
+    state,
+    gateway: gw,
+    resolver,
+    listWorktrees,
+    listSubRepos,
+    pollMs: 1_000_000,
+  });
   await settle();
   const hub = createEventHub();
-  const wired = wireHerdrToHub({ state, gateway: gw, focus, resolver, hub });
+  const wired = wireHerdrToHub({
+    state,
+    gateway: gw,
+    focus,
+    resolver,
+    listWorktrees,
+    listSubRepos,
+    hub,
+  });
   return { gw, state, focus, hub, wired };
 }
 

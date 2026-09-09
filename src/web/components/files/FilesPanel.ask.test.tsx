@@ -178,7 +178,6 @@ function TestFilesPanel(props: FilesPanelTestProps) {
       repo="/repo"
       repoChangedTick={0}
       repoKey="/repokey"
-      worktreeRoot="/repo"
       selectedPath={selectedPath}
       onSelectedPathChange={setSelectedPath}
       mdMode={mdMode}

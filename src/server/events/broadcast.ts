@@ -2,14 +2,14 @@ import { match } from "ts-pattern";
 import type { ClientEventMessage, ServerEventMessage } from "../../contract/events";
 import type { HerdrGateway } from "../herdr/gateway";
 import type { FocusTracker } from "../herdr/focus";
-import { effectiveCwd, type HerdrStateStore, type Logger } from "../herdr/state";
 import {
-  buildTree,
-  livePanes,
-  toPaneRow,
-  type WorktreeInfo,
-  type WorktreeResolver,
-} from "../herdr/tree";
+  resolvePaneWorktree,
+  type ResolvedPaneWorktree,
+  type SubRepoLike,
+  type WorktreeEntryLike,
+} from "../herdr/pane-worktree";
+import type { HerdrStateStore, Logger } from "../herdr/state";
+import { buildTree, livePanes, toPaneRow, type WorktreeResolver } from "../herdr/tree";
 
 /** Abstraction over a `/ws/events` client connection, so the hub is testable without `ws`. */
 export interface Sink {
@@ -51,6 +51,8 @@ export interface WireHerdrToHubOptions {
   gateway: HerdrGateway;
   focus: FocusTracker;
   resolver: WorktreeResolver;
+  listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+  listSubRepos(root: string): Promise<SubRepoLike[]>;
   hub: EventHub;
   logger?: Logger;
 }
@@ -73,11 +75,24 @@ export interface WiredHerdr {
  * one (plan.md §12-9), then `pane.focus`.
  */
 export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
-  const { state, gateway, focus, resolver, hub, logger = console } = opts;
+  const {
+    state,
+    gateway,
+    focus,
+    resolver,
+    listWorktrees,
+    listSubRepos,
+    hub,
+    logger = console,
+  } = opts;
 
-  // キャッシュは resolver 側（git/resolve.ts）が持つ。
-  function resolveCached(cwd: string): Promise<WorktreeInfo | null> {
-    return resolver.resolve(cwd).catch((err) => {
+  function resolvePane(
+    pane: Parameters<typeof resolvePaneWorktree>[1],
+  ): Promise<ResolvedPaneWorktree | null> {
+    return resolvePaneWorktree(
+      { state, resolver, listWorktrees, listSubRepos, logger },
+      pane,
+    ).catch((err) => {
       logger.error("hub: worktree resolve failed", err);
       return null;
     });
@@ -85,15 +100,10 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
 
   async function currentTree() {
     const s = state.get();
-    const cwds = new Set<string>();
-    for (const pane of livePanes(s)) {
-      const cwd = effectiveCwd(s, pane);
-      if (cwd) cwds.add(cwd);
-    }
-    const resolved = new Map<string, WorktreeInfo | null>();
+    const resolved = new Map<string, ResolvedPaneWorktree | null>();
     await Promise.all(
-      [...cwds].map(async (cwd) => {
-        resolved.set(cwd, await resolveCached(cwd));
+      livePanes(s).map(async (pane) => {
+        resolved.set(pane.pane_id, await resolvePane(pane));
       }),
     );
     return buildTree(s, resolved);
@@ -119,13 +129,12 @@ export function wireHerdrToHub(opts: WireHerdrToHubOptions): WiredHerdr {
     // workspace 未登録の pane（閉じた直後の残骸や workspace_created 前の pane）は流さない。
     // 後者は workspace_created の reset で tree ごと送られる。
     if (!pane || !s.workspaces.has(pane.workspace_id)) return;
-    const cwd = effectiveCwd(s, pane);
-    const info = cwd ? await resolveCached(cwd) : null;
+    const info = await resolvePane(pane);
     hub.broadcast({
       type: "pane-updated",
-      row: toPaneRow(pane, state.get()),
-      worktreeRoot: info?.root ?? null,
-      repoKey: info?.commonDir ?? null,
+      row: toPaneRow(pane, state.get(), info),
+      worktreeRoot: info?.worktreeRoot ?? null,
+      repoKey: info?.repoKey ?? null,
     });
   }
 

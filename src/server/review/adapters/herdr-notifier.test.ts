@@ -39,6 +39,8 @@ describe("createHerdrNotifier", () => {
       state,
       gateway: fake,
       resolver,
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
       template: "{count} 件",
       logger: { warn() {}, error() {} },
     });
@@ -79,6 +81,8 @@ describe("createHerdrNotifier", () => {
       state,
       gateway: fake,
       resolver,
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
       template: "{count} 件",
       logger: { warn() {}, error() {} },
     });
@@ -89,6 +93,72 @@ describe("createHerdrNotifier", () => {
       pane: null,
     });
     expect(await notifier.targetsAt("/wt/other")).toEqual([]);
+  });
+
+  // 無いと壊れる: レビューを作った worktree から別の worktree を選び直しただけの
+  // pane が、通知宛先の第 2 候補（同じ repoKey へのフォールバック）から漏れて
+  // 常に no_target になる。
+  test("falls back to an agent pane whose effective repoKey matches, when none is exactly at the root", async () => {
+    const paneId = "w1:p1";
+    const pane = {
+      pane_id: paneId,
+      terminal_id: "t1",
+      workspace_id: "w1",
+      tab_id: "t1",
+      focused: false,
+      agent_status: "idle" as const,
+      revision: 1,
+      agent: "claude",
+      cwd: "/repo-feature",
+    };
+    const state = {
+      get: () => ({
+        panes: new Map([[paneId, pane]]),
+        workspaces: new Map(),
+        tabs: new Map(),
+        focusedPaneId: paneId,
+        focusedWorkspaceId: null,
+        focusedTabId: null,
+        selections: new Map(),
+      }),
+      onChange: () => () => {},
+      patchPane: () => {},
+      isSettled: () => true,
+      getSelection: () => null,
+      setSelection: async (sel: {
+        workspaceId: string;
+        repoKey: string;
+        worktreeRoot: string;
+        subRepoId: string | null;
+        subWorktreeRoot: string | null;
+      }) => ({ ok: true as const, selection: { ...sel, updatedAt: "t" } }),
+      clearSelection: async () => ({ ok: true as const }),
+    };
+    // "/repo" (the review's worktreeRoot) and "/repo-feature" (the pane's cwd)
+    // are different worktrees of the same repository (same commonDir).
+    const resolver = resolverFor({ "/repo": "/repo", "/repo-feature": "/repo-feature" });
+    const notifier = createHerdrNotifier({
+      state,
+      gateway: { agentPrompt: async () => ({ status: "sent" as const }) } as unknown as Parameters<
+        typeof createHerdrNotifier
+      >[0]["gateway"],
+      resolver: {
+        async resolve(path) {
+          const info = await resolver.resolve(path);
+          return info ? { ...info, commonDir: "/repo/.git" } : null;
+        },
+      },
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
+      template: "{count} 件",
+      logger: { warn() {}, error() {} },
+    });
+
+    expect(await notifier.targetsAt("/repo")).toEqual([{ pane: paneId, focused: true }]);
+    expect(await notifier.notify({ worktreeRoot: "/repo", reviewIds: ["1"] })).toEqual({
+      result: "sent",
+      pane: paneId,
+    });
   });
 
   // without this test, sendDraftsUsecase's ambiguous_target/invalid_target checks
@@ -127,13 +197,20 @@ describe("createHerdrNotifier", () => {
         focusedPaneId: paneA.pane_id,
         focusedWorkspaceId: null,
         focusedTabId: null,
-        paneWorktreeOverrides: new Map(),
+        selections: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
       isSettled: () => true,
-      setWorktreeOverride: () => ({ ok: true as const }),
-      clearWorktreeOverride: () => {},
+      getSelection: () => null,
+      setSelection: async (sel: {
+        workspaceId: string;
+        repoKey: string;
+        worktreeRoot: string;
+        subRepoId: string | null;
+        subWorktreeRoot: string | null;
+      }) => ({ ok: true as const, selection: { ...sel, updatedAt: "t" } }),
+      clearSelection: async () => ({ ok: true as const }),
     };
     const notifier = createHerdrNotifier({
       state,
@@ -141,6 +218,8 @@ describe("createHerdrNotifier", () => {
         typeof createHerdrNotifier
       >[0]["gateway"],
       resolver: resolverFor({ "/wt/A": "/wt/A", "/wt/B": "/wt/B" }),
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
       template: "{count} 件",
       logger: { warn() {}, error() {} },
     });
@@ -167,6 +246,8 @@ describe("createHerdrNotifier", () => {
       state,
       gateway: fake,
       resolver,
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
       template: "{count} 件",
       logger: { warn() {}, error() {} },
     });
@@ -199,6 +280,8 @@ describe("createHerdrNotifier", () => {
       state,
       gateway: fake,
       resolver,
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
       template: "{count} 件",
       logger: { warn() {}, error() {} },
     });
@@ -254,13 +337,20 @@ describe("createHerdrNotifier", () => {
         focusedPaneId: null,
         focusedWorkspaceId: null,
         focusedTabId: null,
-        paneWorktreeOverrides: new Map(),
+        selections: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
       isSettled: () => true,
-      setWorktreeOverride: () => ({ ok: true as const }),
-      clearWorktreeOverride: () => {},
+      getSelection: () => null,
+      setSelection: async (sel: {
+        workspaceId: string;
+        repoKey: string;
+        worktreeRoot: string;
+        subRepoId: string | null;
+        subWorktreeRoot: string | null;
+      }) => ({ ok: true as const, selection: { ...sel, updatedAt: "t" } }),
+      clearSelection: async () => ({ ok: true as const }),
     };
     const gateway = {
       agentPrompt: async () => {
@@ -272,6 +362,8 @@ describe("createHerdrNotifier", () => {
       state,
       gateway,
       resolver: resolverFor({ "/wt/A": "/wt/A" }),
+      listWorktrees: async () => [],
+      listSubRepos: async () => [],
       template: "{count} 件",
       logger: { warn() {}, error() {} },
     });

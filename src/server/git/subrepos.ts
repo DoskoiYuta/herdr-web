@@ -13,6 +13,7 @@
 import { readdir, realpath as realpathAsync } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { runGit } from "./run";
+import { listWorktrees, type WorktreeEntry } from "./worktrees";
 
 export type SubRepoKind = "root" | "submodule" | "vcs";
 
@@ -23,6 +24,8 @@ export interface SubRepo {
   /** Absolute, realpath'd. */
   root: string;
   kind: SubRepoKind;
+  /** All worktrees of this (sub-)repository; for the root entry, the top repository's. */
+  worktrees: WorktreeEntry[];
 }
 
 const STATUS_LINE_RE = /^([ +\-U])([0-9a-f]{40,64}) (\S+)(?: \((.+)\))?$/;
@@ -95,9 +98,21 @@ interface CacheEntry {
 const TTL_MS = 5000;
 const cache = new Map<string, CacheEntry>();
 
+async function worktreesOf(root: string): Promise<WorktreeEntry[]> {
+  return listWorktrees(root).catch(() => []);
+}
+
 async function computeSubRepos(root: string): Promise<SubRepo[]> {
   const rootReal = await realpathAsync(root);
-  const result: SubRepo[] = [{ id: "", name: basename(rootReal), root: rootReal, kind: "root" }];
+  const result: SubRepo[] = [
+    {
+      id: "",
+      name: basename(rootReal),
+      root: rootReal,
+      kind: "root",
+      worktrees: await worktreesOf(rootReal),
+    },
+  ];
 
   const [submodulePaths, vcsPaths] = await Promise.all([
     listInitializedSubmodulePaths(root).catch(() => []),
@@ -119,7 +134,13 @@ async function computeSubRepos(root: string): Promise<SubRepo[]> {
     }
     if (!withinRoot(real)) continue; // symlink escaped root
     seen.add(path);
-    result.push({ id: path, name: basename(path), root: real, kind: "submodule" });
+    result.push({
+      id: path,
+      name: basename(path),
+      root: real,
+      kind: "submodule",
+      worktrees: await worktreesOf(real),
+    });
   }
 
   for (const path of vcsPaths) {
@@ -132,7 +153,13 @@ async function computeSubRepos(root: string): Promise<SubRepo[]> {
     }
     if (!withinRoot(real)) continue;
     seen.add(path);
-    result.push({ id: path, name: path, root: real, kind: "vcs" });
+    result.push({
+      id: path,
+      name: path,
+      root: real,
+      kind: "vcs",
+      worktrees: await worktreesOf(real),
+    });
   }
 
   return result;

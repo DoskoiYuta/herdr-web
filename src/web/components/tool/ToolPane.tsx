@@ -1,8 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { getRouteApi, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { SubRepo } from "@contract/git";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { ComposePanel } from "@/components/docker/ComposePanel";
 import { FilesPanel } from "@/components/files/FilesPanel";
@@ -18,24 +17,16 @@ import { useReviewCounts } from "@/components/review/hooks/useReviewCounts";
 import { SendDraftsButton } from "@/components/review/SendDraftsButton";
 import { EmptyWorktreeNotice } from "@/components/tool/EmptyWorktreeNotice";
 import { TabBadge } from "@/components/tool/TabBadge";
-import { Badge } from "@/components/ui/badge";
+import { WorktreeSelect } from "@/components/tool/WorktreeSelect";
 import { Button } from "@/components/ui/button";
 import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { gitApi } from "@/lib/api";
 import { useHerdrState, useAskEvents, useReviewEvents } from "@/lib/HerdrStoreContext";
 import { useHerdrStoreActions } from "@/lib/HerdrStoreContext";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
 import { askEventMatchesRepo } from "@/lib/askEvent";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
-import { agentPanesAt } from "@/lib/sendTargets";
+import { sendTargetsFor } from "@/lib/sendTargets";
 import { normalizeTab, type ToolSearch, type ToolTab } from "@/router/search";
 
 /** A sub-repo/submodule selection never gets its own `repoChangedTick` from
@@ -43,17 +34,6 @@ import { normalizeTab, type ToolSearch, type ToolTab } from "@/router/search";
  * server/git/poller.ts) — so the diff/graph queries fall back to polling on
  * this interval while a non-root sub-repo is selected. */
 const SUB_REPO_POLL_MS = 3000;
-
-// Radix Select は value="" を許さないので、ルート（id ""）だけ番兵値に写す
-const ROOT_SELECT_VALUE = "__root__";
-const toSelectValue = (id: string) => (id === "" ? ROOT_SELECT_VALUE : id);
-const fromSelectValue = (v: string) => (v === ROOT_SELECT_VALUE ? "" : v);
-
-const SUB_REPO_KIND_LABEL: Record<SubRepo["kind"], string> = {
-  root: "",
-  submodule: "submodule",
-  vcs: "vcstool",
-};
 
 export type CommitRange = { from: string; to: string } | null;
 
@@ -138,9 +118,16 @@ export function ToolPane() {
   const { openLocation } = useOpenWorktreeLocation();
 
   const worktreeRoot = state.focus?.worktreeRoot ?? null;
+  const repoKey = state.focus?.repoKey ?? null;
+  const subRepo = state.focus?.subRepo ?? null;
+  // §10.3: タブが実際に見る root/repoKey はサブリポジトリ選択中はそのサブ
+  // リポジトリのもの。pane の送信先（agentPanesAt 系）や worktree セレクタは
+  // 常にトップの worktreeRoot/repoKey を使う — pane はサブリポジトリとは
+  // 無関係にトップの worktree で開かれる。
+  const effectiveRoot = subRepo?.root ?? worktreeRoot;
+  const effectiveRepoKey = subRepo?.repoKey ?? repoKey;
   const tab: ToolTab = normalizeTab(params.tab);
   const repos = state.repos;
-  const repoKey = state.focus?.repoKey ?? null;
   const focusInfo = state.focus;
   const repoChangedTick = worktreeRoot ? (state.repoChanged[worktreeRoot]?.tick ?? 0) : 0;
   // Inbox の行クリックなどが同じ tick で別タブへの navigate を pending にした
@@ -179,14 +166,16 @@ export function ToolPane() {
   // は URL を実際に空にする navigate の発行だけを担い、`searchCleared` 自体は
   // URL が実際に空になったことを検知したレンダーで戻す（effect 内で setState
   // しない）。
-  const [trackedWorktreeRoot, setTrackedWorktreeRoot] = useState(worktreeRoot);
+  const [trackedEffectiveRoot, setTrackedEffectiveRoot] = useState(effectiveRoot);
   const [searchCleared, setSearchCleared] = useState(false);
-  if (trackedWorktreeRoot !== worktreeRoot) {
+  if (trackedEffectiveRoot !== effectiveRoot) {
     // null（未解決）→ 実値は初回のフォーカス解決であって切り替えではない
     // （直接開き・リロードで herdr の focus がまだ届いていないだけ） — この
-    // 遷移では search を落とさない。実値 A → 実値 B のときだけ切り替え扱いにする。
-    const wasResolved = trackedWorktreeRoot !== null;
-    setTrackedWorktreeRoot(worktreeRoot);
+    // 遷移では search を落とさない。実値 A → 実値 B のときだけ切り替え扱いにする
+    // （worktree の切り替えだけでなく、サブリポジトリ/サブ worktree の切り替え
+    // も同じ扱い — ui-redesign.md §10.5）。
+    const wasResolved = trackedEffectiveRoot !== null;
+    setTrackedEffectiveRoot(effectiveRoot);
     if (wasResolved && intendedRoot !== worktreeRoot) {
       setSearchCleared(true);
     }
@@ -220,7 +209,6 @@ export function ToolPane() {
     effectiveSearch.from && effectiveSearch.to
       ? { from: effectiveSearch.from, to: effectiveSearch.to }
       : null;
-  const subRepoId = effectiveSearch.sub ?? "";
   const initialLocation: DiffInitialLocation | null =
     tab === "diff" && !rootPending && effectiveSearch.path
       ? {
@@ -319,24 +307,6 @@ export function ToolPane() {
     void navigate({ search: (prev) => ({ ...prev, line: undefined }) });
   }, [navigate]);
 
-  const handleSubRepoChange = useCallback(
-    (id: string) => {
-      void navigate({
-        search: (prev) => ({
-          ...prev,
-          sub: id === "" ? undefined : id,
-          from: undefined,
-          to: undefined,
-          path: undefined,
-          line: undefined,
-          side: undefined,
-          root: undefined,
-        }),
-      });
-    },
-    [navigate],
-  );
-
   const handleSelectDecision = useCallback(
     (id: string) => {
       void navigate({ search: (prev) => ({ ...prev, id }) });
@@ -370,59 +340,25 @@ export function ToolPane() {
     [openLocation],
   );
 
-  // Sub-repository switcher (plan.md: submodules + `.repos/<child>` nested
-  // repos). Listed even for a null worktreeRoot (query stays disabled) so
-  // hook order is unconditional.
-  const subReposQuery = useQuery({
-    queryKey: ["subrepos", worktreeRoot],
-    queryFn: () => gitApi.subrepos(worktreeRoot as string),
-    enabled: worktreeRoot !== null,
-    staleTime: Infinity,
-    retry: false,
-  });
-  const subRepos = subReposQuery.data?.repos ?? [];
-  const selectedSubRepo = subRepos.find((r) => r.id === subRepoId) ?? null;
-  const isSubRepoSelected = selectedSubRepo !== null && selectedSubRepo.kind !== "root";
-  const subRepoRoot = selectedSubRepo?.root ?? worktreeRoot ?? "";
-
-  // ui-redesign.md §5.3: worktree 見出し行のブランチ表示（既存の
-  // `RootResponse.branch` を使う）。サブリポジトリ選択の有無に関わらず、常に
-  // worktreeRoot 自身のブランチを表示する。他の tick 駆動クエリと同じ規約で
-  // repoChangedTick をキーに含める — 同じ worktree で checkout してもブランチ
-  // 名が古いまま固定されないようにする。
-  const worktreeRootInfoQuery = useQuery({
-    queryKey: ["git-root", worktreeRoot, repoChangedTick],
-    queryFn: () => gitApi.root(worktreeRoot as string),
-    enabled: worktreeRoot !== null,
-    staleTime: Infinity,
-    retry: false,
-  });
-  const worktreeBranch = worktreeRootInfoQuery.data?.branch ?? null;
-
-  // repoKey にも選択中のサブリポジトリを反映する。サブリポジトリは herdr の
-  // フォーカス pane が把握している repoKey とは別の git-common-dir を持つので、
-  // 選択中は /api/git/root で都度解決する。
-  const subRepoRootInfoQuery = useQuery({
-    queryKey: ["git-root", subRepoRoot],
-    queryFn: () => gitApi.root(subRepoRoot),
-    enabled: isSubRepoSelected,
-    staleTime: Infinity,
-    retry: false,
-  });
-  const resolvedRepoKey = isSubRepoSelected
-    ? (subRepoRootInfoQuery.data?.commonDir ?? null)
-    : repoKey;
+  // §10.3: repoKey にも選択中のサブリポジトリを反映する（サーバーが
+  // `focus.subRepo.repoKey` として解決済みの値を渡してくる — サブリポジトリの
+  // git-common-dir をクライアント側で都度解決する必要はない）。
+  const resolvedRepoKey = effectiveRepoKey;
+  const resolvedRoot = effectiveRoot ?? "";
   // サブリポジトリ選択中は repoChangedTick が来ない（サーバの poller はフォーカス
   // 中の worktree しか見ていない — server/git/poller.ts）ため、diff/graph の
   // クエリをこの間隔でポーリングして代替する。
-  const subRepoPollMs = isSubRepoSelected ? SUB_REPO_POLL_MS : undefined;
+  const subRepoPollMs = subRepo !== null ? SUB_REPO_POLL_MS : undefined;
+  const repoName = worktreeRoot
+    ? (repos.find((r) => r.key === repoKey)?.name ?? basename(worktreeRoot))
+    : null;
 
   // git-graph の review 件数バッジ + Diff タブの送信ボタン（F5-10）。review WS
   // イベントと repoChangedTick の両方で tick を上げ、`staleTime: Infinity` の
   // クエリを明示的に再フェッチする（useGraph/useReviewList と同じ流儀）。
   const [reviewTick, setReviewTick] = useState(0);
   const reviewCountsQuery = useReviewCounts(
-    resolvedRepoKey && subRepoRoot ? { repo: resolvedRepoKey, worktree: subRepoRoot } : null,
+    resolvedRepoKey && resolvedRoot ? { repo: resolvedRepoKey, worktree: resolvedRoot } : null,
     reviewTick + repoChangedTick,
   );
   const reviewCounts = reviewCountsQuery.data ?? null;
@@ -438,12 +374,12 @@ export function ToolPane() {
   );
 
   // Files タブの通知バッジ（ui-redesign.md §5.4: replied な質問の件数）。
-  // FilesPanel が ask 作成/for-file に使う組（`repoKey` + `subRepoRoot` —
+  // FilesPanel が ask 作成/for-file に使う組（`repoKey` + `resolvedRoot` —
   // FilesPanel の `worktreeRoot: repo` prop）と揃える。worktreeRoot をそのまま
   // 渡すとサブリポジトリ選択中はサーバー側の完全一致で絞られ、常に 0 になる。
   const [askTick, setAskTick] = useState(0);
   const askCountsQuery = useAskCounts(
-    resolvedRepoKey && subRepoRoot ? { repo: resolvedRepoKey, worktree: subRepoRoot } : null,
+    resolvedRepoKey && resolvedRoot ? { repo: resolvedRepoKey, worktree: resolvedRoot } : null,
     askTick + repoChangedTick,
   );
   const askReplied = askCountsQuery.data?.replied ?? 0;
@@ -462,11 +398,15 @@ export function ToolPane() {
   const decisionCountsQuery = useDecisionCounts(worktreeRoot);
   const decisionTotal = decisionCountsQuery.data?.total ?? 0;
 
-  // 送信先候補は subRepoRoot ではなく worktreeRoot（実際の git worktree）に
-  // 紐付く — pane はサブリポジトリ選択とは無関係にトップの worktree で開かれる。
+  // 送信先候補は実効 root/repoKey（サブリポジトリ選択中はそのもの）に紐付く
+  // — サーバーの通知宛先探索（herdr-notifier.ts）と同じスコープにするため、
+  // SendDraftsButton 自身に渡す worktreeRoot/repoKey（= resolvedRoot/
+  // resolvedRepoKey）と揃える。§10.6: 実効 root に 0 件なら同じリポジトリの
+  // 他 worktree にフォールバックする。
   const agentPanes = useMemo(
-    () => (worktreeRoot ? agentPanesAt(repos, worktreeRoot) : []),
-    [repos, worktreeRoot],
+    () =>
+      resolvedRepoKey && resolvedRoot ? sendTargetsFor(repos, resolvedRoot, resolvedRepoKey) : [],
+    [repos, resolvedRoot, resolvedRepoKey],
   );
 
   const handleDraftsSent = useCallback(() => setReviewTick((t) => t + 1), []);
@@ -481,51 +421,25 @@ export function ToolPane() {
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {worktreeRoot ? (
             <>
-              <span className="shrink-0 text-sm font-semibold">{basename(worktreeRoot)}</span>
-              {worktreeBranch && (
-                <Badge variant="secondary" className="shrink-0 rounded-md">
-                  {worktreeBranch}
-                </Badge>
+              <span className="shrink-0 text-sm font-semibold">{repoName}</span>
+              {focusInfo?.workspace && repoKey && (
+                <WorktreeSelect
+                  workspaceId={focusInfo.workspace}
+                  repoKey={repoKey}
+                  worktreeRoot={worktreeRoot}
+                  subRepo={subRepo}
+                  repoChangedTick={repoChangedTick}
+                />
               )}
               <span
                 className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
-                title={
-                  selectedSubRepo && selectedSubRepo.id !== ""
-                    ? `${worktreeRoot}/${selectedSubRepo.id}`
-                    : worktreeRoot
-                }
+                title={resolvedRoot}
               >
-                {selectedSubRepo && selectedSubRepo.id !== ""
-                  ? `${worktreeRoot}/${selectedSubRepo.id}`
-                  : worktreeRoot}
+                {resolvedRoot}
               </span>
             </>
           ) : (
             <span className="text-sm text-muted-foreground">herdr 未接続 / worktree 未選択</span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {worktreeRoot && subRepos.length > 1 && (
-            <Select
-              value={toSelectValue(subRepoId)}
-              onValueChange={(v) => handleSubRepoChange(fromSelectValue(v))}
-            >
-              <SelectTrigger size="sm" className="max-w-40" aria-label="サブリポジトリを選択">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {subRepos.map((r) => (
-                  <SelectItem key={r.id} value={toSelectValue(r.id)}>
-                    <span className="truncate">{r.name}</span>
-                    {SUB_REPO_KIND_LABEL[r.kind] && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {SUB_REPO_KIND_LABEL[r.kind]}
-                      </span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           )}
         </div>
       </header>
@@ -558,12 +472,11 @@ export function ToolPane() {
         <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
           {worktreeRoot ? (
             <FilesPanel
-              key={subRepoRoot}
-              repo={subRepoRoot}
+              key={resolvedRoot}
+              repo={resolvedRoot}
               repoChangedTick={repoChangedTick}
               pollMs={subRepoPollMs}
               repoKey={resolvedRepoKey}
-              worktreeRoot={worktreeRoot}
               repos={repos}
               selectedPath={filesSelectedPath}
               onSelectedPathChange={handleFilesSelectedPathChange}
@@ -598,7 +511,7 @@ export function ToolPane() {
               )}
               <div className="min-h-0 flex-1">
                 <GraphPanel
-                  repo={subRepoRoot}
+                  repo={resolvedRoot}
                   repoChangedTick={repoChangedTick}
                   pollMs={subRepoPollMs}
                   onSelectCommit={handleSelectCommit}
@@ -617,8 +530,8 @@ export function ToolPane() {
           {worktreeRoot ? (
             <>
               <DiffPanel
-                key={`${subRepoRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
-                repo={subRepoRoot}
+                key={`${resolvedRoot}|${comparison?.from ?? ""}|${comparison?.to ?? ""}`}
+                repo={resolvedRoot}
                 repoKey={resolvedRepoKey}
                 from={comparison?.from}
                 to={comparison?.to}
@@ -632,7 +545,7 @@ export function ToolPane() {
                 sendButton={
                   <SendDraftsButton
                     repoKey={resolvedRepoKey}
-                    worktreeRoot={subRepoRoot}
+                    worktreeRoot={resolvedRoot}
                     pendingDrafts={pendingDrafts}
                     agentPanes={agentPanes}
                     onSent={handleDraftsSent}
@@ -671,7 +584,7 @@ export function ToolPane() {
 
         <TabsContent value="process" className="min-h-0 flex-1 overflow-hidden">
           {worktreeRoot ? (
-            <ProcessPanel key={subRepoRoot} root={subRepoRoot} />
+            <ProcessPanel key={resolvedRoot} root={resolvedRoot} />
           ) : (
             <EmptyWorktreeNotice />
           )}
@@ -679,7 +592,7 @@ export function ToolPane() {
 
         <TabsContent value="compose" className="min-h-0 flex-1 overflow-hidden">
           {worktreeRoot ? (
-            <ComposePanel key={subRepoRoot} root={subRepoRoot} />
+            <ComposePanel key={resolvedRoot} root={resolvedRoot} />
           ) : (
             <EmptyWorktreeNotice />
           )}

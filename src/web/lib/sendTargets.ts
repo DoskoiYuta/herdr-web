@@ -1,19 +1,58 @@
 import type { PaneRow, Repo } from "@contract/events";
 
-/**
- * Agent panes (`agent !== null`) under the worktree at `worktreeRoot`,
- * focused pane first (order otherwise unchanged) — the candidate list for
- * the ToolPane 送信 button's send target. Excludes 「質問」(ask) session panes
- * (`pane.ask`) — a review should never be sent to a question session; those
- * get answered through the ask thread's own reply flow instead.
- */
-export function agentPanesAt(repos: Repo[], worktreeRoot: string): PaneRow[] {
-  const worktree = repos.flatMap((repo) => repo.worktrees).find((w) => w.root === worktreeRoot);
-  if (!worktree) return [];
-  const panes = worktree.panes.filter((p) => p.agent !== null && p.ask !== true);
+function agentPaneEntries(
+  repos: Repo[],
+): { pane: PaneRow; worktreeRoot: string; repoKey: string }[] {
+  const entries: { pane: PaneRow; worktreeRoot: string; repoKey: string }[] = [];
+  for (const repo of repos) {
+    for (const worktree of repo.worktrees) {
+      for (const pane of worktree.panes) {
+        if (pane.agent === null || pane.ask === true) continue;
+        entries.push({ pane, worktreeRoot: worktree.root, repoKey: repo.key });
+      }
+    }
+  }
+  return entries;
+}
+
+function focusedFirst(panes: PaneRow[]): PaneRow[] {
   const focused = panes.filter((p) => p.focused);
   const rest = panes.filter((p) => !p.focused);
   return [...focused, ...rest];
+}
+
+/**
+ * Send-target candidate list (レビュー送信・質問の送信先ダイアログ, §10.6),
+ * scoped to match the server notifier's own reach (`herdr-notifier.ts`) so
+ * the picker never offers a pane the server would then reject.
+ *
+ * `effectiveRoot`/`effectiveRepoKey` are the *effective* selection (the
+ * sub-repository's when one is selected, else the top worktree/repo — see
+ * `FocusSubRepo`/§10.3). A pane's own `effectiveRoot`/`effectiveRepoKey`
+ * (server-computed from *its* workspace's selection) is compared first —
+ * this is what lets an agent pane in another workspace act as the target
+ * for a sub-repository review, even though that pane's own worktree row is
+ * a different top-level worktree. Panes without those fields (older/other
+ * server payloads) fall back to their enclosing worktree root / repo key.
+ *
+ * First tries an exact root match; if none, widens to any pane whose
+ * effective repo matches (so a worktree with no agent doesn't strand the
+ * user with `no_target`). Focused pane first within each tier.
+ */
+export function sendTargetsFor(
+  repos: Repo[],
+  effectiveRoot: string,
+  effectiveRepoKey: string,
+): PaneRow[] {
+  const entries = agentPaneEntries(repos);
+  const atRoot = entries
+    .filter((e) => (e.pane.effectiveRoot ?? e.worktreeRoot) === effectiveRoot)
+    .map((e) => e.pane);
+  if (atRoot.length > 0) return focusedFirst(atRoot);
+  const inRepo = entries
+    .filter((e) => (e.pane.effectiveRepoKey ?? e.repoKey) === effectiveRepoKey)
+    .map((e) => e.pane);
+  return focusedFirst(inRepo);
 }
 
 /**

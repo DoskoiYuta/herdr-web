@@ -2,6 +2,7 @@ import type { Config } from "../../contract/config";
 import { openDb, type Db } from "../db/client";
 import { applyMigrations } from "../db/migrate";
 import type { HerdrGateway } from "../herdr/gateway";
+import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
 import type { HerdrStateStore } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
 import { createGitHistory } from "./adapters/git-history";
@@ -39,7 +40,13 @@ export type ReviewRuntimeDeps = {
   config: Pick<Config, "notify">;
   db: Db;
   /** 通知先解決に使う。herdr 無しのテストでは notifier を直接渡す。 */
-  herdr?: { state: HerdrStateStore; gateway: HerdrGateway; resolver: WorktreeResolver };
+  herdr?: {
+    state: HerdrStateStore;
+    gateway: HerdrGateway;
+    resolver: WorktreeResolver;
+    listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+    listSubRepos(root: string): Promise<SubRepoLike[]>;
+  };
   notifier?: AgentNotifier;
   gitHistory?: GitHistory;
   finder?: IntroducingCommitFinder;

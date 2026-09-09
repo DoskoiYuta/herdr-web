@@ -5,17 +5,25 @@ import type { InboxItem, InboxLocation, InboxResponse, InboxSection } from "../.
 import type { NotifyState } from "../../contract/review";
 import type { AskRepository } from "../ask/ports";
 import type { DecisionRepository } from "../decision/ports";
-import { effectiveCwd, type HerdrState, type HerdrStateStore } from "../herdr/state";
-import { livePanes, type WorktreeInfo, type WorktreeResolver } from "../herdr/tree";
+import {
+  resolvePaneWorktree,
+  type ResolvedPaneWorktree,
+  type SubRepoLike,
+  type WorktreeEntryLike,
+} from "../herdr/pane-worktree";
+import type { HerdrState, HerdrStateStore } from "../herdr/state";
+import { livePanes, type WorktreeResolver } from "../herdr/tree";
 import type { ReviewRepository } from "../review/ports";
 
 export type InboxServiceDeps = {
   reviewRepository: ReviewRepository;
   askRepository: AskRepository;
   decisionRepository: DecisionRepository;
-  /** `get()` だけ使う（tree.ts が使うのと同じ経路）。 */
-  state: Pick<HerdrStateStore, "get">;
+  /** `resolvePaneWorktree` にも渡すため `getSelection`/`setSelection` も要る。 */
+  state: Pick<HerdrStateStore, "get" | "getSelection" | "setSelection">;
   resolver: WorktreeResolver;
+  listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+  listSubRepos(root: string): Promise<SubRepoLike[]>;
 };
 
 const UNDELIVERED_NOTIFY_STATES = new Set<NotifyState>(["agent_blocked", "no_target", "unknown"]);
@@ -237,20 +245,14 @@ export function createInboxService(deps: InboxServiceDeps) {
     }
 
     const blockedPanes = livePanes(state).filter((p) => p.agent_status === "blocked");
-    const cwds = new Set<string>();
-    for (const pane of blockedPanes) {
-      const cwd = effectiveCwd(state, pane);
-      if (cwd) cwds.add(cwd);
-    }
-    const resolved = new Map<string, WorktreeInfo | null>();
+    const resolved = new Map<string, ResolvedPaneWorktree | null>();
     await Promise.all(
-      [...cwds].map(async (cwd) => {
-        resolved.set(cwd, await deps.resolver.resolve(cwd).catch(() => null));
+      blockedPanes.map(async (pane) => {
+        resolved.set(pane.pane_id, await resolvePaneWorktree(deps, pane).catch(() => null));
       }),
     );
     for (const pane of blockedPanes) {
-      const cwd = effectiveCwd(state, pane);
-      const info = cwd ? (resolved.get(cwd) ?? null) : null;
+      const info = resolved.get(pane.pane_id) ?? null;
       items.push({
         section: "blocked",
         kind: "agent",
@@ -259,7 +261,7 @@ export function createInboxService(deps: InboxServiceDeps) {
         label: pane.label ?? null,
         workspaceLabel: state.workspaces.get(pane.workspace_id)?.label ?? null,
         tabLabel: state.tabs.get(pane.tab_id)?.label ?? null,
-        worktreeRoot: info?.root ?? null,
+        worktreeRoot: info?.worktreeRoot ?? null,
         at: null,
       });
     }

@@ -12,8 +12,8 @@ export function EmptyWorktreeNotice() {
       title="worktree を解決できません"
       description={
         <>
-          ツール領域は herdr のフォーカス pane が見ている worktree に追従します。herdr に接続して
-          pane をフォーカスすると表示されます。
+          ツール領域はフォーカス pane のリポジトリとワークスペースに追従します（worktree
+          はヘッダーで選びます）。herdr に接続して pane をフォーカスすると表示されます。
           <br />
           Inbox は接続中も参照できます（回答の配達は再接続後）
         </>

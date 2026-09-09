@@ -218,6 +218,33 @@ export const FetchResultSchema = v.object({
 export type FetchResult = v.InferOutput<typeof FetchResultSchema>;
 
 // ---------------------------------------------------------------------------
+// /api/git/worktrees  (ui-redesign.md §10.4)
+// ---------------------------------------------------------------------------
+
+export const WorktreesQuerySchema = v.object({
+  /** Any worktree root of the repository (main or linked). */
+  repo: v.pipe(v.string(), v.minLength(1)),
+});
+export type WorktreesQuery = v.InferOutput<typeof WorktreesQuerySchema>;
+
+/** One `git worktree list --porcelain` entry (bare and prunable entries are dropped). */
+export const WorktreeEntrySchema = v.object({
+  /** Absolute, realpath'd. */
+  root: v.string(),
+  /** Short branch name; null when detached. */
+  branch: v.nullable(v.string()),
+  /** HEAD commit; null on an unborn branch. */
+  head: v.nullable(v.string()),
+  isMain: v.boolean(),
+});
+export type WorktreeEntry = v.InferOutput<typeof WorktreeEntrySchema>;
+
+export const WorktreesResponseSchema = v.object({
+  worktrees: v.array(WorktreeEntrySchema),
+});
+export type WorktreesResponse = v.InferOutput<typeof WorktreesResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // /api/git/subrepos
 // ---------------------------------------------------------------------------
 
@@ -236,6 +263,8 @@ export const SubRepoSchema = v.object({
   /** Absolute, realpath'd. */
   root: v.string(),
   kind: SubRepoKindSchema,
+  /** All worktrees of this (sub-)repository; for the root entry, the top repository's. */
+  worktrees: v.array(WorktreeEntrySchema),
 });
 export type SubRepo = v.InferOutput<typeof SubRepoSchema>;
 

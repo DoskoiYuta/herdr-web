@@ -164,6 +164,8 @@ export type StatusInfo = {
   worktreeRoot: string | null;
   repoKey: string | null;
   sessionKey: string | null;
+  /** True when no worktree/sub-repository selection is saved for the pane's workspace (ui-redesign.md §10). */
+  selectionIsDefault?: boolean;
 };
 
 export function formatStatus(info: StatusInfo): string {
@@ -173,7 +175,8 @@ export function formatStatus(info: StatusInfo): string {
       ? `server: ok (v${info.health.version}, herdr ${info.health.herdr.connected ? `connected (protocol ${info.health.herdr.protocol})` : "disconnected"})`
       : "server: unreachable",
   );
-  lines.push(`worktree: ${info.worktreeRoot ?? "(unknown)"}`);
+  const defaultMarker = info.selectionIsDefault ? " (default)" : "";
+  lines.push(`worktree: ${info.worktreeRoot ?? "(unknown)"}${defaultMarker}`);
   lines.push(`repo: ${info.repoKey ?? "(unknown)"}`);
   lines.push(`session: ${info.sessionKey ?? "(none)"}`);
   return lines.join("\n");

@@ -181,7 +181,7 @@ function RootLayout() {
   );
 
   // Workspace 行の右クリック「Diff を開く」(ui-redesign.md §5.2): まず
-  // フォーカスを移し、通常のタブ切替と同じくタブ専用の search（sub/from/to）
+  // フォーカスを移し、通常のタブ切替と同じくタブ専用の search（from/to）
   // だけ落として `/focus/diff` へ遷移する。
   const handleOpenDiff = useCallback(
     (pane: string) => {
@@ -189,7 +189,7 @@ function RootLayout() {
       void navigate({
         to: "/focus/$tab",
         params: { tab: "diff" },
-        search: (prev) => ({ ...prev, sub: undefined, from: undefined, to: undefined }),
+        search: (prev) => ({ ...prev, from: undefined, to: undefined }),
       });
     },
     [handleSelectPane, navigate],

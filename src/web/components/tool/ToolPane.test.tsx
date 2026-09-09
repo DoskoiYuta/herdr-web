@@ -70,6 +70,8 @@ function focusMessage(overrides: Partial<FocusMessage> = {}): FocusMessage {
     agent: null,
     agentStatus: null,
     agentSession: null,
+    subRepo: null,
+    selectionIsDefault: true,
     ...overrides,
   };
 }
@@ -253,9 +255,27 @@ const askCountsMock = vi.fn(async (..._args: unknown[]) => askCounts());
 const decisionCountsMock = vi.fn(async (..._args: unknown[]) => decisionCounts());
 const sendMock = vi.fn(async (..._args: unknown[]) => ({ reviews: [] }));
 const subreposMock = vi.fn(async (repo: string): Promise<SubReposResponse> => ({
-  repos: [{ id: "", name: repo.split("/").pop() ?? repo, root: repo, kind: "root" }],
+  repos: [
+    {
+      id: "",
+      name: repo.split("/").pop() ?? repo,
+      root: repo,
+      kind: "root",
+      worktrees: [{ root: repo, branch: "main", head: "abc123", isMain: true }],
+    },
+  ],
 }));
 const panePreviewMock = vi.fn(async (..._args: [string]) => new Promise(() => {}));
+const setSelectionMock = vi.fn(async (..._args: unknown[]) => ({
+  selection: {
+    workspaceId: "w1",
+    repoKey: "/repo/.git",
+    worktreeRoot: "/repo",
+    subRepoId: null,
+    subWorktreeRoot: null,
+    updatedAt: new Date().toISOString(),
+  },
+}));
 
 const { SendTargetError } = vi.hoisted(() => {
   class SendTargetErrorImpl extends Error {
@@ -294,6 +314,7 @@ vi.mock("@/lib/api", () => ({
   },
   herdrApi: {
     panePreview: (...args: [string]) => panePreviewMock(...args),
+    setSelection: (...args: unknown[]) => setSelectionMock(...args),
   },
   SendTargetError,
 }));
@@ -526,7 +547,7 @@ describe("ToolPane", () => {
 
   // ui-redesign.md §5.3: worktree 見出し行にブランチを出す。
   test("shows the worktree's branch next to its basename", async () => {
-    await renderFocused();
+    await renderFocused({ repoKey: "/Users/dev/project/.git" });
     expect(await screen.findByText("main")).toBeInTheDocument();
   });
 
@@ -640,120 +661,157 @@ describe("ToolPane", () => {
     });
   });
 
-  describe("sub-repo switcher", () => {
-    test("does not show the select when there's only one entry (the root)", async () => {
-      await renderFocused();
+  describe("worktree selector (§10.5)", () => {
+    // 無いと壊れる: worktree が 1 件しか無い repo でセレクタを出すと、選ぶ余地
+    // が無いのに常に操作可能に見える無駄な UI が残る。
+    test("shows only the branch badge (no selector trigger) when there's a single repo with a single worktree", async () => {
+      await renderFocused({ repoKey: "/Users/dev/project/.git" });
       await waitFor(() => expect(subreposMock).toHaveBeenCalledWith("/Users/dev/project"));
+      expect(await screen.findByText("main")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "worktree を選択" })).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("combobox", { name: "サブリポジトリを選択" }),
+        screen.queryByRole("button", { name: "リポジトリ・worktree を選択" }),
       ).not.toBeInTheDocument();
     });
 
-    test("shows the select with >1 entries; switching updates the repo/repoKey passed to Diff/Graph panels, and the header path", async () => {
+    // 無いと壊れる: サブリポジトリが存在するのに Diff/Graph/Files が常に
+    // トップ worktree のまま固定され、submodule 側のブランチが一切見えない。
+    test("shows a repo>branch trigger with subrepos; picking one PUTs the selection, and the resulting focus.subRepo drives Diff/Graph/header", async () => {
       subreposMock.mockResolvedValueOnce({
         repos: [
-          { id: "", name: "project", root: "/Users/dev/project", kind: "root" as const },
+          {
+            id: "",
+            name: "project",
+            root: "/Users/dev/project",
+            kind: "root" as const,
+            worktrees: [{ root: "/Users/dev/project", branch: "main", head: "h1", isMain: true }],
+          },
           {
             id: "vendor/lib",
             name: "lib",
             root: "/Users/dev/project/vendor/lib",
             kind: "submodule" as const,
+            worktrees: [
+              {
+                root: "/Users/dev/project/vendor/lib",
+                branch: "lib-main",
+                head: "h2",
+                isMain: true,
+              },
+            ],
           },
         ],
       });
-      await renderFocused({ repoKey: "/Users/dev/project/.git" });
+      const { store } = await renderFocused({ repoKey: "/Users/dev/project/.git" });
 
-      const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
+      const trigger = await screen.findByRole("button", { name: "リポジトリ・worktree を選択" });
+      expect(trigger).toHaveTextContent("project");
       expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
         "/Users/dev/project:WORKTREE:HEAD",
       );
 
-      fireEvent.click(trigger);
-      const option = await screen.findByRole("option", { name: /lib/ });
-      fireEvent.click(option);
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      const libRow = await screen.findByRole("menuitem", { name: /^lib/ });
+      fireEvent.click(libRow);
 
-      // repo passed to DiffPanel follows the selected sub-repo's root.
+      await waitFor(() =>
+        expect(setSelectionMock).toHaveBeenCalledWith("w1", {
+          repoKey: "/Users/dev/project/.git",
+          worktreeRoot: "/Users/dev/project",
+          subRepoId: "vendor/lib",
+          subWorktreeRoot: null,
+        }),
+      );
+
+      // No optimistic update — only the next `focus` message (with
+      // `subRepo` set) changes what Diff/Graph/header show.
+      expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+        "/Users/dev/project:WORKTREE:HEAD",
+      );
+
+      store.setState({
+        focus: focusMessage({
+          repoKey: "/Users/dev/project/.git",
+          subRepo: {
+            id: "vendor/lib",
+            name: "lib",
+            kind: "submodule",
+            root: "/Users/dev/project/vendor/lib",
+            repoKey: "/Users/dev/project/vendor/lib/.git",
+          },
+        }),
+      });
+
       await waitFor(() =>
         expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
           "/Users/dev/project/vendor/lib:WORKTREE:HEAD",
         ),
       );
-      // header path shows <worktree>/<subrepo>
       expect(screen.getByText("/Users/dev/project/vendor/lib")).toBeInTheDocument();
 
       await selectTab("Graph");
       expect(screen.getByTestId("graph-panel-stub")).toHaveTextContent(
         "graph:/Users/dev/project/vendor/lib",
       );
-    });
+    }, 45000);
 
-    // レビュー指摘（Medium 3）: FilesPanel は ask の作成/for-file に
-    // `{ repo: repoKey, worktreeRoot: repo(=subRepoRoot) }` を使う。useAskCounts
-    // にも同じ組を渡さないと、サブリポジトリ選択中は常に 0 になる。
-    test("Files badge follows the selected sub-repo's root, not the worktree root", async () => {
-      subreposMock.mockResolvedValueOnce({
-        repos: [
-          { id: "", name: "project", root: "/Users/dev/project", kind: "root" as const },
-          {
-            id: "vendor/lib",
-            name: "lib",
-            root: "/Users/dev/project/vendor/lib",
-            kind: "submodule" as const,
-          },
-        ],
-      });
+    // レビュー指摘（Medium 3, M17 由来）: FilesPanel は ask の作成/for-file に
+    // `{ repo: repoKey, worktreeRoot: repo }` を使う。useAskCounts にも同じ組を
+    // 渡さないと、サブリポジトリ選択中は常に 0 になる。
+    test("Files badge follows focus.subRepo's root, not the top worktree root", async () => {
       askCountsMock.mockImplementation(async (...args: unknown[]) => {
         const params = args[0] as { repo: string; worktree: string };
         return params.worktree === "/Users/dev/project/vendor/lib"
           ? askCounts({ replied: 4 })
           : askCounts();
       });
-      await renderFocused({ repoKey: "/Users/dev/project/.git" });
-
-      const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
-      fireEvent.click(trigger);
-      const option = await screen.findByRole("option", { name: /lib/ });
-      fireEvent.click(option);
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        focusOverrides: {
+          subRepo: {
+            id: "vendor/lib",
+            name: "lib",
+            kind: "submodule",
+            root: "/Users/dev/project/vendor/lib",
+            repoKey: "/Users/dev/project/vendor/lib/.git",
+          },
+        },
+      });
 
       const filesTab = await screen.findByRole("tab", { name: /^Files/ });
       await waitFor(() => expect(filesTab).toHaveTextContent("4"));
     });
 
-    test("resets the sub-repo selection back to the worktree root when worktreeRoot changes", async () => {
-      subreposMock.mockResolvedValueOnce({
-        repos: [
-          { id: "", name: "project-a", root: "/Users/dev/project-a", kind: "root" as const },
-          {
-            id: "vendor/lib",
-            name: "lib",
-            root: "/Users/dev/project-a/vendor/lib",
-            kind: "submodule" as const,
-          },
-        ],
-      });
-      const { store } = await renderFocused({ worktreeRoot: "/Users/dev/project-a" });
-      const trigger = await screen.findByRole("combobox", { name: "サブリポジトリを選択" });
-      fireEvent.click(trigger);
-      const option = await screen.findByRole("option", { name: /lib/ });
-      fireEvent.click(option);
-      await waitFor(() =>
-        expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
-          "/Users/dev/project-a/vendor/lib:WORKTREE:HEAD",
-        ),
+    // 無いと壊れる: サブリポジトリの選択が変わっても effective root（実際に
+    // 見ている root）は変わっているのに、`worktreeRoot` 自体は同じままなので
+    // 旧 worktree 切り替え検知だけに頼ると比較範囲・ジャンプ先が持ち越される
+    // （ui-redesign.md §10.5: worktree/サブリポジトリ切り替えは同じ扱い）。
+    test("selecting a sub-repo (focus.subRepo changing, worktreeRoot unchanged) still drops the diff comparison", async () => {
+      const { store } = await renderFocused({ worktreeRoot: "/Users/dev/project" });
+      await selectTab("Graph");
+      fireEvent.click(screen.getByTestId("graph-panel-stub"));
+      await selectTab("Diff");
+      expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
+        "/Users/dev/project:aaa111:bbb222",
       );
 
-      // subreposMock's default implementation (single root entry) applies
-      // to project-b, since the queued mockResolvedValueOnce above was
-      // already consumed by the mount above.
-      store.setState({ focus: focusMessage({ worktreeRoot: "/Users/dev/project-b" }) });
+      store.setState({
+        focus: focusMessage({
+          worktreeRoot: "/Users/dev/project",
+          subRepo: {
+            id: "vendor/lib",
+            name: "lib",
+            kind: "submodule",
+            root: "/Users/dev/project/vendor/lib",
+            repoKey: "/Users/dev/project/vendor/lib/.git",
+          },
+        }),
+      });
       await waitFor(() =>
         expect(screen.getByTestId("diff-panel-stub")).toHaveTextContent(
-          "/Users/dev/project-b:WORKTREE:HEAD",
+          "/Users/dev/project/vendor/lib:WORKTREE:HEAD",
         ),
       );
-      expect(
-        screen.queryByRole("combobox", { name: "サブリポジトリを選択" }),
-      ).not.toBeInTheDocument();
     });
   });
 });

@@ -12,6 +12,7 @@ import {
   RootResponseSchema,
   StatusResponseSchema,
   SubReposResponseSchema,
+  WorktreesResponseSchema,
 } from "../../contract/git";
 import {
   FileResponseSchema,
@@ -36,7 +37,12 @@ import {
   SendDraftsResultSchema,
 } from "../../contract/review";
 import { WorkspaceInfoSchema } from "../../contract/herdr";
-import { PanePreviewResponseSchema } from "../../contract/herdr-ops";
+import {
+  PanePreviewResponseSchema,
+  type WorkspaceSelectionPutBody,
+  WorkspaceSelectionGetResponseSchema,
+  WorkspaceSelectionPutResponseSchema,
+} from "../../contract/herdr-ops";
 import {
   type AskReplyRequest,
   AskCountsResponseSchema,
@@ -235,6 +241,13 @@ export const gitApi = {
     const res = await client.api.git.status.$get({ query: { repo } });
     if (!res.ok) throw new Error(`GET /api/git/status failed: ${res.status}`);
     return v.parse(StatusResponseSchema, await res.json());
+  },
+
+  /** All worktrees of the repository containing `repo` (ui-redesign.md §10.4). */
+  async worktrees(repo: string) {
+    const res = await client.api.git.worktrees.$get({ query: { repo } });
+    if (!res.ok) throw new Error(`GET /api/git/worktrees failed: ${res.status}`);
+    return v.parse(WorktreesResponseSchema, await res.json());
   },
 };
 
@@ -552,6 +565,35 @@ export const herdrApi = {
     const res = await client.api.herdr["pane-preview"].$get({ query: { pane } });
     if (!res.ok) throw new Error(`GET /api/herdr/pane-preview failed: ${res.status}`);
     return v.parse(PanePreviewResponseSchema, await res.json());
+  },
+
+  /** Saved worktree/sub-repo selection for `(workspaceId, repoKey)` (ui-redesign.md §10.4). */
+  async getSelection(workspaceId: string, repoKey: string) {
+    const res = await client.api.herdr.workspace[":id"].selection.$get({
+      param: { id: workspaceId },
+      query: { repoKey },
+    });
+    if (!res.ok) throw new Error(`GET /api/herdr/workspace/:id/selection failed: ${res.status}`);
+    return v.parse(WorkspaceSelectionGetResponseSchema, await res.json());
+  },
+
+  /** Throws on a non-2xx response (400 = validation failure, see contract/herdr-ops.ts). */
+  async setSelection(workspaceId: string, body: WorkspaceSelectionPutBody) {
+    const res = await client.api.herdr.workspace[":id"].selection.$put({
+      param: { id: workspaceId },
+      json: body,
+    });
+    if (!res.ok) throw new Error(`PUT /api/herdr/workspace/:id/selection failed: ${res.status}`);
+    return v.parse(WorkspaceSelectionPutResponseSchema, await res.json());
+  },
+
+  async clearSelection(workspaceId: string, repoKey: string) {
+    const res = await client.api.herdr.workspace[":id"].selection.$delete({
+      param: { id: workspaceId },
+      query: { repoKey },
+    });
+    if (!res.ok) throw new Error(`DELETE /api/herdr/workspace/:id/selection failed: ${res.status}`);
+    return (await res.json()) as { ok: true };
   },
 };
 

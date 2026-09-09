@@ -10,6 +10,8 @@ import { createAskRuntime } from "./ask/runtime";
 import { createDecisionRuntime } from "./decision/runtime";
 import { createHerdrAskLauncher } from "./herdr/ask-session";
 import { createFetchRunner } from "./git/fetch";
+import { listSubRepos } from "./git/subrepos";
+import { listWorktrees } from "./git/worktrees";
 import { serveEmbedded } from "./static";
 import type { WebAssets } from "./web-assets";
 import {
@@ -82,10 +84,18 @@ const reviewDb = openReviewDb(dbPath);
 
 const runtime = createRuntime({ config, db: reviewDb });
 
+const runtimeHerdrDeps = {
+  state: runtime.state,
+  gateway: runtime.gateway,
+  resolver: runtime.resolver,
+  listWorktrees,
+  listSubRepos,
+};
+
 const review = createReviewRuntime({
   config,
   db: reviewDb,
-  herdr: { state: runtime.state, gateway: runtime.gateway, resolver: runtime.resolver },
+  herdr: runtimeHerdrDeps,
   onEvent: (e) => runtime.hub.broadcast(e),
 });
 attachReviewToRuntime(runtime, review);
@@ -113,7 +123,7 @@ const ask = createAskRuntime({
 
 const decision = createDecisionRuntime({
   db: reviewDb,
-  herdr: { state: runtime.state, gateway: runtime.gateway, resolver: runtime.resolver },
+  herdr: runtimeHerdrDeps,
   onEvent: (e) => runtime.hub.broadcast(e),
 });
 // F13-9: pick back up any decision whose delivery was mid-backoff when the process last exited.
@@ -130,6 +140,8 @@ const inbox = createInboxService({
   decisionRepository: decision.repository,
   state: runtime.state,
   resolver: runtime.resolver,
+  listWorktrees,
+  listSubRepos,
 });
 
 const fetchRunner = createFetchRunner();
@@ -155,8 +167,15 @@ const api = createApp({
   }),
   review: review.routes,
   repo: review.repoRoutes,
-  hw: { state: runtime.state, resolver: runtime.resolver },
-  herdr: { gateway: runtime.gateway, state: runtime.state, allowedRoots: config.allowedRoots },
+  hw: { state: runtime.state, resolver: runtime.resolver, listWorktrees, listSubRepos },
+  herdr: {
+    gateway: runtime.gateway,
+    state: runtime.state,
+    resolver: runtime.resolver,
+    listWorktrees,
+    listSubRepos,
+    allowedRoots: config.allowedRoots,
+  },
   ask: ask.routes,
   decision: {
     ...decision.routes,
