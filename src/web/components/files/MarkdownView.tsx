@@ -11,7 +11,7 @@
 // the toolbar shows.
 
 import { Editable, useEditor } from "@wysimark/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export interface MarkdownViewProps {
@@ -23,16 +23,36 @@ export interface MarkdownViewProps {
   /** Presence (not value) selects edit vs. read-only mode. Called with the
    * document's markdown serialization on each Slate change. */
   onChange?: (markdown: string) => void;
+  /** Scroll position to restore on mount (fileScroll.ts). Callers that need
+   * per-file restoration must remount this component on file change (e.g.
+   * `key={path}`) — wysimark itself never scrolls, this container div does,
+   * and there is no other "new file" signal to key a restoring effect off. */
+  scrollTop?: number;
+  onScrollTopChange?: (top: number) => void;
 }
 
 function noop() {
   // read-only: edits are discarded rather than fed back into `contents`
 }
 
-export function MarkdownView({ contents, compact = false, onChange }: MarkdownViewProps) {
+export function MarkdownView({
+  contents,
+  compact = false,
+  onChange,
+  scrollTop,
+  onScrollTopChange,
+}: MarkdownViewProps) {
   const editor = useEditor({ height: compact ? "auto" : "100%" });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editable = onChange !== undefined;
+
+  useLayoutEffect(() => {
+    if (scrollTop !== undefined && containerRef.current) {
+      containerRef.current.scrollTop = scrollTop;
+    }
+    // mount-only: restoration relies on the caller remounting via `key`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (editable) return;
@@ -53,6 +73,7 @@ export function MarkdownView({ contents, compact = false, onChange }: MarkdownVi
         compact ? "h-auto" : "h-full min-h-0",
         compact && "md-readonly-compact",
       )}
+      onScroll={onScrollTopChange ? (e) => onScrollTopChange(e.currentTarget.scrollTop) : undefined}
     >
       <Editable editor={editor} value={contents} onChange={onChange ?? noop} />
     </div>

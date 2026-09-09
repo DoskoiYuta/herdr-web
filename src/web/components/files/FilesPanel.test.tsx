@@ -191,15 +191,43 @@ vi.mock("@/lib/dropEntries", () => ({
 }));
 
 vi.mock("./MarkdownView", () => ({
-  MarkdownView: ({ contents }: { contents: string }) => (
-    <div data-testid="markdown-view-stub">{contents}</div>
+  MarkdownView: ({
+    contents,
+    scrollTop,
+    onScrollTopChange,
+  }: {
+    contents: string;
+    scrollTop?: number;
+    onScrollTopChange?: (top: number) => void;
+  }) => (
+    <div data-testid="markdown-view-stub">
+      <span data-testid="markdown-view-scroll-top">{scrollTop ?? "none"}</span>
+      {contents}
+      <button type="button" onClick={() => onScrollTopChange?.(77)}>
+        report-markdown-scroll
+      </button>
+    </div>
   ),
 }));
 
 vi.mock("./CodeFileView", () => ({
-  CodeFileView: ({ path, contents }: { path: string; contents: string }) => (
+  CodeFileView: ({
+    path,
+    contents,
+    scrollTop,
+    onScrollTopChange,
+  }: {
+    path: string;
+    contents: string;
+    scrollTop?: number;
+    onScrollTopChange?: (top: number) => void;
+  }) => (
     <div data-testid="code-file-view-stub">
+      <span data-testid="code-file-view-scroll-top">{scrollTop ?? "none"}</span>
       {path}:{contents}
+      <button type="button" onClick={() => onScrollTopChange?.(123)}>
+        report-code-scroll
+      </button>
     </div>
   ),
 }));
@@ -866,4 +894,55 @@ test("the view-settings menu shows the current font size, changes it via A+/A-, 
   expect(screen.getByText("10")).toBeInTheDocument();
   expect(screen.getByTitle("文字を小さく")).toBeDisabled();
   expect(screen.getByTitle("文字を大きく")).not.toBeDisabled();
+});
+
+// ---------------------------------------------------------------------------
+// Per-file scroll position restore (fileScroll.ts).
+// ---------------------------------------------------------------------------
+
+test("a file's reported scroll position survives switching to another file and back", async () => {
+  lsMock.mockResolvedValue(
+    ls([
+      { name: "a.ts", kind: "file" },
+      { name: "b.ts", kind: "file" },
+    ]),
+  );
+  fileMock.mockImplementation(({ path }) =>
+    Promise.resolve({ kind: "text", path, contents: path, size: path.length }),
+  );
+  render(renderPanel());
+
+  (await screen.findByText("a.ts")).click();
+  await screen.findByTestId("code-file-view-stub");
+  fireEvent.click(screen.getByText("report-code-scroll")); // saves a.ts -> 123
+
+  (await screen.findByText("b.ts")).click();
+  await waitFor(() =>
+    expect(screen.getByTestId("code-file-view-stub")).toHaveTextContent("b.ts:b.ts"),
+  );
+  expect(screen.getByTestId("code-file-view-scroll-top")).toHaveTextContent("none");
+
+  fireEvent.click(screen.getByRole("tab", { name: /a\.ts/ }));
+  await waitFor(() =>
+    expect(screen.getByTestId("code-file-view-stub")).toHaveTextContent("a.ts:a.ts"),
+  );
+  expect(screen.getByTestId("code-file-view-scroll-top")).toHaveTextContent("123");
+}, 15000); // this suite's per-test wall time grows as more tests in the file run before it
+
+test("markdown source and preview modes keep separate scroll positions for the same file", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  render(renderPanel());
+
+  (await screen.findByText("a.md")).click();
+  await screen.findByTestId("markdown-view-stub"); // default mdMode: preview
+  fireEvent.click(screen.getByText("report-markdown-scroll")); // saves preview -> 77
+
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "ソース" }));
+  await screen.findByTestId("code-file-view-stub");
+  expect(screen.getByTestId("code-file-view-scroll-top")).toHaveTextContent("none");
+
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "プレビュー" }));
+  await screen.findByTestId("markdown-view-stub");
+  expect(screen.getByTestId("markdown-view-scroll-top")).toHaveTextContent("77");
 });
