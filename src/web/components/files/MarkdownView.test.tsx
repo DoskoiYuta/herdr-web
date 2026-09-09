@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { MarkdownView } from "./MarkdownView";
 
@@ -37,4 +37,21 @@ test("mounting in edit mode does not report the editor's normalized markdown as 
   await screen.findByText("1");
   await new Promise((r) => setTimeout(r, 50));
   expect(onChange).not.toHaveBeenCalled();
+});
+
+test("read-only mode does not render the editing toolbar", async () => {
+  render(<MarkdownView contents={"body"} />);
+  await screen.findByText("body");
+  expect(screen.queryByRole("button", { name: "表を挿入" })).not.toBeInTheDocument();
+});
+
+test("inserting a table from the toolbar reports table markdown via onChange", async () => {
+  const onChange = vi.fn();
+  render(<MarkdownView contents={"hello"} onChange={onChange} />);
+  await screen.findByText("hello");
+  fireEvent.click(await screen.findByRole("button", { name: "表を挿入" }));
+  await waitFor(() => expect(onChange).toHaveBeenCalled());
+  const markdown = onChange.mock.calls.at(-1)?.[0] as string;
+  const tableLines = markdown.split("\n").filter((line) => line.includes("|"));
+  expect(tableLines.length).toBeGreaterThanOrEqual(3);
 });
