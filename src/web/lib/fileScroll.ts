@@ -137,8 +137,8 @@ export function useFileScroll(repoKey: string | null): FileScrollActions {
     (path: string, mode: ScrollMode, top: number) => {
       if (repoKey === null) return;
       const existing = pendingRef.current;
-      if (existing && existing.path === path && existing.mode === mode && existing.top === top)
-        return;
+      if (existing && (existing.path !== path || existing.mode !== mode)) flush();
+      else if (existing && existing.top === top) return;
       pendingRef.current = { path, mode, top };
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(flush, WRITE_DEBOUNCE_MS);

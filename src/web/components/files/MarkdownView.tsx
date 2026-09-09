@@ -25,10 +25,22 @@ export interface MarkdownViewProps {
   onChange?: (markdown: string) => void;
   /** Scroll position to restore on mount (fileScroll.ts). Callers that need
    * per-file restoration must remount this component on file change (e.g.
-   * `key={path}`) — wysimark itself never scrolls, this container div does,
-   * and there is no other "new file" signal to key a restoring effect off. */
+   * `key={path}`) — there is no other "new file" signal to key a restoring
+   * effect off. */
   scrollTop?: number;
   onScrollTopChange?: (top: number) => void;
+}
+
+/** Nearest scrolling ancestor of Slate's root inside `container` (falls back
+ * to `container` itself, e.g. before wysimark has mounted). */
+function findScroller(container: HTMLElement): HTMLElement {
+  let el = container.querySelector<HTMLElement>("[data-slate-editor]");
+  while (el && el !== container) {
+    const overflowY = getComputedStyle(el).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") return el;
+    el = el.parentElement;
+  }
+  return container;
 }
 
 function noop() {
@@ -46,10 +58,16 @@ export function MarkdownView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editable = onChange !== undefined;
 
+  // The element that actually scrolls is wysimark's own editable wrapper (an
+  // emotion-styled div with a generated class name, `overflow-y: auto`,
+  // height 100%), not this container — so the scroller is located by walking
+  // up from Slate's root instead of by class name.
+  const scrollerRef = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
-    if (scrollTop !== undefined && containerRef.current) {
-      containerRef.current.scrollTop = scrollTop;
-    }
+    const container = containerRef.current;
+    if (!container) return;
+    scrollerRef.current = findScroller(container);
+    if (scrollTop !== undefined) scrollerRef.current.scrollTop = scrollTop;
     // mount-only: restoration relies on the caller remounting via `key`
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -73,7 +91,14 @@ export function MarkdownView({
         compact ? "h-auto" : "h-full min-h-0",
         compact && "md-readonly-compact",
       )}
-      onScroll={onScrollTopChange ? (e) => onScrollTopChange(e.currentTarget.scrollTop) : undefined}
+      onScrollCapture={
+        onScrollTopChange
+          ? (e) => {
+              if (e.target === scrollerRef.current)
+                onScrollTopChange(scrollerRef.current.scrollTop);
+            }
+          : undefined
+      }
     >
       <Editable editor={editor} value={contents} onChange={onChange ?? noop} />
     </div>

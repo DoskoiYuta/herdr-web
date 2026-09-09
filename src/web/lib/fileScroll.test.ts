@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { test, vi } from "vitest";
 import {
   getScroll,
   MAX_SCROLL_ENTRIES_PER_REPO,
   setScroll,
+  useFileScroll,
   validateFileScrollMap,
   type FileScrollEntry,
 } from "./fileScroll.ts";
@@ -52,4 +54,19 @@ test("validateFileScrollMap: keeps valid fields alongside a corrupted sibling", 
 test("validateFileScrollMap: returns an empty map for non-object input", () => {
   assert.deepEqual(validateFileScrollMap(null), {});
   assert.deepEqual(validateFileScrollMap("nope"), {});
+});
+
+test("useFileScroll: switching to another file inside the debounce window keeps the previous file's last position", () => {
+  vi.useFakeTimers();
+  try {
+    localStorage.clear();
+    const { result } = renderHook(() => useFileScroll("repo"));
+    act(() => result.current.set("a.ts", "source", 300));
+    act(() => result.current.set("b.ts", "source", 10));
+    act(() => vi.runAllTimers());
+    assert.equal(result.current.get("a.ts", "source"), 300);
+    assert.equal(result.current.get("b.ts", "source"), 10);
+  } finally {
+    vi.useRealTimers();
+  }
 });
