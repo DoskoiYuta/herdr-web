@@ -27,6 +27,16 @@ export const PaneRowSchema = v.object({
   cwd: v.nullable(v.string()),
   foregroundCwd: v.nullable(v.string()),
   /**
+   * Effective root / repoKey the pane's workspace has selected (ui-redesign.md
+   * §10.3): the sub-repository's worktree when one is selected, else the row's
+   * top-level worktree. Send-target matching (§10.6) compares these, so the
+   * client offers exactly the panes the server's notifier accepts. Optional so
+   * existing `PaneRow` literals need no update; absent means "same as the
+   * enclosing worktree row / repo".
+   */
+  effectiveRoot: v.optional(v.string()),
+  effectiveRepoKey: v.optional(v.string()),
+  /**
    * True for panes whose workspace is a 「質問」(ask) session (workspace label
    * starts with `ask:`, src/server/herdr/ask-session.ts). Optional so existing
    * `PaneRow` literals elsewhere don't need updating; absent means false.
@@ -94,14 +104,32 @@ export const PaneRemovedMessageSchema = v.object({
 });
 export type PaneRemovedMessage = v.InferOutput<typeof PaneRemovedMessageSchema>;
 
+/** Sub-repository chosen for the focused workspace (ui-redesign.md §10.3). */
+export const FocusSubRepoSchema = v.object({
+  /** `SubRepo.id` (path relative to `worktreeRoot`). */
+  id: v.string(),
+  name: v.string(),
+  kind: v.picklist(["submodule", "vcs"]),
+  /** Effective root the tabs read: the sub-repository's selected worktree (realpath). */
+  root: v.string(),
+  /** The sub-repository's `git-common-dir`. */
+  repoKey: v.string(),
+});
+export type FocusSubRepo = v.InferOutput<typeof FocusSubRepoSchema>;
+
 export const FocusMessageSchema = v.object({
   type: v.literal("focus"),
   pane: v.nullable(v.string()),
   workspace: v.nullable(v.string()),
   cwd: v.nullable(v.string()),
   foregroundCwd: v.nullable(v.string()),
+  /** Selected top-level worktree of the focused workspace (§10), or the cwd's worktree when nothing is saved. */
   worktreeRoot: v.nullable(v.string()),
+  /** Top-level repository key (`git-common-dir`). */
   repoKey: v.nullable(v.string()),
+  subRepo: v.nullable(FocusSubRepoSchema),
+  /** True when no selection is saved for (workspace, repoKey) and `worktreeRoot` is the cwd's worktree. */
+  selectionIsDefault: v.boolean(),
   agent: v.nullable(v.string()),
   agentStatus: v.nullable(AgentStatusSchema),
   agentSession: v.nullable(AgentSessionInfoSchema),

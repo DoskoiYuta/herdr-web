@@ -314,7 +314,15 @@ describe("GET /api/git/subrepos", () => {
     const res = await app.request(`/api/git/subrepos?repo=${encodeURIComponent(dir)}`);
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.repos).toEqual([{ id: "", name: expect.any(String), root: dir, kind: "root" }]);
+    expect(body.repos).toEqual([
+      {
+        id: "",
+        name: expect.any(String),
+        root: dir,
+        kind: "root",
+        worktrees: [{ root: dir, branch: "main", head: expect.any(String), isMain: true }],
+      },
+    ]);
   });
 
   test("includes an initialized submodule", async () => {
@@ -359,6 +367,46 @@ describe("GET /api/git/subrepos", () => {
     const app = makeApp([]); // nothing allowed beyond $HOME, and dir is under tmpdir
 
     const res = await app.request(`/api/git/subrepos?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/git/worktrees", () => {
+  test("lists the main and a linked worktree", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const linkedRaw = join(tmpdir(), `herdr-web-git-routes-linked-${Date.now()}`);
+    dirs.push(linkedRaw);
+    await execFileP("git", ["worktree", "add", "-q", "-b", "feature", linkedRaw], { cwd: dir });
+    const linked = await realpathAsync(linkedRaw);
+    const app = makeApp([dir, linked]);
+
+    const res = await app.request(`/api/git/worktrees?repo=${encodeURIComponent(dir)}`);
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.worktrees).toEqual([
+      { root: dir, branch: "main", head: expect.any(String), isMain: true },
+      { root: linked, branch: "feature", head: expect.any(String), isMain: false },
+    ]);
+  });
+
+  test("404s on an unknown path", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([dir]);
+
+    const missing = await app.request(
+      `/api/git/worktrees?repo=${encodeURIComponent(`${dir}-does-not-exist`)}`,
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  test("repo outside allowed roots -> 403", async () => {
+    const dir = await makeRepo();
+    await commit(dir, "a.txt", "a\n", "init");
+    const app = makeApp([]);
+
+    const res = await app.request(`/api/git/worktrees?repo=${encodeURIComponent(dir)}`);
     expect(res.status).toBe(403);
   });
 });

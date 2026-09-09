@@ -6,6 +6,8 @@ export type ResolvedContext = {
   repoKey: string | null;
   /** `${source}:${kind}:${value}` from whoami's agentSession, else null (plan §6.5 notify / F6). */
   sessionKey: string | null;
+  /** True when nothing is saved for the pane's (workspace, repoKey) — only meaningful via `$HERDR_PANE_ID` (ui-redesign.md §10). */
+  selectionIsDefault: boolean;
 };
 
 export type ResolveContextInput = {
@@ -29,6 +31,7 @@ export async function resolveContext(input: ResolveContextInput): Promise<Resolv
       worktreeRoot: info?.root ?? input.worktreeFlag,
       repoKey: info?.repoKey ?? null,
       sessionKey: null,
+      selectionIsDefault: false,
     };
   }
 
@@ -40,11 +43,21 @@ export async function resolveContext(input: ResolveContextInput): Promise<Resolv
       const sessionKey = agentSession
         ? `${agentSession.source}:${agentSession.kind}:${agentSession.value}`
         : null;
-      return { worktreeRoot: res.value.worktreeRoot, repoKey: res.value.repoKey, sessionKey };
+      return {
+        worktreeRoot: res.value.worktreeRoot,
+        repoKey: res.value.repoKey,
+        sessionKey,
+        selectionIsDefault: res.value.selectionIsDefault,
+      };
     }
     // whoami unreachable/failed — fall back to cwd resolution below.
   }
 
   const info = await resolveLocalGit(input.cwd);
-  return { worktreeRoot: info?.root ?? null, repoKey: info?.repoKey ?? null, sessionKey: null };
+  return {
+    worktreeRoot: info?.root ?? null,
+    repoKey: info?.repoKey ?? null,
+    sessionKey: null,
+    selectionIsDefault: false,
+  };
 }

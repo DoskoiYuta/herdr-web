@@ -100,12 +100,19 @@ export const notes = sqliteTable(
   (t) => [index("notes_repo_key_idx").on(t.repoKey)],
 );
 
-export const paneWorktreeOverrides = sqliteTable("pane_worktree_overrides", {
-  paneId: text("pane_id").primaryKey(),
-  root: text("root").notNull(),
-  observedCwd: text("observed_cwd"),
-  setAt: text("set_at").notNull(),
-});
+/** Saved worktree/sub-repository selection per (workspace, top-level repository) — ui-redesign.md §10. */
+export const workspaceWorktreeSelections = sqliteTable(
+  "workspace_worktree_selections",
+  {
+    workspaceId: text("workspace_id").notNull(),
+    repoKey: text("repo_key").notNull(),
+    worktreeRoot: text("worktree_root").notNull(),
+    subRepoId: text("sub_repo_id"),
+    subWorktreeRoot: text("sub_worktree_root"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.repoKey] })],
+);
 
 export const decisions = sqliteTable(
   "decisions",

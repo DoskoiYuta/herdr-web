@@ -1,8 +1,9 @@
 import type { FocusMessage } from "../../contract/events";
 import type { PaneInfo } from "../../contract/herdr";
 import type { HerdrGateway } from "./gateway";
-import { effectiveCwd, type HerdrStateStore, type Logger } from "./state";
-import type { WorktreeInfo, WorktreeResolver } from "./tree";
+import { resolvePaneWorktree, type SubRepoLike, type WorktreeEntryLike } from "./pane-worktree";
+import type { HerdrStateStore, Logger } from "./state";
+import type { WorktreeResolver } from "./tree";
 
 export type FocusPayload = Omit<FocusMessage, "type">;
 
@@ -18,6 +19,8 @@ export interface CreateFocusTrackerOptions {
   state: HerdrStateStore;
   gateway: HerdrGateway;
   resolver: WorktreeResolver;
+  listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+  listSubRepos(root: string): Promise<SubRepoLike[]>;
   pollMs?: number;
   logger?: Logger;
 }
@@ -29,6 +32,8 @@ const emptyPayload: FocusPayload = {
   foregroundCwd: null,
   worktreeRoot: null,
   repoKey: null,
+  subRepo: null,
+  selectionIsDefault: true,
   agent: null,
   agentStatus: null,
   agentSession: null,
@@ -44,16 +49,20 @@ const emptyPayload: FocusPayload = {
  * attached we also poll `gateway.paneGet` on the focused pane every `pollMs`.
  */
 export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracker {
-  const { state, gateway, resolver, pollMs = 3000, logger = console } = opts;
+  const {
+    state,
+    gateway,
+    resolver,
+    listWorktrees,
+    listSubRepos,
+    pollMs = 3000,
+    logger = console,
+  } = opts;
 
   let payload: FocusPayload = emptyPayload;
   /**
-   * Raw `foreground_cwd ?? cwd` (never the override) of the last pane we polled —
-   * used only to detect a silent herdr-side drift (§12-1). Comparing the
-   * *effective* cwd here would never see the drift while an override is active
-   * (the override keeps reporting the same root regardless of the real drift),
-   * so `patchPane` would never run and the reducer's auto-clear-on-divergence
-   * would never get a chance to fire.
+   * Raw `foreground_cwd ?? cwd` of the last pane we polled — used only to
+   * detect a silent herdr-side drift (§12-1).
    */
   let lastKnownRawCwd: string | null = null;
   let lastKnownPaneId: string | null = null;
@@ -61,14 +70,6 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
   const listeners = new Set<(p: FocusPayload) => void>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let recomputing = Promise.resolve();
-
-  // キャッシュは resolver 側（git/resolve.ts）が持つ。ここで持つと branch 変更を反映できない。
-  function resolveCached(path: string): Promise<WorktreeInfo | null> {
-    return resolver.resolve(path).catch((err) => {
-      logger.error("focus: worktree resolve failed", err);
-      return null;
-    });
-  }
 
   function notify(): void {
     for (const cb of listeners) {
@@ -89,15 +90,17 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
     const paneId = s.focusedPaneId;
     const pane = paneOverride ?? (paneId ? s.panes.get(paneId) : undefined);
     const workspaceId = pane?.workspace_id ?? s.focusedWorkspaceId;
-    const cwd = effectiveCwd(s, pane);
 
     lastKnownPaneId = paneId;
     lastKnownRawCwd = pane?.foreground_cwd ?? pane?.cwd ?? null;
 
-    const info = cwd ? await resolveCached(cwd) : null;
-
-    const worktreeRoot = info?.root ?? null;
-    const repoKey = info?.commonDir ?? null;
+    const resolved = await resolvePaneWorktree(
+      { state, resolver, listWorktrees, listSubRepos, logger },
+      pane,
+    ).catch((err) => {
+      logger.error("focus: worktree resolve failed", err);
+      return null;
+    });
 
     const agentPaneId = pane?.pane_id ?? paneId;
     const agent = pane?.agent ?? null;
@@ -109,8 +112,10 @@ export function createFocusTracker(opts: CreateFocusTrackerOptions): FocusTracke
       workspace: workspaceId ?? null,
       cwd: pane?.cwd ?? null,
       foregroundCwd: pane?.foreground_cwd ?? null,
-      worktreeRoot,
-      repoKey,
+      worktreeRoot: resolved?.worktreeRoot ?? null,
+      repoKey: resolved?.repoKey ?? null,
+      subRepo: resolved?.subRepo ?? null,
+      selectionIsDefault: resolved?.selectionIsDefault ?? true,
       agent,
       agentStatus,
       agentSession,

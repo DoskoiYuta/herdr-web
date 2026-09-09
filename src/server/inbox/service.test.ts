@@ -7,7 +7,7 @@ import { createReview } from "../review/domain/transitions";
 import { FakeReviewRepository, ManualClock } from "../review/testing/fakes";
 import { FakeAskRepository } from "../ask/testing/fake-repository";
 import { FakeDecisionRepository } from "../decision/testing/fake-repository";
-import { emptyState, type HerdrState } from "../herdr/state";
+import { emptyState, selectionKey, type HerdrState, type WorkspaceSelection } from "../herdr/state";
 import type { WorktreeInfo, WorktreeResolver } from "../herdr/tree";
 import { createInboxService } from "./service";
 
@@ -156,13 +156,24 @@ beforeEach(() => {
   decisionRepository = new FakeDecisionRepository();
 });
 
-function service(state: HerdrState = emptyState(), resolver: WorktreeResolver = fakeResolver({})) {
+function service(
+  state: HerdrState = emptyState(),
+  resolver: WorktreeResolver = fakeResolver({}),
+  selections: Map<string, WorkspaceSelection> = new Map(),
+) {
   return createInboxService({
     reviewRepository,
     askRepository,
     decisionRepository,
-    state: { get: () => state },
+    state: {
+      get: () => state,
+      getSelection: (workspaceId, repoKey) =>
+        selections.get(selectionKey(workspaceId, repoKey)) ?? null,
+      setSelection: async (sel) => ({ ok: true, selection: { ...sel, updatedAt: "t" } }),
+    },
     resolver,
+    listWorktrees: async () => [],
+    listSubRepos: async () => [],
   });
 }
 
@@ -466,6 +477,64 @@ describe("blocked section", () => {
     const state = stateWithPanes([pane]);
     const result = await service(state).getInbox();
     expect(result.items.some((i) => i.section === "blocked")).toBe(false);
+  });
+
+  // 無いと壊れる: cwd の raw worktree のまま filter すると、選択中の worktree
+  // (サイドバーのツリーと同じ実効値) と一致せず、Inbox の worktree 絞り込みで
+  // その pane が消えてしまう。
+  test("a blocked pane in a workspace with a saved selection appears under the SELECTED worktree, not its cwd's", async () => {
+    const pane = makePane({
+      pane_id: "p1",
+      workspace_id: "ws-1",
+      agent_status: "blocked",
+      agent: "claude",
+      foreground_cwd: "/repo",
+    });
+    const state = stateWithPanes([pane], [makeWorkspace({ workspace_id: "ws-1", label: "main" })]);
+    const resolver = fakeResolver({
+      "/repo": { root: "/repo", commonDir: "/repo/.git", branch: "main", isMain: true },
+    });
+    const selections = new Map([
+      [
+        selectionKey("ws-1", "/repo/.git"),
+        {
+          workspaceId: "ws-1",
+          repoKey: "/repo/.git",
+          worktreeRoot: "/repo-feature",
+          subRepoId: null,
+          subWorktreeRoot: null,
+          updatedAt: "t0",
+        } satisfies WorkspaceSelection,
+      ],
+    ]);
+    const svc = createInboxService({
+      reviewRepository,
+      askRepository,
+      decisionRepository,
+      state: {
+        get: () => state,
+        getSelection: (workspaceId, repoKey) =>
+          selections.get(selectionKey(workspaceId, repoKey)) ?? null,
+        setSelection: async (sel) => ({ ok: true, selection: { ...sel, updatedAt: "t" } }),
+      },
+      resolver,
+      listWorktrees: async () => [
+        { root: "/repo", branch: "main", head: "h1", isMain: true },
+        { root: "/repo-feature", branch: "feature", head: "h2", isMain: false },
+      ],
+      listSubRepos: async () => [],
+    });
+
+    const all = await svc.getInbox();
+    expect(all.items.find((i) => i.section === "blocked")).toMatchObject({
+      paneId: "p1",
+      worktreeRoot: "/repo-feature",
+    });
+
+    const filtered = await svc.getInbox("/repo-feature");
+    expect(filtered.items.map((i) => i.section === "blocked" && i.paneId)).toContain("p1");
+    const filteredOnCwd = await svc.getInbox("/repo");
+    expect(filteredOnCwd.items.some((i) => i.section === "blocked")).toBe(false);
   });
 });
 

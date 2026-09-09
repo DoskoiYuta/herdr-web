@@ -6,7 +6,7 @@
 
 - **サイドバー**: herdr の pane を `repository > workspace` に組み替えて表示。クリックでフォーカス切り替え。リポジトリ見出しの「+」ボタンからそのリポジトリの main worktree root を cwd にワークスペースを作成でき、ワークスペース行を右クリックすると「名前を変更」「削除」の操作ができる（削除は pane / agent がすべて終了する旨を確認してから実行）。
 - **ターミナル**: herdr の TUI を PTY 経由で xterm.js に描画。
-- **ツール領域**: フォーカス pane の `foreground_cwd` に追従して diff / graph / review / Docker / Process を表示。git graph は読み取り専用だが、`fetch` ボタン（キー `f`）から `git fetch --prune` だけは実行できる（リモート追跡ブランチの更新のみ、worktree は変更しない）。Process タブは他ユーザーが所有するプロセスの cwd を読めないため、それらは一覧に出ない。
+- **ツール領域**: フォーカス pane のリポジトリ・ワークスペースまで追従し、その worktree（サブリポジトリを含む）は人間が選ぶ（[docs/ui-redesign.md §10](docs/ui-redesign.md)）。選択は `(workspace, repository)` ごとにサーバーへ保存され、複数ブラウザ・`hw` CLI から一致する。diff / graph / review / Docker / Process を表示。git graph は読み取り専用だが、`fetch` ボタン（キー `f`）から `git fetch --prune` だけは実行できる（リモート追跡ブランチの更新のみ、worktree は変更しない）。Process タブは他ユーザーが所有するプロセスの cwd を読めないため、それらは一覧に出ない。
 - **`hw` CLI**: pane 内のエージェントがレビューを読み・返答する。
 
 ## 必要なもの
@@ -103,7 +103,6 @@ tailscale serve --bg 8080
 レビューコメントの通知を受けたら `hw review list` で確認し、`hw review show <id>` で該当箇所を読む。
 対応後は `hw review reply <id> "<返答>"` で返答する（この返信も下書きになり、ユーザーが送信するまでは届かない）。
 解決（resolve）の判断はユーザーが行うので、エージェントは resolve しない。
-worktree を作って移ったら `hw worktree use <path>`、元の worktree に戻ったら `hw worktree clear` で宣言する。
 ```
 
 ### `hw` CLI
@@ -114,31 +113,11 @@ hw review show <id> [--json]   # <id> は `hw review list` が出す短縮 id（
 hw review reply <id> <text>
 hw status
 hw repo move <old-path> <new-path>
-hw worktree use [<path>] [--pane <id>]   # 省略時は cwd / $HERDR_PANE_ID
-hw worktree clear [--pane <id>]
-hw worktree sync                         # Claude Code の hook から呼ぶ（後述）
 ```
 
 宛先は `HW_URL`（既定 `http://127.0.0.1:8080`）。pane 内で実行すると `HERDR_PANE_ID` から自分の worktree を解決する。pane 外では `--worktree <path>` かカレントディレクトリを使う。
 
-### worktree の宣言（`hw worktree use` / `clear`）
-
-herdr-web がツール領域の追従に使う「pane の cwd」は herdr の `foreground_cwd`（無ければ `cwd`）から決まるが、これは tty のフォアグラウンドプロセス＝エージェント本体の cwd で、エージェントが `git worktree add` 等で別の worktree に移って作業しても変わらない。`hw worktree use <path>` はその pane に対して「実際にはこの worktree で作業している」と宣言し、以後その pane のツール領域・レビュー宛先解決・`hw status`/`whoami` はすべて宣言した worktree を実効 cwd として扱う。元の worktree に戻ったら `hw worktree clear` で宣言を解除する（宣言はサーバー再起動をまたいで残るので、忘れると宣言が残ったままになる）。
-
-Claude Code の `EnterWorktree` / `ExitWorktree` ツールを使っている場合は、hook で `hw worktree sync` を呼べば手動での `use`/`clear` が要らない。`~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "EnterWorktree|ExitWorktree",
-        "hooks": [{ "type": "command", "command": "hw worktree sync" }]
-      }
-    ]
-  }
-}
-```
+`hw status`/`whoami` が返す worktree は、そのペインのワークスペースに対して人間が Web UI で選んでいる worktree（サブリポジトリ選択中はサブリポジトリの実効 worktree）。何も選ばれていなければフォーカス pane の cwd が属する worktree が既定になる（[docs/ui-redesign.md §10](docs/ui-redesign.md)）。
 
 ## 判断依頼（AskUserQuestion の置き換え）
 

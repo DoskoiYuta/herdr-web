@@ -11,9 +11,12 @@ import { openDb } from "../db/client";
 import { applyMigrations } from "../db/migrate";
 import type { FetchRunner } from "../git/fetch";
 import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
-import { createHerdrState } from "../herdr/state";
+import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
+import { createSqliteSelectionRepository } from "../herdr/selection";
+import { createHerdrState, type SelectionRepository } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
-import { createSqlitePaneWorktreeOverrideRepository } from "../herdr/worktree-overrides";
+import { listSubRepos } from "../git/subrepos";
+import { listWorktrees } from "../git/worktrees";
 import { createInboxService } from "../inbox/service";
 import { createNotesService } from "../notes/service";
 import { createSqliteNotesRepository } from "../notes/sqlite-repository";
@@ -26,6 +29,10 @@ export type TestAppOptions = {
   allowedRoots?: string[];
   fake?: FakeHerdr;
   resolver?: WorktreeResolver;
+  listWorktrees?: (repoPath: string) => Promise<WorktreeEntryLike[]>;
+  listSubRepos?: (root: string) => Promise<SubRepoLike[]>;
+  /** Override the selection persistence port (e.g. to simulate a SQLite write failure). */
+  selectionRepository?: SelectionRepository;
   events?: ReviewEvent[];
   fetchRunner?: FetchRunner;
   askLauncher?: AskSessionLauncher;
@@ -55,14 +62,23 @@ export function createTestApp(opts: TestAppOptions = {}) {
   const state = createHerdrState(
     fake,
     { error() {}, warn() {} },
-    createSqlitePaneWorktreeOverrideRepository(db),
+    opts.selectionRepository ?? createSqliteSelectionRepository(db),
   );
   const resolver = opts.resolver ?? gitWorktreeResolver;
+  const listWorktreesFn = opts.listWorktrees ?? listWorktrees;
+  const listSubReposFn = opts.listSubRepos ?? listSubRepos;
+  const herdrDeps = {
+    state,
+    gateway: fake,
+    resolver,
+    listWorktrees: listWorktreesFn,
+    listSubRepos: listSubReposFn,
+  };
   const events: ReviewEvent[] = opts.events ?? [];
   const review = createReviewRuntime({
     config: v.parse(ConfigSchema, {}),
     db,
-    herdr: { state, gateway: fake, resolver },
+    herdr: herdrDeps,
     onEvent: (e) => events.push(e),
     logger: { info() {}, warn() {}, error() {} },
   });
@@ -77,7 +93,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
   const decisionEvents: DecisionEvent[] = opts.decisionEvents ?? [];
   const decision = createDecisionRuntime({
     db,
-    herdr: { state, gateway: fake, resolver },
+    herdr: herdrDeps,
     notifier: opts.decisionNotifier,
     onEvent: (e) => decisionEvents.push(e),
     logger: { info() {}, warn() {}, error() {} },
@@ -92,6 +108,8 @@ export function createTestApp(opts: TestAppOptions = {}) {
     decisionRepository: decision.repository,
     state,
     resolver,
+    listWorktrees: listWorktreesFn,
+    listSubRepos: listSubReposFn,
   });
   const deps: AppDeps = {
     version: "test",
@@ -112,8 +130,15 @@ export function createTestApp(opts: TestAppOptions = {}) {
     },
     review: review.routes,
     repo: review.repoRoutes,
-    hw: { state, resolver },
-    herdr: { gateway: fake, state, allowedRoots: opts.allowedRoots ?? [] },
+    hw: { state, resolver, listWorktrees: listWorktreesFn, listSubRepos: listSubReposFn },
+    herdr: {
+      gateway: fake,
+      state,
+      resolver,
+      listWorktrees: listWorktreesFn,
+      listSubRepos: listSubReposFn,
+      allowedRoots: opts.allowedRoots ?? [],
+    },
     ask: ask.routes,
     decision: { ...decision.routes, buildUrl: (id) => `http://test/decisions/${id}` },
     notes: { service: notes },

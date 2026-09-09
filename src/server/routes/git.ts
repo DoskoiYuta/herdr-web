@@ -14,6 +14,8 @@ import {
   type StatusResponse,
   SubReposQuerySchema,
   type SubReposResponse,
+  WorktreesQuerySchema,
+  type WorktreesResponse,
 } from "../../contract/git";
 import { getCommitDetail } from "../git/detail";
 import { createFetchRunner, FetchBusyError, type FetchRunner } from "../git/fetch";
@@ -22,6 +24,7 @@ import { buildGraph } from "../git/graph";
 import { InvalidComparisonError, generatePatch } from "../git/patch";
 import { invalidateAll, resolveWorktree } from "../git/resolve";
 import { listSubRepos } from "../git/subrepos";
+import { listWorktrees } from "../git/worktrees";
 import { listStatus } from "../git/worktreeStatus";
 import { isAllowedRoot, pathExists } from "./allowed-roots";
 
@@ -130,6 +133,25 @@ export function gitRoutes(deps: GitRoutesDeps = {}) {
       try {
         const repos = await listSubRepos(repo);
         const body: SubReposResponse = { repos };
+        return c.json(body, 200);
+      } catch (err) {
+        return c.json(
+          { error: "internal" as const, message: err instanceof Error ? err.message : String(err) },
+          500,
+        );
+      }
+    })
+    .get("/worktrees", vValidator("query", WorktreesQuerySchema), async (c) => {
+      const { repo } = c.req.valid("query");
+
+      if (!(await isAllowed(repo, allowedRoots))) {
+        if (!(await exists(repo))) return c.json({ error: "not-found" as const }, 404);
+        return c.json({ error: "forbidden" as const }, 403);
+      }
+
+      try {
+        const worktrees = await listWorktrees(repo);
+        const body: WorktreesResponse = { worktrees };
         return c.json(body, 200);
       } catch (err) {
         return c.json(

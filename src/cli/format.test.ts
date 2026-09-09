@@ -203,4 +203,17 @@ describe("formatStatus", () => {
     expect(out).toContain("worktree: (unknown)");
     expect(out).toContain("session: (none)");
   });
+
+  // 無いと壊れる: 既定（未保存）の worktree を、ユーザーが明示的に選んだ worktree と
+  // 見分けられず、hw status を見ても選択が保存されているか分からない。
+  test("marks the worktree line (default) when nothing is saved for the pane's workspace", () => {
+    const out = formatStatus({
+      health: { ok: true, version: "0.1.0", herdr: { connected: true, protocol: 20 } },
+      worktreeRoot: "/repo",
+      repoKey: "/repo/.git",
+      sessionKey: null,
+      selectionIsDefault: true,
+    });
+    expect(out).toContain("worktree: /repo (default)");
+  });
 });

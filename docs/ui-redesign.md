@@ -18,8 +18,7 @@ herdr の中で複数のエージェントが並行して働く状況で、人�
 | 見渡す・移動する・成果を見る・判断を返す              | **Web UI（この再設計の対象）** |
 | 両者をつなぐ                                          | `hw` CLI（エージェントが叩く） |
 
-**不変の前提**: ツール領域は herdr のフォーカスに追従し、ピン留めは持たない（F2-4）。ブラウザ側に独自の「選択中 worktree」を持たせない。
-pane 内のエージェントが `hw worktree use` で宣言した worktree はその pane の cwd として扱う（人間が UI で固定するピン留めとは別）。
+**前提（2026-09-09 改訂、§10）**: ツール領域が追従するのは herdr のフォーカス pane が属する **リポジトリ** と **ワークスペース** まで。その中でどの worktree / サブリポジトリを見るかは人間が Tool header の Select で選び、選択はワークスペース単位でサーバー（SQLite）に保存する。pane の cwd から worktree を推定する方式と、エージェントが `hw worktree use` で宣言する方式は廃止した。
 
 ---
 
@@ -27,22 +26,22 @@ pane 内のエージェントが `hw worktree use` で宣言した worktree は�
 
 ### 2.1 ドメイン語彙
 
-| 語                     | 意味                                                                                                                          | 出所    |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Repository             | `git-common-dir` で同一視されるリポジトリ。サイドバーの最上位グループ、レビュー・質問の `repo` キー                           | git     |
-| Worktree               | main または linked の作業ツリー。ツール領域が追従する単位、レビュー・質問・判断依頼・Docker・Process の `root`                | git     |
-| Sub-repository         | worktree 配下の submodule / vcstool 子リポジトリ。ツール領域内で切替                                                          | git     |
-| Workspace / Tab / Pane | herdr の階層。pane がエージェントを 1 つ持ちうる                                                                              | herdr   |
-| Agent status           | `idle / working / blocked / done / unknown`。pane 単位                                                                        | herdr   |
-| Focus                  | herdr が 1 つだけ持つフォーカス pane。ツール領域が追う worktree はここから決まる                                              | herdr   |
-| Review（レビュー）     | 人間 → エージェント。**変更**（worktree または commit）の行範囲に付くスレッド。下書き→一括送信                                | 自前 DB |
-| Ask（質問）            | 人間 → エージェント。**コードの場所**（worktree のファイル行範囲）に付くスレッド。作成＝即送信。専用セッション or 既存 pane   | 自前 DB |
-| Decision（判断依頼）   | エージェント → 人間。設問（single/multi/text/confirm）と Block 付きコンテキスト。非ブロッキング、回答は `agent.prompt` で配達 | 自前 DB |
-| Notify / Delivery      | Review の通知状態、Decision の配達状態、Ask の最終プロンプト状態。いずれも `agent.prompt` の結果                              | 自前 DB |
+| 語                     | 意味                                                                                                                             | 出所    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Repository             | `git-common-dir` で同一視されるリポジトリ。サイドバーの最上位グループ、レビュー・質問の `repo` キー                              | git     |
+| Worktree               | main または linked の作業ツリー。ツール領域が追従する単位、レビュー・質問・判断依頼・Docker・Process の `root`                   | git     |
+| Sub-repository         | worktree 配下の submodule / vcstool 子リポジトリ。ツール領域内で切替                                                             | git     |
+| Workspace / Tab / Pane | herdr の階層。pane がエージェントを 1 つ持ちうる                                                                                 | herdr   |
+| Agent status           | `idle / working / blocked / done / unknown`。pane 単位                                                                           | herdr   |
+| Focus                  | herdr が 1 つだけ持つフォーカス pane。ツール領域が追うリポジトリとワークスペースはここから決まり、worktree は選択（§10）で決まる | herdr   |
+| Review（レビュー）     | 人間 → エージェント。**変更**（worktree または commit）の行範囲に付くスレッド。下書き→一括送信                                   | 自前 DB |
+| Ask（質問）            | 人間 → エージェント。**コードの場所**（worktree のファイル行範囲）に付くスレッド。作成＝即送信。専用セッション or 既存 pane      | 自前 DB |
+| Decision（判断依頼）   | エージェント → 人間。設問（single/multi/text/confirm）と Block 付きコンテキスト。非ブロッキング、回答は `agent.prompt` で配達    | 自前 DB |
+| Notify / Delivery      | Review の通知状態、Decision の配達状態、Ask の最終プロンプト状態。いずれも `agent.prompt` の結果                                 | 自前 DB |
 
 ### 2.2 機能一覧（実装済み）
 
-観察系（読み取り専用、フォーカス worktree に追従）:
+観察系（読み取り専用、選択中 worktree に追従。§10）:
 
 | 機能     | 概要                                                                                                         | 主な操作                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
@@ -77,7 +76,8 @@ pane 内のエージェントが `hw worktree use` で宣言した worktree は�
 | 種類                                                                    | 置き場所                                      |
 | ----------------------------------------------------------------------- | --------------------------------------------- |
 | フォーカス、pane / workspace ツリー、接続状態                           | herdr（WS `/ws/events` で受信、`herdrStore`） |
-| タブ、比較範囲 `from/to`、`sub`、`path/line`、`md`                      | URL（`/focus/<tab>?…`）                       |
+| タブ、比較範囲 `from/to`、`path/line`、`md`                             | URL（`/focus/<tab>?…`）                       |
+| worktree / サブリポジトリの選択（§10）                                  | SQLite（`(workspace, repoKey)` ごと）         |
 | 判断依頼の一覧・詳細                                                    | URL（`/decisions`, `/decisions/<id>`）        |
 | レイアウト幅・折りたたみ、ビューア設定、diff 設定、判断依頼の回答下書き | localStorage                                  |
 | レビュー・質問・判断依頼・通知状態・repos                               | SQLite                                        |
@@ -105,7 +105,7 @@ pane 内のエージェントが `hw worktree use` で宣言した worktree は�
 ### 4.1 変えないこと
 
 - 3 領域（ナビゲーション / ターミナル / ツール）の骨格。
-- ツール領域は herdr フォーカスに追従、ピン留め無し。
+- ツール領域はリポジトリとワークスペースまで herdr フォーカスに追従する（worktree の選び方は §10 で改訂）。
 - 観察 5 タブの機能と read-only 原則。
 - Review の「下書き→一括送信」「resolve は人間のみ」、Decision の非ブロッキング、Ask の即時送信。
 - URL が画面状態の正（F14）。
@@ -179,12 +179,13 @@ herdr 未接続時: ツリーの代わりに「herdr 未接続（状態）」と
 
 ### 5.3 Tool header
 
-| 要素                | 内容                                                    |
-| ------------------- | ------------------------------------------------------- |
-| worktree 識別       | basename（太字）、ブランチ、フルパス（ホバー / コピー） |
-| サブリポジトリ切替  | 2 件以上のときだけ Select                               |
-| フォーカス pane     | エージェント名・状態、`claude --resume <id>` コピー     |
-| 最大化 / 折りたたみ | D7                                                      |
+| 要素                | 内容                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| リポジトリ名        | フォーカス pane が属するリポジトリの名前（太字）                                                                                      |
+| worktree 選択       | Select 1 つ。§10: サブリポジトリが無ければ worktree 一覧、あればリポジトリ一覧 → サブメニューに worktree 一覧。1 件しか無ければ非表示 |
+| パス                | 選択中の（サブリポジトリの）worktree のフルパス（ホバー / コピー）                                                                    |
+| フォーカス pane     | エージェント名・状態、`claude --resume <id>` コピー                                                                                   |
+| 最大化 / 折りたたみ | D7                                                                                                                                    |
 
 ### 5.4 Tool tabs
 
@@ -363,18 +364,78 @@ design.pen には shadcn の部品ライブラリ（`x:` プレフィックス�
 
 各マイルストーンは独立して main に入れられる単位。実装は TDD（振る舞いテストのみ）、設計判断とレビューは本文書を正とする。
 
-| #                                              | 内容                                                                                                                                                                                                                        | 主な変更箇所                                                                     | サーバー変更                                                                                                                   |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| M10 シェルとタブ基盤                           | タブ順 Files / Graph / Diff / Decisions / Process / Compose、ToolTab（バッジ付き）、Docker → Compose 改名、「送信 (N)」を Diff ツールバーへ、Terminal / Tool の最大化と比率保存、Tool header の整理（session 表示の汎用化） | `web/components/tool`, `web/lib/layout`, `web/router`                            | なし（`/api/review/counts`・`/api/ask/counts`・`/api/decision/counts` をバッジに流用）                                         |
-| M11 状態語彙と共通部品                         | StatusChip / DeliveryChip / AgentStatus / KindIcon / Toast の共通化、Review と Ask で共用する ThreadCard（未読の明滅、完了 / 無効のみ chip）、Diff の空状態                                                                 | `web/components/{review,ask,ui}`                                                 | なし                                                                                                                           |
-| M12 Navigator                                  | 1 モードの `Repository > Workspace > Pane`、Inbox 項目、フッター（接続状態・設定）、アイコンレール、右クリックに「フォーカスを移す / Diff を開く」                                                                          | `web/components/sidebar`, `web/lib/{repoWorkspaces,workspaceView}`               | なし（workspace 表示モードの削除）                                                                                             |
-| M13 Inbox                                      | 集約 API、フローティングダイアログ（⌘I、スクリム、worktree 絞り込み）、4 セクション、行からの遷移と再送                                                                                                                     | `server/inbox`（新規）, `web/components/inbox`（新規）                           | `GET /api/inbox?worktree=`（review / ask / decision / herdr state から集約）                                                   |
-| M14 Decisions タブ                             | `/focus/decisions?id=` ルート、`/decisions/<id>` のリダイレクト、一覧（未回答 / 回答済み / すべて）、確定後ビュー、compare の整理                                                                                           | `web/router`, `web/components/decision`                                          | `hw decision request` の `url` は不変                                                                                          |
-| M15 質問の送信先ダイアログとエージェント非依存 | 質問コンポーザーを本文のみに、送信先ダイアログ（新規セッション + エージェント種別 / 既存 pane）、`resume` 表示の汎用化                                                                                                      | `web/components/ask`, `web/components/files`                                     | `POST /api/ask` に `agent` を追加、`AskSessionLauncher` が `agent.start` の agent 名を受ける。herdr 対応エージェントの列挙 API |
-| M16 各タブの仕上げ                             | Graph のファイル行 → Diff 遷移とスクロール、ブランチ切替の文言、Compose のプロジェクト別カードと展開行、Files のビューア種別、失敗・空状態の共通部品、設定ダイアログ（テーマ切替を含む）                                    | `web/components/{graph,docker,files,process}`, `web/components/settings`（新規） | なし                                                                                                                           |
+| #                                              | 内容                                                                                                                                                                                                                        | 主な変更箇所                                                                                        | サーバー変更                                                                                                                                                   |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M10 シェルとタブ基盤                           | タブ順 Files / Graph / Diff / Decisions / Process / Compose、ToolTab（バッジ付き）、Docker → Compose 改名、「送信 (N)」を Diff ツールバーへ、Terminal / Tool の最大化と比率保存、Tool header の整理（session 表示の汎用化） | `web/components/tool`, `web/lib/layout`, `web/router`                                               | なし（`/api/review/counts`・`/api/ask/counts`・`/api/decision/counts` をバッジに流用）                                                                         |
+| M11 状態語彙と共通部品                         | StatusChip / DeliveryChip / AgentStatus / KindIcon / Toast の共通化、Review と Ask で共用する ThreadCard（未読の明滅、完了 / 無効のみ chip）、Diff の空状態                                                                 | `web/components/{review,ask,ui}`                                                                    | なし                                                                                                                                                           |
+| M12 Navigator                                  | 1 モードの `Repository > Workspace > Pane`、Inbox 項目、フッター（接続状態・設定）、アイコンレール、右クリックに「フォーカスを移す / Diff を開く」                                                                          | `web/components/sidebar`, `web/lib/{repoWorkspaces,workspaceView}`                                  | なし（workspace 表示モードの削除）                                                                                                                             |
+| M13 Inbox                                      | 集約 API、フローティングダイアログ（⌘I、スクリム、worktree 絞り込み）、4 セクション、行からの遷移と再送                                                                                                                     | `server/inbox`（新規）, `web/components/inbox`（新規）                                              | `GET /api/inbox?worktree=`（review / ask / decision / herdr state から集約）                                                                                   |
+| M14 Decisions タブ                             | `/focus/decisions?id=` ルート、`/decisions/<id>` のリダイレクト、一覧（未回答 / 回答済み / すべて）、確定後ビュー、compare の整理                                                                                           | `web/router`, `web/components/decision`                                                             | `hw decision request` の `url` は不変                                                                                                                          |
+| M15 質問の送信先ダイアログとエージェント非依存 | 質問コンポーザーを本文のみに、送信先ダイアログ（新規セッション + エージェント種別 / 既存 pane）、`resume` 表示の汎用化                                                                                                      | `web/components/ask`, `web/components/files`                                                        | `POST /api/ask` に `agent` を追加、`AskSessionLauncher` が `agent.start` の agent 名を受ける。herdr 対応エージェントの列挙 API                                 |
+| M16 各タブの仕上げ                             | Graph のファイル行 → Diff 遷移とスクロール、ブランチ切替の文言、Compose のプロジェクト別カードと展開行、Files のビューア種別、失敗・空状態の共通部品、設定ダイアログ（テーマ切替を含む）                                    | `web/components/{graph,docker,files,process}`, `web/components/settings`（新規）                    | なし                                                                                                                                                           |
+| M18 worktree 選択                              | §10。ワークスペース単位の worktree / サブリポジトリ選択（SQLite）、Tool header の Select（サブメニュー付き）、`hw worktree` と pane 上書きの廃止、送信先の repo 全体フォールバック                                          | `server/herdr/{selection,focus,tree,whoami}`, `server/git/worktrees`（新規）, `web/components/tool` | `GET /api/git/worktrees`、`/api/git/subrepos` に worktrees、`GET/PUT/DELETE /api/herdr/workspace/:id/selection`、`focus` に `subRepo`、`/api/hw/worktree` 削除 |
 
-順序は M10 → M11 → M12 → M13 → M14 → M15 → M16。
+順序は M10 → M11 → M12 → M13 → M14 → M15 → M16 → M18。
 
 2026-09-07 時点で M10〜M16 はすべて main にマージ済み。各マイルストーンは「実装（TDD）→ 指摘リスト無しの敵対的レビュー → 修正 → 別ポート・別 DB での実走 → マージ」で進めた。設計との既知の差分: ルートコミットのファイル行は Diff へ遷移しない（サーバーが空ツリーとの比較を受けないため）、Files の DnD はドロップ先ディレクトリの行単位ではなくツリー全体の強調、herdr socket のパスは API に無いため設定ダイアログに出さない。
 
 2026-09-08 に design.pen との見た目合わせ込み M17 / M17b / M17c を main にマージ（P0〜P15 すべて比較済み）。追加の既知差分: herdr 未接続時も Tool 領域のタブ列は描画する（起動直後や全 pane クローズ後でもタブ自体には触れられる必要がある。design P7 ではタブ無し）、Diff の比較範囲 chip にコミット数は出さない（2 点間のコミット数を返す API が無い）、Compose のプロジェクトカードに定義ファイル名は出さない（API が working_dir しか返さない）、Files の DnD はツリー全体の強調のまま、CommitDetail の日時はロケール依存の書式。ツリーの git status 文字（M / ? / A / D の色）は @pierre/trees の組み込みレーンを CSS で隠して自前描画しているため、ライブラリ更新時は seed 実走で二重表示になっていないか確認する。 判断依頼ビューのメモは design では 1 つだが、契約（`DecisionItemAnswer.note`）が設問単位なので設問ごとに出す。Compose のログ本文はテーブルセル内で高さが確定しないため固定高さ（h-56）にしている。Diff の左一覧は P8/P11 の見出し + フラット形ではなく Files / Graph と同じ PathTree（design.pen 未更新）。
+
+## 10. worktree の選択（2026-09-09 決定、M18）
+
+### 10.1 動機
+
+従来はフォーカス pane の cwd（`foreground_cwd`）から worktree を推定し、エージェントが別 worktree で作業するときは `hw worktree use` / `hw worktree sync` で pane 単位に宣言させていた。これには 2 つの穴があった。
+
+- 1 ワークスペースに複数 pane があると、フォーカスを移さない限りツール領域を別 worktree に切り替えられない。
+- submodule / vcstool 子リポジトリが自分の linked worktree でブランチを切っていても、サブリポジトリ Select は親 worktree 配下の main checkout しか知らない。
+
+どちらも「cwd から推定する」ことに由来する。推定をやめ、人間が選ぶ。
+
+### 10.2 モデル
+
+- **追従する単位**: フォーカス pane の cwd から決まるのは **リポジトリ**（`git-common-dir` = `repoKey`）と **ワークスペース**（`workspace_id`）まで。ここは cwd 依存だが、main でも linked でも同じ repoKey になるので推定ではない。
+- **選択**: `(workspaceId, repoKey)` をキーに 1 レコード。`{ worktreeRoot, subRepoId | null, subWorktreeRoot | null }`。
+  - `worktreeRoot`: トップリポジトリの worktree（`git worktree list` に載る root、realpath）。
+  - `subRepoId`: `worktreeRoot` 配下のサブリポジトリ id（`/api/git/subrepos` の `id`）。root を選んでいるときは null。
+  - `subWorktreeRoot`: サブリポジトリの worktree root。null なら `worktreeRoot/subRepoId` の checkout そのもの。
+- **実効 root**（タブが見る root）: `subWorktreeRoot ?? (subRepoId ? realpath(worktreeRoot/subRepoId) : worktreeRoot)`。実効 repoKey はサブリポジトリ選択中はサブリポジトリの `git-common-dir`。
+- **既定**（レコードが無いとき）: フォーカス pane の cwd が属する worktree、サブリポジトリ無し。これは初期値であって追従ではない。保存はしない（`selectionIsDefault: true` として返す）。
+- **保存先**: サーバーの SQLite（`workspace_worktree_selections`）。ブラウザではない。複数ブラウザで一致させ、`hw` CLI からも読めるようにするため。
+- **消す対**: `workspace_closed` で該当 workspace の行を全部消す。snapshot 再同期時に存在しない workspace の行も消す。選択中の worktree が `git worktree list` から消えていたら main worktree に戻して上書きする（サブリポジトリの worktree が消えたら `subWorktreeRoot` を null に、サブリポジトリ自体が消えたら `subRepoId` も null に戻す）。この巻き戻しはログに出す。
+
+### 10.3 サーバーの 1 か所
+
+pane → worktree の解決は `effectiveCwd` に代わる 1 つの関数に集約する（`resolvePaneWorktree(state, pane)` 相当。pane の cwd → repoKey → 選択レコード → 検証済み root）。フォーカス（`focus` メッセージ）、サイドバーのツリー（repository › worktree › pane の worktree 行）、`whoami`（`hw` CLI）、レビュー通知の宛先探索はすべてこれを通る。pane の worktree 行は選択中の **トップ** worktree（pane はサブリポジトリとは無関係にトップの worktree で開かれる）。
+
+`focus` メッセージは `worktreeRoot` / `repoKey`（トップの選択）に加えて `subRepo: { id, name, kind, root, repoKey } | null` と `selectionIsDefault: boolean` を持つ。ブラウザは URL の `sub` を持たない（URL が正なのはタブ・比較範囲・ジャンプ先・選択中 id のまま）。
+
+git のポーリング対象は選択中のトップ worktree（従来どおり `focus.worktreeRoot`）。サブリポジトリ選択中のクライアント側ポーリングは従来どおり。
+
+### 10.4 API
+
+| API                                                  | 内容                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/git/worktrees?repo=<path>`                 | `git worktree list --porcelain` を `repo` で実行し `{ worktrees: [{ root, branch, head, isMain }] }`。bare と prunable は除く。root は realpath。allowed-roots は既存の `$HOME` + 設定と同じ。                                                                                                                  |
+| `GET /api/git/subrepos?repo=<worktreeRoot>`          | 既存に加え、各エントリに `worktrees: [{ root, branch, head, isMain }]` を付ける（root エントリはトップリポジトリの一覧）。メニューを 1 回の取得で描くため。                                                                                                                                                     |
+| `GET /api/herdr/workspace/:id/selection?repoKey=`    | 保存済み選択（無ければ `{ selection: null }`）。                                                                                                                                                                                                                                                                |
+| `PUT /api/herdr/workspace/:id/selection`             | body `{ repoKey, worktreeRoot, subRepoId?, subWorktreeRoot? }`。`worktreeRoot` がその repoKey の `git worktree list` に載ること、`subRepoId` が `worktreeRoot` の subrepos に居ること、`subWorktreeRoot` がそのサブリポジトリの一覧に載ることを検証してから保存し、focus とツリーを再計算する。検証失敗は 400。 |
+| `DELETE /api/herdr/workspace/:id/selection?repoKey=` | 既定に戻す。                                                                                                                                                                                                                                                                                                    |
+| `GET /api/hw/whoami`                                 | `worktreeRoot` / `repoKey` は選択後の実効値（サブリポジトリ選択中はサブリポジトリの root と repoKey）。`selectionIsDefault` を追加。                                                                                                                                                                            |
+| `POST/DELETE /api/hw/worktree`                       | 削除。`hw worktree use / clear / sync` と `pane_worktree_overrides` テーブル（マイグレーションで drop）も削除。                                                                                                                                                                                                 |
+
+### 10.5 Tool header の Select（design.pen P16）
+
+- サブリポジトリが無く worktree が 1 件: Select を出さない（リポジトリ名・ブランチ chip・パス）。
+- サブリポジトリが無く worktree が 2 件以上: Select 1 つ。トリガーはブランチ名（mono）。開くと worktree 一覧（ブランチ、リポジトリからの相対パス、main には chip、選択中は塗り + チェック）。
+- サブリポジトリが 1 件以上: Select 1 つ。トリガーは「リポジトリ › ブランチ」。開くとリポジトリ一覧（root + submodule / vcstool。行に種別・worktree 数・そのリポジトリで選択中のブランチ）。行をホバーすると右にそのリポジトリの worktree 一覧がサブメニューで開き、クリックで確定。worktree が 1 件だけのリポジトリはサブメニューを出さず行クリックで確定。
+- 確定は `PUT /api/herdr/workspace/:id/selection`。ブラウザは楽観更新せず、`focus` メッセージの更新で描き替える。
+- worktree / サブリポジトリが切り替わったら Diff の比較範囲・ジャンプ先などの search を落とす（従来の worktree 切り替え時と同じ扱い。実効 root の変化で判定）。
+- パスは実効 root のフルパス。`EmptyWorktreeNotice` の文言は「フォーカス pane の worktree に追従」から「フォーカス pane のリポジトリを解決できない」に変える。
+
+### 10.6 レビュー・質問・判断依頼への影響
+
+- **送信先**（レビュー・質問）: 第 1 候補は実効 root（サブリポジトリ選択中はその worktree）が一致する agent pane、0 件なら実効 repoKey が一致する agent pane 全体。サイドバーツリーの pane 行が effectiveRoot / effectiveRepoKey を持つので、ブラウザとサーバーの候補は同じ規則で一致する。それも 0 件のときだけ `no_target`。サーバーの通知宛先（`herdr-notifier`）も同じ 2 段階。
+- **`hw review list` / `hw decision request` / `hw status`**: `whoami` が選択後の実効値を返すので CLI 側の変更なし。エージェントは「人間が Web UI で選んでいる worktree」のレビューを見る。
+- **Decisions / Inbox の worktree 絞り込み**: 変更なし（依頼時の `worktreeRoot` が選択に基づくので一貫する）。
+- **サイドバー**: worktree 行が選択を反映する（ワークスペース行のブランチ chip は選択中 worktree のブランチになる）。

@@ -1,7 +1,12 @@
 import type { PaneInfo } from "../../../contract/herdr";
 import { sendAgentPrompt } from "../../herdr/agent-prompt";
 import type { HerdrGateway } from "../../herdr/gateway";
-import { effectiveCwd, type HerdrStateStore } from "../../herdr/state";
+import {
+  resolvePaneWorktree,
+  type SubRepoLike,
+  type WorktreeEntryLike,
+} from "../../herdr/pane-worktree";
+import type { HerdrStateStore } from "../../herdr/state";
 import type { WorktreeResolver } from "../../herdr/tree";
 import type { AgentNotifier } from "../ports";
 
@@ -9,31 +14,52 @@ export type HerdrNotifierDeps = {
   state: HerdrStateStore;
   gateway: HerdrGateway;
   resolver: WorktreeResolver;
+  listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+  listSubRepos(root: string): Promise<SubRepoLike[]>;
   /** `{count}` を件数に置換する */
   template: string;
   logger?: Pick<typeof console, "warn" | "error">;
 };
 
 /**
- * plan §6.5 通知先: レビューの worktree を foreground_cwd に持つ pane だけを候補にする。
- * 他の worktree にいる pane は、その HEAD がレビューの commit を含んでいても対象にならない
- * — 別ワークスペースの agent へ黙って送ってしまうのを避けるため。
+ * ui-redesign.md §10.6 通知先: 第 1 候補はその worktree（サブリポジトリ選択中
+ * ならサブリポジトリの実効 root）を実際に選択しているワークスペースの agent
+ * pane。0 件なら実効 repoKey が一致する agent pane 全体にフォールバックする
+ * — 別の worktree にいる pane へ黙って送ってしまうのを避けつつ、選択を
+ * ずらしただけの pane も候補から漏らさない。
  */
 export function createHerdrNotifier(deps: HerdrNotifierDeps): AgentNotifier {
   const logger = deps.logger ?? console;
 
-  async function panesAt(worktreeRoot: string): Promise<PaneInfo[]> {
+  async function effectiveOf(pane: PaneInfo): Promise<{ root: string; repoKey: string } | null> {
+    const resolved = await resolvePaneWorktree(deps, pane).catch(() => null);
+    if (!resolved) return null;
+    return resolved.subRepo
+      ? { root: resolved.subRepo.root, repoKey: resolved.subRepo.repoKey }
+      : { root: resolved.worktreeRoot, repoKey: resolved.repoKey };
+  }
+
+  async function agentPanesWithEffective(): Promise<
+    { pane: PaneInfo; effective: { root: string; repoKey: string } }[]
+  > {
     const s = deps.state.get();
-    const result: PaneInfo[] = [];
+    const result: { pane: PaneInfo; effective: { root: string; repoKey: string } }[] = [];
     for (const pane of s.panes.values()) {
       if (!pane.agent) continue;
-      const cwd = effectiveCwd(s, pane);
-      if (!cwd) continue;
-      const info = await deps.resolver.resolve(cwd).catch(() => null);
-      if (!info || info.root !== worktreeRoot) continue;
-      result.push(pane);
+      const effective = await effectiveOf(pane);
+      if (effective) result.push({ pane, effective });
     }
     return result;
+  }
+
+  async function panesAt(worktreeRoot: string): Promise<PaneInfo[]> {
+    const candidates = await agentPanesWithEffective();
+    const exact = candidates.filter((c) => c.effective.root === worktreeRoot);
+    if (exact.length > 0) return exact.map((c) => c.pane);
+
+    const repoInfo = await deps.resolver.resolve(worktreeRoot).catch(() => null);
+    if (!repoInfo) return [];
+    return candidates.filter((c) => c.effective.repoKey === repoInfo.commonDir).map((c) => c.pane);
   }
 
   return {

@@ -1,5 +1,6 @@
 import { sendAgentPrompt } from "../herdr/agent-prompt";
 import type { HerdrGateway } from "../herdr/gateway";
+import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
 import type { HerdrStateStore } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
 import { resolveWhoami } from "../herdr/whoami";
@@ -9,6 +10,8 @@ export type HerdrDecisionAdapterDeps = {
   state: HerdrStateStore;
   gateway: HerdrGateway;
   resolver: WorktreeResolver;
+  listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+  listSubRepos(root: string): Promise<SubRepoLike[]>;
   logger?: Pick<typeof console, "warn" | "error">;
 };
 
@@ -50,6 +53,8 @@ export function createHerdrDecisionAlerter(deps: {
 export function createHerdrWhoamiResolver(deps: {
   state: HerdrStateStore;
   resolver: WorktreeResolver;
+  listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+  listSubRepos(root: string): Promise<SubRepoLike[]>;
 }): WhoamiResolver {
   return {
     async resolve(paneId) {

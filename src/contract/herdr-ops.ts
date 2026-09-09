@@ -26,8 +26,69 @@ export const WorkspaceCloseBodySchema = v.object({
 });
 export type WorkspaceCloseBody = v.InferOutput<typeof WorkspaceCloseBodySchema>;
 
-/** Shared `:id` param for the rename/close routes. */
+/** Shared `:id` param for the rename/close/selection routes. */
 export const WorkspaceIdParamSchema = v.object({ id: v.string() });
+
+/* ------------------------------------------------------------------ */
+/* /api/herdr/workspace/:id/selection — worktree 選択（ui-redesign.md §10） */
+/* ------------------------------------------------------------------ */
+
+/** Saved per (workspace, top-level repoKey). Paths are realpath'd worktree roots. */
+export const WorkspaceSelectionSchema = v.object({
+  workspaceId: v.string(),
+  repoKey: v.string(),
+  worktreeRoot: v.string(),
+  /** `SubRepo.id` under `worktreeRoot`; null when the top-level repository itself is selected. */
+  subRepoId: v.nullable(v.string()),
+  /** The sub-repository's worktree; null means the checkout at `worktreeRoot/subRepoId`. */
+  subWorktreeRoot: v.nullable(v.string()),
+  updatedAt: v.string(),
+});
+export type WorkspaceSelection = v.InferOutput<typeof WorkspaceSelectionSchema>;
+
+export const WorkspaceSelectionQuerySchema = v.object({
+  repoKey: v.pipe(v.string(), v.minLength(1)),
+});
+export type WorkspaceSelectionQuery = v.InferOutput<typeof WorkspaceSelectionQuerySchema>;
+
+export const WorkspaceSelectionGetResponseSchema = v.object({
+  selection: v.nullable(WorkspaceSelectionSchema),
+});
+export type WorkspaceSelectionGetResponse = v.InferOutput<
+  typeof WorkspaceSelectionGetResponseSchema
+>;
+
+export const WorkspaceSelectionPutBodySchema = v.object({
+  repoKey: v.pipe(v.string(), v.minLength(1)),
+  worktreeRoot: v.pipe(v.string(), v.minLength(1)),
+  subRepoId: v.optional(v.nullable(v.string())),
+  subWorktreeRoot: v.optional(v.nullable(v.string())),
+});
+export type WorkspaceSelectionPutBody = v.InferOutput<typeof WorkspaceSelectionPutBodySchema>;
+
+export const WorkspaceSelectionPutResponseSchema = v.object({
+  selection: WorkspaceSelectionSchema,
+});
+export type WorkspaceSelectionPutResponse = v.InferOutput<
+  typeof WorkspaceSelectionPutResponseSchema
+>;
+
+/**
+ * Error body for the selection PUT/DELETE routes: a 400 when validation fails
+ * (§10.4), or a 500 `persist_failed` when the SQLite write itself fails — the
+ * in-memory selection is reverted to its previous value in that case, so a
+ * client seeing this must not assume its PUT/DELETE took effect.
+ */
+export const WorkspaceSelectionErrorSchema = v.object({
+  error: v.picklist([
+    "unknown_workspace",
+    "worktree_not_in_repo",
+    "unknown_sub_repo",
+    "sub_worktree_not_in_sub_repo",
+    "persist_failed",
+  ]),
+});
+export type WorkspaceSelectionError = v.InferOutput<typeof WorkspaceSelectionErrorSchema>;
 
 /* ------------------------------------------------------------------ */
 /* GET /api/herdr/pane-preview — 送信先 pane 選択のための可視化情報       */

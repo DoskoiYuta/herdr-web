@@ -1,27 +1,8 @@
 import type { PaneRow, Repo, TabNode, WorkspaceNode, WorktreeRow } from "../../contract/events";
 import type { PaneInfo } from "../../contract/herdr";
-import { effectiveCwd, type HerdrState } from "./state";
-
-/**
- * Injected by the caller (a real implementation lives in `src/server/git`, owned
- * by another agent — this module never imports it). Matches `git rev-parse
- * --show-toplevel` / `--git-common-dir` / `--abbrev-ref HEAD` / `worktree list
- * --porcelain` (plan.md §6.6).
- */
-export interface WorktreeInfo {
-  /** `git rev-parse --show-toplevel` — the worktree's working directory root. */
-  root: string;
-  /** `git rev-parse --git-common-dir` (absolute) — the repository group key. */
-  commonDir: string;
-  /** `git rev-parse --abbrev-ref HEAD` (short hash if detached), or null if unresolvable. */
-  branch: string | null;
-  /** Is this the repo's main worktree (vs. a linked one)? */
-  isMain: boolean;
-}
-
-export interface WorktreeResolver {
-  resolve(path: string): Promise<WorktreeInfo | null>;
-}
+import type { ResolvedPaneWorktree } from "./pane-worktree";
+import type { HerdrState } from "./state";
+export type { WorktreeInfo, WorktreeResolver } from "./worktree-resolver";
 
 const OTHER_REPO_KEY = "other";
 const OTHER_REPO_NAME = "その他";
@@ -36,9 +17,19 @@ export function livePanes(state: HerdrState): PaneInfo[] {
 
 const ASK_WORKSPACE_LABEL_PREFIX = "ask:";
 
+/**
+ * `resolved`, when given, is this pane's `ResolvedPaneWorktree` (from
+ * `resolvePaneWorktree`) — it fills `effectiveRoot`/`effectiveRepoKey` with
+ * the sub-repository's root/repoKey when one is selected, else the selected
+ * TOP worktree's, so the browser's send-target matching (ui-redesign.md
+ * §10.6) can use the exact same "effective root, else effective repoKey"
+ * rule as `herdr-notifier.ts` does server-side. Omitted (both fields left
+ * `undefined`) for panes with no resolvable git root (the "その他" group).
+ */
 export function toPaneRow(
   pane: PaneInfo,
   state?: Pick<HerdrState, "workspaces" | "tabs">,
+  resolved?: ResolvedPaneWorktree | null,
 ): PaneRow {
   const workspaceLabel = state?.workspaces.get(pane.workspace_id)?.label ?? null;
   return {
@@ -55,16 +46,23 @@ export function toPaneRow(
     cwd: pane.cwd ?? null,
     foregroundCwd: pane.foreground_cwd ?? null,
     ask: workspaceLabel?.startsWith(ASK_WORKSPACE_LABEL_PREFIX) ?? false,
+    effectiveRoot: resolved ? (resolved.subRepo?.root ?? resolved.worktreeRoot) : undefined,
+    effectiveRepoKey: resolved ? (resolved.subRepo?.repoKey ?? resolved.repoKey) : undefined,
   };
 }
 
 /**
- * Resolves each pane's effective cwd against `resolved` (a cwd -> WorktreeInfo|null
- * map the caller builds via `WorktreeResolver`, cached by cwd per plan.md §6.6) and
- * groups into `repository > worktree > pane`. Panes with no resolvable git root land
- * in the "その他" group.
+ * Groups panes into `repository > worktree > pane` using each pane's
+ * *selected* top-level worktree (ui-redesign.md §10.3) — `resolved` is a
+ * pane_id -> `ResolvedPaneWorktree|null` map the caller builds via
+ * `resolvePaneWorktree`. A pane's worktree row is always the selected TOP
+ * worktree, independent of any sub-repository selection. Panes with no
+ * resolvable git root land in the "その他" group.
  */
-export function buildTree(state: HerdrState, resolved: Map<string, WorktreeInfo | null>): Repo[] {
+export function buildTree(
+  state: HerdrState,
+  resolved: Map<string, ResolvedPaneWorktree | null>,
+): Repo[] {
   const repos = new Map<
     string,
     { name: string; worktrees: Map<string, WorktreeRow>; blocked: number; done: number }
@@ -80,12 +78,11 @@ export function buildTree(state: HerdrState, resolved: Map<string, WorktreeInfo 
   }
 
   for (const pane of livePanes(state)) {
-    const cwd = effectiveCwd(state, pane);
-    const info = cwd ? (resolved.get(cwd) ?? null) : null;
+    const info = resolved.get(pane.pane_id) ?? null;
 
-    const repoKey = info?.commonDir ?? OTHER_REPO_KEY;
-    const repoName = info ? repoNameFromCommonDir(info.commonDir) : OTHER_REPO_NAME;
-    const worktreeRoot = info?.root ?? OTHER_REPO_KEY;
+    const repoKey = info?.repoKey ?? OTHER_REPO_KEY;
+    const repoName = info ? repoNameFromCommonDir(info.repoKey) : OTHER_REPO_NAME;
+    const worktreeRoot = info?.worktreeRoot ?? OTHER_REPO_KEY;
 
     const repo = repoFor(repoKey, repoName);
     let worktree = repo.worktrees.get(worktreeRoot);
@@ -98,7 +95,7 @@ export function buildTree(state: HerdrState, resolved: Map<string, WorktreeInfo 
       };
       repo.worktrees.set(worktreeRoot, worktree);
     }
-    worktree.panes.push(toPaneRow(pane, state));
+    worktree.panes.push(toPaneRow(pane, state, info));
 
     if (pane.agent_status === "blocked") repo.blocked += 1;
     if (pane.agent_status === "done") repo.done += 1;

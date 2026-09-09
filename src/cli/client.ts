@@ -6,8 +6,8 @@ import type { CreateDecisionRequest, Decision } from "../contract/decision";
 import { CreateDecisionResponseSchema, DecisionSchema } from "../contract/decision";
 import type { Health } from "../contract/health";
 import { HealthSchema } from "../contract/health";
-import type { WhoamiResponse, WorktreeOverrideResponse } from "../contract/hw";
-import { WhoamiResponseSchema, WorktreeOverrideResponseSchema } from "../contract/hw";
+import type { WhoamiResponse } from "../contract/hw";
+import { WhoamiResponseSchema } from "../contract/hw";
 import type { Review, RepoMoveResult } from "../contract/review";
 import { ReviewSchema, RepoMoveResultSchema } from "../contract/review";
 export type { RepoMoveResult } from "../contract/review";
@@ -92,23 +92,6 @@ export function createHwClient(baseUrl: string) {
 
     whoami(pane: string): Promise<ClientResult<WhoamiResponse>> {
       return call(() => client.api.hw.whoami.$get({ query: { pane } }), WhoamiResponseSchema);
-    },
-
-    setWorktreeOverride(
-      pane: string,
-      root: string,
-    ): Promise<ClientResult<WorktreeOverrideResponse>> {
-      return call(
-        () => client.api.hw.worktree.$post({ json: { pane, root } }),
-        WorktreeOverrideResponseSchema,
-      );
-    },
-
-    clearWorktreeOverride(pane: string): Promise<ClientResult<WorktreeOverrideResponse>> {
-      return call(
-        () => client.api.hw.worktree.$delete({ query: { pane } }),
-        WorktreeOverrideResponseSchema,
-      );
     },
 
     listReviews(params: ListReviewsParams): Promise<ClientResult<Review[]>> {

@@ -1,5 +1,9 @@
 # herdr Web UI — 設計・要件定義書
 
+> 2026-09-09: ツール領域の worktree 追従（`foreground_cwd` から推定、`hw worktree use` の宣言）は
+> [docs/ui-redesign.md §10](docs/ui-redesign.md) で「ワークスペース単位の選択」に置き換えた。
+> 本書の `foreground_cwd` / `hw worktree` に関する記述は履歴として残している。
+
 ## 1. 概要
 
 ローカル（または SSH 先）で動作している herdr（tmux 系のエージェント向けターミナルマルチプレクサ）に、ブラウザから attach し、その横でエージェントの成果をレビューするための自作 Web UI を作る。

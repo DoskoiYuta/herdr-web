@@ -7,7 +7,6 @@ import * as v from "valibot";
 const ToolSearchSchema = v.object({
   from: v.optional(v.pipe(v.string(), v.minLength(1))),
   to: v.optional(v.pipe(v.string(), v.minLength(1))),
-  sub: v.optional(v.string()),
   path: v.optional(v.pipe(v.string(), v.minLength(1))),
   line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
   /** Diff の `path`/`line` がどちら側の行かを固定する。省略時は "new"

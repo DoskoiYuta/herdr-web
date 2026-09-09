@@ -165,6 +165,8 @@ describe("createHerdrStore", () => {
       agent: "claude",
       agentStatus: "working",
       agentSession: null,
+      subRepo: null,
+      selectionIsDefault: true,
     };
     socket.simulateMessage(JSON.stringify(focus));
     expect(store.getState().focus).toEqual(focus);

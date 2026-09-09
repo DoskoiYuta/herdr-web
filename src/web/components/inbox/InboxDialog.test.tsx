@@ -96,6 +96,8 @@ function storeWithFocus(worktreeRoot: string | null): FakeHerdrStore {
           agent: "claude",
           agentStatus: "working",
           agentSession: null,
+          subRepo: null,
+          selectionIsDefault: true,
         }
       : null,
   });

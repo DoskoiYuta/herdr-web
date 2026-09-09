@@ -2,6 +2,7 @@ import type { DecisionEvent } from "../../contract/decision";
 import { openDb, type Db } from "../db/client";
 import { applyMigrations } from "../db/migrate";
 import type { HerdrGateway } from "../herdr/gateway";
+import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
 import type { HerdrStateStore } from "../herdr/state";
 import type { WorktreeResolver } from "../herdr/tree";
 import { createLocks, realTimer } from "../review/usecases/locks";
@@ -17,7 +18,13 @@ import { createDecisionService } from "./service";
 
 export type DecisionRuntimeDeps = {
   db: Db;
-  herdr?: { state: HerdrStateStore; gateway: HerdrGateway; resolver: WorktreeResolver };
+  herdr?: {
+    state: HerdrStateStore;
+    gateway: HerdrGateway;
+    resolver: WorktreeResolver;
+    listWorktrees(repoPath: string): Promise<WorktreeEntryLike[]>;
+    listSubRepos(root: string): Promise<SubRepoLike[]>;
+  };
   notifier?: DecisionNotifier;
   whoami?: WhoamiResolver;
   alerter?: DecisionAlerter;

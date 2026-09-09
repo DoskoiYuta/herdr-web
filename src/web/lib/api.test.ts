@@ -15,14 +15,22 @@ afterEach(() => {
 
 describe("gitApi.subrepos", () => {
   test("parses a response with root + submodule + vcstool repos", async () => {
+    const worktrees = [{ root: "/repo", branch: "main", head: "abc123", isMain: true }];
     const repos = [
-      { id: "", name: "project", root: "/repo", kind: "root" as const },
-      { id: "vendor/lib", name: "lib", root: "/repo/vendor/lib", kind: "submodule" as const },
+      { id: "", name: "project", root: "/repo", kind: "root" as const, worktrees },
+      {
+        id: "vendor/lib",
+        name: "lib",
+        root: "/repo/vendor/lib",
+        kind: "submodule" as const,
+        worktrees,
+      },
       {
         id: ".repos/nested-a",
         name: "nested-a",
         root: "/repo/.repos/nested-a",
         kind: "vcs" as const,
+        worktrees,
       },
     ];
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ repos }) });

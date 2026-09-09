@@ -54,7 +54,15 @@ vi.mock("@/lib/api", () => ({
       rootCommit: "abc123",
     })),
     subrepos: vi.fn(async (repo: string) => ({
-      repos: [{ id: "", name: repo.split("/").pop() ?? repo, root: repo, kind: "root" as const }],
+      repos: [
+        {
+          id: "",
+          name: repo.split("/").pop() ?? repo,
+          root: repo,
+          kind: "root" as const,
+          worktrees: [{ root: repo, branch: "main", head: "abc123", isMain: true }],
+        },
+      ],
     })),
   },
   reviewApi: {
@@ -163,6 +171,8 @@ function focusMessage(overrides: Partial<Record<string, unknown>> = {}) {
     agent: "claude",
     agentStatus: "working",
     agentSession: { source: "herdr:claude", agent: "claude", kind: "id", value: "sess-1" },
+    subRepo: null,
+    selectionIsDefault: true,
     ...overrides,
   } as ServerEventMessage;
 }

@@ -6,15 +6,17 @@ import type { Config } from "../contract/config";
 import type { Db } from "./db/client";
 import { createEventHub, wireHerdrToHub, type WiredHerdr } from "./events/broadcast";
 import { createEventsWss } from "./events/ws";
+import { listSubRepos } from "./git/subrepos";
 import { createPollerRegistry, type ChangedInfo } from "./git/poller";
 import { invalidateAll, resolveWorktree } from "./git/resolve";
+import { listWorktrees } from "./git/worktrees";
 import { createFocusTracker } from "./herdr/focus";
 import { createFakeHerdr } from "./herdr/fake";
 import type { HerdrGateway } from "./herdr/gateway";
 import { createHerdrSocketClient } from "./herdr/socket-client";
+import { createSqliteSelectionRepository } from "./herdr/selection";
 import { createHerdrState } from "./herdr/state";
 import type { WorktreeResolver } from "./herdr/tree";
-import { createSqlitePaneWorktreeOverrideRepository } from "./herdr/worktree-overrides";
 
 export type RuntimeDeps = {
   config: Config;
@@ -22,7 +24,7 @@ export type RuntimeDeps = {
   gateway?: HerdrGateway;
   resolver?: WorktreeResolver;
   logger?: Pick<typeof console, "error" | "warn" | "info">;
-  /** 与えれば `hw worktree use/clear` の上書きを永続化する。省略時（テスト等）はプロセス内のみ保持する。 */
+  /** 与えれば worktree/サブリポジトリ選択を永続化する。省略時（テスト等）はプロセス内のみ保持する。 */
   db?: Db;
 };
 
@@ -51,17 +53,28 @@ export function createRuntime(deps: RuntimeDeps) {
   const state = createHerdrState(
     gateway,
     logger,
-    deps.db ? createSqlitePaneWorktreeOverrideRepository(deps.db) : undefined,
+    deps.db ? createSqliteSelectionRepository(deps.db) : undefined,
   );
   const focus = createFocusTracker({
     state,
     gateway,
     resolver,
+    listWorktrees,
+    listSubRepos,
     pollMs: config.focusPollMs,
     logger,
   });
   const hub = createEventHub();
-  const wired: WiredHerdr = wireHerdrToHub({ state, gateway, focus, resolver, hub, logger });
+  const wired: WiredHerdr = wireHerdrToHub({
+    state,
+    gateway,
+    focus,
+    resolver,
+    listWorktrees,
+    listSubRepos,
+    hub,
+    logger,
+  });
 
   const repoChangedListeners = new Set<(info: ChangedInfo) => void>();
   // F6: a poller failure classified "missing" (ENOENT / "not a git repository")
