@@ -14,7 +14,7 @@ import type {
   CodeViewReactOptions,
 } from "@pierre/diffs/react";
 import type { CSSProperties, ReactNode, Ref } from "react";
-import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import { fontMetrics } from "@/lib/codeFont";
 import { useIsDark } from "@/lib/useIsDark";
 
@@ -32,6 +32,10 @@ export interface CodeFileViewProps<T = undefined> {
   onLineSelectionEnd?: () => void;
   annotations?: LineAnnotation<T>[];
   renderAnnotation?: (annotation: LineAnnotation<T>, item: CodeViewItem<T>) => ReactNode;
+  /** Scroll position to restore for this `path` (fileScroll.ts). Applied once
+   * per `path` change, not on every value change — see the effect below. */
+  scrollTop?: number;
+  onScrollTopChange?: (top: number) => void;
 }
 
 /** F10 (質問セッションの「対象ファイルを開く」): imperative scroll-to-line, mirroring
@@ -54,6 +58,8 @@ function CodeFileViewInner<T = undefined>(
     onLineSelectionEnd,
     annotations = [],
     renderAnnotation,
+    scrollTop,
+    onScrollTopChange,
   }: CodeFileViewProps<T>,
   ref: Ref<CodeFileViewHandle>,
 ) {
@@ -67,6 +73,23 @@ function CodeFileViewInner<T = undefined>(
     }),
     [],
   );
+
+  // Restores this path's saved position once per `path` change, not on every
+  // `scrollTop` change (a user's own scrolling reports new values via
+  // `onScrollTopChange`, which must not trigger a re-jump). Runs as a layout
+  // effect — after CodeView's React wrapper has swapped `items` in its own
+  // layout effect but before paint — so it lands on the new file's height
+  // instead of the previous file's.
+  const restoredPathRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    codeViewRef.current?.scrollTo({
+      type: "position",
+      position: scrollTop ?? 0,
+      behavior: "instant",
+    });
+    restoredPathRef.current = path;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
 
   const isDark = useIsDark();
   const metrics = fontMetrics(fontSize);
@@ -131,6 +154,13 @@ function CodeFileViewInner<T = undefined>(
       selectedLines={selectedLines}
       onSelectedLinesChange={onSelectedLinesChange}
       renderAnnotation={renderAnnotation}
+      onScroll={(top) => {
+        // Swapping `items` for a new path can fire onScroll with the old
+        // file's (clamped) position before the restoring effect above has
+        // run for the new path — drop reports until this path is restored.
+        if (restoredPathRef.current !== path) return;
+        onScrollTopChange?.(top);
+      }}
     />
   );
 }

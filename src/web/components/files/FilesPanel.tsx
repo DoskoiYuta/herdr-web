@@ -45,6 +45,7 @@ import { agentPanesAt, liveAskSessionCount } from "@/lib/sendTargets";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/codeFont";
 import { collectDroppedFiles } from "@/lib/dropEntries";
 import { closeTab, useFileTabs } from "@/lib/fileTabs";
+import { useFileScroll } from "@/lib/fileScroll";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
 import { formatBytes } from "@/lib/formatBytes";
 import { languageLabel } from "@/lib/languageLabel";
@@ -171,6 +172,9 @@ export function FilesPanel({
   // が別 worktree へのジャンプ待ち・search クリアの navigate 未 commit）は
   // 書き戻さない。
   const [tabs, tabActions] = useFileTabs(repoKey);
+  const fileScroll = useFileScroll(repoKey);
+  const scrollMode =
+    mdMode === "preview" && isMarkdownPath(selectedPath ?? "") ? "preview" : "source";
   // Split into two effects so that closing a tab (which updates `tabs.active`
   // via the store) can never re-trigger `open` before the resulting navigate
   // has landed on `selectedPath` — `path` comes from the URL, so a close can
@@ -843,6 +847,12 @@ export function FilesPanel({
               fileQuery={fileQuery}
               fontSize={settings.fontSize}
               mdMode={mdMode}
+              scrollTop={
+                selectedPath !== null ? fileScroll.get(selectedPath, scrollMode) : undefined
+              }
+              onScrollTopChange={(top) => {
+                if (selectedPath !== null) fileScroll.set(selectedPath, scrollMode, top);
+              }}
               selection={selection}
               onSelectedLinesChange={setSelection}
               onLineSelectionStart={() => setSelecting(true)}
@@ -878,6 +888,8 @@ function FileViewerBody({
   fileQuery,
   fontSize,
   mdMode,
+  scrollTop,
+  onScrollTopChange,
   selection,
   onSelectedLinesChange,
   onLineSelectionStart,
@@ -905,6 +917,8 @@ function FileViewerBody({
   fileQuery: ReturnType<typeof useFile>;
   fontSize: number;
   mdMode: "source" | "preview";
+  scrollTop: number | undefined;
+  onScrollTopChange: (top: number) => void;
   selection: CodeViewLineSelection | null;
   onSelectedLinesChange: (selection: CodeViewLineSelection | null) => void;
   onLineSelectionStart: () => void;
@@ -1005,7 +1019,12 @@ function FileViewerBody({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
-          <MarkdownView contents={data.contents} />
+          <MarkdownView
+            key={data.path}
+            contents={data.contents}
+            scrollTop={scrollTop}
+            onScrollTopChange={onScrollTopChange}
+          />
         </div>
         <p className="shrink-0 border-t border-border px-2 py-1 text-xs text-muted-foreground">
           プレビューは読み取り専用。質問を付けるにはソース表示に切り替えて行を選択します。
@@ -1057,6 +1076,8 @@ function FileViewerBody({
       path={data.path}
       contents={data.contents}
       fontSize={fontSize}
+      scrollTop={scrollTop}
+      onScrollTopChange={onScrollTopChange}
       selectedLines={selection}
       onSelectedLinesChange={onSelectedLinesChange}
       onLineSelectionStart={onLineSelectionStart}
