@@ -174,7 +174,7 @@ describe("NotesPanel", () => {
   // 無いと壊れる: 「＋」を押しても一覧に増えず、新規ページが選択もされない。
   test("新規作成で一覧に増えて選択される", async () => {
     listMock.mockResolvedValue([]);
-    createMock.mockResolvedValue(note({ id: "new1", title: "無題" }));
+    createMock.mockResolvedValue(note({ id: "new1", title: "" }));
     const { onSelectId } = renderPanel();
     await screen.findByText("ページがありません");
 
@@ -182,8 +182,18 @@ describe("NotesPanel", () => {
       fireEvent.click(screen.getByRole("button", { name: "＋ ページを作成" }));
     });
 
-    expect(createMock).toHaveBeenCalledWith({ repoKey: "/repo/.git", title: "無題" });
+    expect(createMock).toHaveBeenCalledWith({ repoKey: "/repo/.git", title: "" });
     expect(onSelectId).toHaveBeenCalledWith("new1");
+  });
+
+  // 無いと壊れる: title が空文字のノートが一覧に見出し無しで並び、
+  // どのページか区別できなくなる。
+  test("タイトルが空のノートは一覧に「無題」と表示される", async () => {
+    listMock.mockResolvedValue([note({ id: "n1", title: "" })]);
+    renderPanel();
+    await screen.findByTestId("note-row-n1");
+
+    expect(screen.getByTestId("note-row-n1")).toHaveTextContent("無題");
   });
 
   // 無いと壊れる: 削除済み・別リポジトリの残骸など、一覧に無い id が URL に

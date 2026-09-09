@@ -85,14 +85,14 @@ describe("GET /api/notes/:id", () => {
 });
 
 describe("POST /api/notes", () => {
-  // 無いと壊れる: 新規作成がタイトル省略時に既定の「無題」を持たず、
-  // 空のページが一覧に見出し無しで並ぶ。
-  test("201 with a default title of 無題 when title is omitted", async () => {
+  // 無いと壊れる: 新規作成がタイトル省略時に既定の空文字を持たず、
+  // ユーザーが実際に入力したタイトルと区別できなくなる。
+  test("201 with a default title of empty string when title is omitted", async () => {
     const { app } = createTestApp();
     const res = await postNote(app);
     expect(res.status).toBe(201);
     const body = await json(res);
-    expect(body.title).toBe("無題");
+    expect(body.title).toBe("");
     expect(body.body).toBe("");
   });
 });

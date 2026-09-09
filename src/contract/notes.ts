@@ -27,7 +27,7 @@ export const NOTE_BODY_MAX_LENGTH = 1_000_000;
 
 export const CreateNoteRequestSchema = v.object({
   repoKey: v.pipe(v.string(), v.minLength(1)),
-  title: v.optional(v.pipe(v.string(), v.maxLength(NOTE_TITLE_MAX_LENGTH)), "無題"),
+  title: v.optional(v.pipe(v.string(), v.maxLength(NOTE_TITLE_MAX_LENGTH)), ""),
 });
 export type CreateNoteRequest = v.InferOutput<typeof CreateNoteRequestSchema>;
 
@@ -37,3 +37,9 @@ export const UpdateNoteRequestSchema = v.object({
   body: v.optional(v.pipe(v.string(), v.maxLength(NOTE_BODY_MAX_LENGTH))),
 });
 export type UpdateNoteRequest = v.InferOutput<typeof UpdateNoteRequestSchema>;
+
+/** 空タイトル（ユーザーが未入力）を表示用に補う。DB には空文字のまま保存し、
+ * ユーザーが実際に「無題」と入力したノートと区別する。 */
+export function noteDisplayTitle(note: Pick<Note, "title">): string {
+  return note.title.trim() === "" ? "無題" : note.title;
+}
