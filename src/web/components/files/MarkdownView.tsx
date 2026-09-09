@@ -6,6 +6,7 @@ import { StarterKit } from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { MarkdownToolbar } from "./MarkdownToolbar";
 
 export interface MarkdownViewProps {
   contents: string;
@@ -71,16 +72,21 @@ export function MarkdownView({
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className={cn(
-        "prose prose-sm max-w-none dark:prose-invert",
-        "overflow-auto",
-        compact ? "h-auto md-readonly-compact" : "h-full min-h-0",
-      )}
-      onScroll={onScrollTopChange ? (e) => onScrollTopChange(e.currentTarget.scrollTop) : undefined}
-    >
-      <EditorContent editor={editor} />
+    <div className={cn("flex flex-col", compact ? "h-auto" : "h-full min-h-0")}>
+      {editable && editor && <MarkdownToolbar editor={editor} />}
+      <div
+        ref={containerRef}
+        className={cn(
+          "prose prose-sm max-w-none dark:prose-invert",
+          "overflow-auto",
+          compact ? "h-auto md-readonly-compact" : "h-full min-h-0",
+        )}
+        onScroll={
+          onScrollTopChange ? (e) => onScrollTopChange(e.currentTarget.scrollTop) : undefined
+        }
+      >
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }

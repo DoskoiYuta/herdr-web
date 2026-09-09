@@ -179,6 +179,49 @@
   margin-bottom: 0.125rem;
 }
 
+/* Tables: prose only draws row separators, so an empty 3×3 table inserted
+ * from the toolbar would be invisible. Cell borders and the cell-selection
+ * overlay (ProseMirror's `selectedCell` class) make the grid editable. */
+.ProseMirror .tableWrapper {
+  overflow-x: auto;
+}
+
+.ProseMirror table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+}
+
+.ProseMirror :is(td, th) {
+  position: relative;
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  vertical-align: top;
+}
+
+.ProseMirror th {
+  background: var(--muted);
+}
+
+.ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--ring) 20%, transparent);
+}
+
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -2px;
+  width: 4px;
+  pointer-events: none;
+  background: var(--ring);
+}
+
 /* Task items: the checkbox <label> and the text <div> come as siblings, so
  * they need a flex row to sit on one line, and the list bullet is redundant. */
 .ProseMirror ul[data-type="taskList"] {
