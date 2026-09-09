@@ -1,14 +1,14 @@
-// Composition root for the read-only Files tab (plan.md F9). Layout mirrors
-// DiffPanel: a toolbar (tree toggle + font size, shared with Diff via
-// ViewerControls), a resizable tree on the left, a single-file viewer on the
-// right that routes by `kind`/extension to MarkdownView or CodeFileView.
-// Tree width / font size / tree visibility are shared with Diff through
-// `@/lib/viewerSettings` rather than this panel's own localStorage key.
+// Composition root for the read-only Files tab (plan.md F9). Layout: one
+// header row (tree toggle, file tab bar, view-settings menu), a resizable
+// tree on the left, a single-file viewer on the right that routes by
+// `kind`/extension to MarkdownView or CodeFileView. Tree width / font size /
+// tree visibility are shared with Diff through `@/lib/viewerSettings` rather
+// than this panel's own localStorage key.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileQuestion, FileWarning, FolderTree } from "lucide-react";
+import { Ellipsis, FileQuestion, FileWarning, FolderTree, PanelLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CodeViewLineSelection } from "@pierre/diffs";
 import type { Anchor } from "@contract/review";
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { PathTree } from "@/components/tree/PathTree";
 import { gitStatusLetter, gitStatusLetterColor } from "@/components/tree/gitStatusDecoration";
-import { ViewerControls } from "@/components/tool/ViewerControls";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelState } from "@/components/ui/status/PanelState";
 import { previewKindForPath } from "@contract/preview";
@@ -607,29 +607,79 @@ export function FilesPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <FileTabBar
-        paths={tabs.paths}
-        activePath={selectedPath}
-        exists={tabExists}
-        decorations={statusDecorations}
-        onSelect={onSelectedPathChange}
-        onClose={handleTabClose}
-        onCloseOthers={handleTabCloseOthers}
-        onCloseAll={handleTabCloseAll}
-        onReorder={tabActions.reorder}
-        onCopyPath={(path) => void copyToClipboard(path)}
-      />
       <div className="flex items-center gap-1 border-b border-border p-1">
-        <ViewerControls
-          showTree={settings.showTree}
-          onToggleTree={() => updateSettings({ showTree: !settings.showTree })}
-          onFontDec={() =>
-            updateSettings({ fontSize: Math.max(MIN_FONT_SIZE, settings.fontSize - 1) })
-          }
-          onFontInc={() =>
-            updateSettings({ fontSize: Math.min(MAX_FONT_SIZE, settings.fontSize + 1) })
-          }
-        />
+        <Button
+          id="btn-tree"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="ファイルツリー"
+          aria-pressed={settings.showTree}
+          onClick={() => updateSettings({ showTree: !settings.showTree })}
+        >
+          <PanelLeft aria-hidden />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <FileTabBar
+            paths={tabs.paths}
+            activePath={selectedPath}
+            exists={tabExists}
+            decorations={statusDecorations}
+            onSelect={onSelectedPathChange}
+            onClose={handleTabClose}
+            onCloseOthers={handleTabCloseOthers}
+            onCloseAll={handleTabCloseAll}
+            onReorder={tabActions.reorder}
+            onCopyPath={(path) => void copyToClipboard(path)}
+          />
+        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              id="btn-view-settings"
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title="表示設定"
+            >
+              <Ellipsis aria-hidden />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-auto">
+            <div className="flex items-center gap-2 text-sm">
+              <span>文字サイズ</span>
+              <Button
+                id="btn-font-dec"
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title="文字を小さく"
+                disabled={settings.fontSize <= MIN_FONT_SIZE}
+                onClick={() =>
+                  updateSettings({ fontSize: Math.max(MIN_FONT_SIZE, settings.fontSize - 1) })
+                }
+                className="text-xs"
+              >
+                A-
+              </Button>
+              <span className="w-5 text-center tabular-nums">{settings.fontSize}</span>
+              <Button
+                id="btn-font-inc"
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title="文字を大きく"
+                disabled={settings.fontSize >= MAX_FONT_SIZE}
+                onClick={() =>
+                  updateSettings({ fontSize: Math.min(MAX_FONT_SIZE, settings.fontSize + 1) })
+                }
+                className="text-xs"
+              >
+                A+
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
       <Dialog open={conflict !== null} onOpenChange={(open) => !open && setConflict(null)}>
         <DialogContent>

@@ -825,3 +825,45 @@ test("bumping repoChangedTick refetches existence, so a since-removed file's tab
     expect(screen.getByRole("tab", { name: /a\.ts/ })).toHaveAttribute("data-missing", "true"),
   );
 });
+
+// ---------------------------------------------------------------------------
+// Toolbar row: tree toggle + view-settings menu (moved from
+// ViewerControls.test.tsx — the header is now one row owned by FilesPanel).
+// ---------------------------------------------------------------------------
+
+test("the tree toggle button shows and hides the file tree", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
+  render(renderPanel());
+  await screen.findByTestId("path-tree-stub");
+
+  fireEvent.click(screen.getByTitle("ファイルツリー"));
+  expect(screen.queryByTestId("path-tree-stub")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByTitle("ファイルツリー"));
+  expect(await screen.findByTestId("path-tree-stub")).toBeInTheDocument();
+});
+
+// Without this, the view-settings menu's A+/A- buttons could silently do
+// nothing (or throw) if the popover wiring broke, and the buttons could stay
+// clickable past MIN_FONT_SIZE/MAX_FONT_SIZE.
+test("the view-settings menu shows the current font size, changes it via A+/A-, and disables at the bounds", async () => {
+  localStorage.setItem(
+    "herdr-web:viewer-settings",
+    JSON.stringify({ fontSize: 23, showTree: true, treeWidth: 240 }),
+  );
+  lsMock.mockResolvedValue(ls([]));
+  render(renderPanel());
+  await screen.findByText("ファイルを選択してください");
+
+  fireEvent.click(screen.getByTitle("表示設定"));
+  expect(screen.getByText("23")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByTitle("文字を大きく"));
+  expect(screen.getByText("24")).toBeInTheDocument();
+  expect(screen.getByTitle("文字を大きく")).toBeDisabled();
+
+  for (let i = 0; i < 15; i++) fireEvent.click(screen.getByTitle("文字を小さく"));
+  expect(screen.getByText("10")).toBeInTheDocument();
+  expect(screen.getByTitle("文字を小さく")).toBeDisabled();
+  expect(screen.getByTitle("文字を大きく")).not.toBeDisabled();
+});

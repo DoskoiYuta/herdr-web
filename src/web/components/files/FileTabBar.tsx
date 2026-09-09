@@ -201,10 +201,7 @@ export function FileTabBar({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div
-        role="tablist"
-        className="flex shrink-0 overflow-x-auto border-b border-border [scrollbar-width:thin]"
-      >
+      <div role="tablist" className="flex overflow-x-auto [scrollbar-width:thin]">
         <SortableContext items={paths} strategy={horizontalListSortingStrategy}>
           {paths.map((path) => {
             const isActive = path === activePath;
