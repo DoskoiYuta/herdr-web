@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "hw": "src/cli/hw.ts",
+    "herdr-web": "src/server/main.ts"
+  },
   "scripts": {
     "dev": "bun --watch src/server/main.ts",
     "serve": "bun src/server/main.ts",

@@ -27,12 +27,13 @@ sidebar_collapsed_mode = "hidden"
 
 ```bash
 bun install
-bun run dev        # http://127.0.0.1:8080 （Vite HMR 込み）
+bun link           # ~/.bun/bin に `herdr-web`（サーバー）と `hw`（CLI）を張る。どちらもこのチェックアウトの src を直接実行する
+herdr-web          # http://127.0.0.1:8080 （Vite HMR 込み、--watch 無し）
 ```
 
-常駐させる場合は `bun run dev` ではなく `bun run serve`（`--watch` 無し）を使う。`bun run dev` の
+常駐させるときは `herdr-web`（または `bun run serve`）を使い、`bun run dev` の `--watch` は使わない。
 `--watch` はソース変更のたびにサーバーを再起動するため、マイグレーションが途中まで
-適用された状態でプロセスが再起動されることがある。
+適用された状態でプロセスが再起動されることがある。サーバー側の変更は手で再起動して反映する（手順は `CLAUDE.md`）。
 
 本番相当:
 

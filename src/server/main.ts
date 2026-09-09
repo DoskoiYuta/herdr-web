@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
