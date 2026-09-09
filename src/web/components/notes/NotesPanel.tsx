@@ -32,6 +32,7 @@ import { PanelState } from "@/components/ui/status/PanelState";
 import { useToast } from "@/components/ui/toast/ToastProvider";
 import { notesApi, type Note } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { noteDisplayTitle } from "@contract/notes";
 
 const AUTOSAVE_DEBOUNCE_MS = 1000;
 
@@ -118,14 +119,21 @@ function NoteRow({
               selected && "bg-muted font-medium",
             )}
           >
-            <span className="min-w-0 flex-1 truncate">{note.title}</span>
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate",
+                note.title.trim() === "" && "text-muted-foreground",
+              )}
+            >
+              {noteDisplayTitle(note)}
+            </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   size="icon-xs"
                   variant="ghost"
-                  aria-label={`「${note.title}」のメニュー`}
+                  aria-label={`「${noteDisplayTitle(note)}」のメニュー`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreHorizontal className="size-3.5" />
@@ -307,7 +315,7 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
 
   const handleCreate = useCallback(async () => {
     if (!repoKey) return;
-    const note = await notesApi.create({ repoKey, title: "無題" });
+    const note = await notesApi.create({ repoKey, title: "" });
     queryClient.setQueryData<Note[]>(["notes-list", repoKey], (old) => [...(old ?? []), note]);
     focusTitleRef.current = true;
     onSelectId(note.id);
@@ -387,6 +395,7 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
                 value={title}
                 onChange={(e) => handleTitleChange(e.target.value)}
                 aria-label="タイトル"
+                placeholder="無題"
                 className="w-full min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
               />
             </div>
@@ -415,7 +424,9 @@ export function NotesPanel({ repoKey, selectedId, onSelectId }: NotesPanelProps)
       <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>「{deleteTarget?.title}」を削除しますか？</DialogTitle>
+            <DialogTitle>
+              「{deleteTarget ? noteDisplayTitle(deleteTarget) : ""}」を削除しますか？
+            </DialogTitle>
             <DialogDescription>この操作は元に戻せません。</DialogDescription>
           </DialogHeader>
           <DialogFooter>

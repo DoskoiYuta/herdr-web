@@ -1,7 +1,7 @@
 import type { Ask, AskWithSession } from "../contract/ask";
 import type { Decision } from "../contract/decision";
 import type { Health } from "../contract/health";
-import type { Note } from "../contract/notes";
+import { noteDisplayTitle, type Note } from "../contract/notes";
 import type { Anchor, Review } from "../contract/review";
 
 /** First `n` chars of `s`, with any newlines collapsed to spaces first (for one-line summaries). */
@@ -185,7 +185,7 @@ export function formatStatus(info: StatusInfo): string {
 
 /** `<id-short(8)> <title>` */
 export function formatNoteLine(note: Note): string {
-  return `${shortId(note.id)} ${note.title}`;
+  return `${shortId(note.id)} ${noteDisplayTitle(note)}`;
 }
 
 export function formatNoteList(notes: Note[]): string {
@@ -196,7 +196,7 @@ export function formatNoteList(notes: Note[]): string {
 export function formatNoteShow(note: Note): string {
   const lines: string[] = [];
   lines.push(`id: ${note.id}`);
-  lines.push(`title: ${note.title}`);
+  lines.push(`title: ${noteDisplayTitle(note)}`);
   lines.push(`updatedAt: ${note.updatedAt}`);
   lines.push("");
   lines.push(note.body);

@@ -156,8 +156,16 @@ describe("formatNoteList", () => {
   // 無いと壊れる: `hw notes list` の一覧行から短縮 id が読み取れず、
   // `hw notes show <id>` に渡す id をコピーできない。
   test("one line per note as `<shortId(8)> <title>`", () => {
-    const out = formatNoteList([makeNote(), makeNote({ id: "b".repeat(26), title: "B" })]);
-    expect(out.split("\n")).toEqual(["Q69G5FAV TODO", `${"b".repeat(8)} B`]);
+    const out = formatNoteList([
+      makeNote(),
+      makeNote({ id: "b".repeat(26), title: "B" }),
+      makeNote({ id: "c".repeat(26), title: "" }),
+    ]);
+    expect(out.split("\n")).toEqual([
+      "Q69G5FAV TODO",
+      `${"b".repeat(8)} B`,
+      `${"c".repeat(8)} 無題`,
+    ]);
   });
 
   // 無いと壊れる: ノートが 0 件のとき空文字列になり、一覧表示が空行だけの
