@@ -6,6 +6,8 @@ export interface NotesRepository {
   get(id: string): Promise<Note | null>;
   /** `createdAt` 昇順（plan: ページの並び順）。 */
   listByRepo(repoKey: string): Promise<Note[]>;
+  /** 短縮 id の末尾一致候補用: 全リポジトリのノートを `createdAt` 昇順で返す。 */
+  listAll(): Promise<Note[]>;
   save(note: Note): Promise<void>;
   /** `patch` に含まれる列だけを 1 本の UPDATE で書く — get→merge→save の
    * read-modify-write だと並行更新の一方が消える。id が無ければ null。 */

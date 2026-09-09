@@ -98,8 +98,9 @@ export function createTestApp(opts: TestAppOptions = {}) {
     onEvent: (e) => decisionEvents.push(e),
     logger: { info() {}, warn() {}, error() {} },
   });
+  const notesRepository = createSqliteNotesRepository(db);
   const notes = createNotesService({
-    repository: createSqliteNotesRepository(db),
+    repository: notesRepository,
     clock: { now: () => new Date() },
   });
   const inbox = createInboxService({
@@ -141,7 +142,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     },
     ask: ask.routes,
     decision: { ...decision.routes, buildUrl: (id) => `http://test/decisions/${id}` },
-    notes: { service: notes },
+    notes: { service: notes, repository: notesRepository },
     inbox: { service: inbox },
   };
   return {

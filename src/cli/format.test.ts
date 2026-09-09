@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { AskWithSession } from "../contract/ask";
+import type { Note } from "../contract/notes";
 import type { Review } from "../contract/review";
 import {
   formatAskShow,
+  formatNoteList,
+  formatNoteShow,
   formatReviewList,
   formatReviewLine,
   formatReviewShow,
@@ -63,6 +66,18 @@ function makeReview(overrides: Partial<Review> = {}): Review {
     notify: { state: "none", pane: null, at: null },
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function makeNote(overrides: Partial<Note> = {}): Note {
+  return {
+    id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    repoKey: "/repo/.git",
+    title: "TODO",
+    body: "- a",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-02T00:00:00Z",
     ...overrides,
   };
 }
@@ -134,6 +149,39 @@ describe("formatReviewList", () => {
 
   test("empty list still prints the footer", () => {
     expect(formatReviewList([])).toBe("0 件");
+  });
+});
+
+describe("formatNoteList", () => {
+  // 無いと壊れる: `hw notes list` の一覧行から短縮 id が読み取れず、
+  // `hw notes show <id>` に渡す id をコピーできない。
+  test("one line per note as `<shortId(8)> <title>`", () => {
+    const out = formatNoteList([makeNote(), makeNote({ id: "b".repeat(26), title: "B" })]);
+    expect(out.split("\n")).toEqual(["Q69G5FAV TODO", `${"b".repeat(8)} B`]);
+  });
+
+  // 無いと壊れる: ノートが 0 件のとき空文字列になり、一覧表示が空行だけの
+  // 見た目になる。
+  test("empty list prints a single placeholder line", () => {
+    expect(formatNoteList([])).toBe("(no notes)");
+  });
+});
+
+describe("formatNoteShow", () => {
+  // 無いと壊れる: `hw notes show` の出力から本文とメタ情報を区別できず、
+  // 本文をパイプで別コマンドに渡せない。
+  test("prints id/title/updatedAt then a blank line then the body", () => {
+    const out = formatNoteShow(makeNote({ body: "line1\nline2" }));
+    expect(out).toBe(
+      [
+        "id: 01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "title: TODO",
+        "updatedAt: 2026-01-02T00:00:00Z",
+        "",
+        "line1",
+        "line2",
+      ].join("\n"),
+    );
   });
 });
 

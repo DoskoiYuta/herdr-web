@@ -7,6 +7,8 @@ import { CreateDecisionResponseSchema, DecisionSchema } from "../contract/decisi
 import type { Health } from "../contract/health";
 import { HealthSchema } from "../contract/health";
 import type { WhoamiResponse } from "../contract/hw";
+import type { Note } from "../contract/notes";
+import { NoteSchema } from "../contract/notes";
 import { WhoamiResponseSchema } from "../contract/hw";
 import type { Review, RepoMoveResult } from "../contract/review";
 import { ReviewSchema, RepoMoveResultSchema } from "../contract/review";
@@ -199,6 +201,14 @@ export function createHwClient(baseUrl: string) {
           }),
         AskSchema,
       );
+    },
+
+    listNotes(repo: string): Promise<ClientResult<Note[]>> {
+      return call(() => client.api.notes.$get({ query: { repo } }), v.array(NoteSchema));
+    },
+
+    getNote(id: string): Promise<ClientResult<Note>> {
+      return call(() => client.api.notes[":id"].$get({ param: { id } }), NoteSchema);
     },
   };
 }

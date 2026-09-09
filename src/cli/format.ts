@@ -1,6 +1,7 @@
 import type { Ask, AskWithSession } from "../contract/ask";
 import type { Decision } from "../contract/decision";
 import type { Health } from "../contract/health";
+import type { Note } from "../contract/notes";
 import type { Anchor, Review } from "../contract/review";
 
 /** First `n` chars of `s`, with any newlines collapsed to spaces first (for one-line summaries). */
@@ -179,5 +180,25 @@ export function formatStatus(info: StatusInfo): string {
   lines.push(`worktree: ${info.worktreeRoot ?? "(unknown)"}${defaultMarker}`);
   lines.push(`repo: ${info.repoKey ?? "(unknown)"}`);
   lines.push(`session: ${info.sessionKey ?? "(none)"}`);
+  return lines.join("\n");
+}
+
+/** `<id-short(8)> <title>` */
+export function formatNoteLine(note: Note): string {
+  return `${shortId(note.id)} ${note.title}`;
+}
+
+export function formatNoteList(notes: Note[]): string {
+  if (notes.length === 0) return "(no notes)";
+  return notes.map(formatNoteLine).join("\n");
+}
+
+export function formatNoteShow(note: Note): string {
+  const lines: string[] = [];
+  lines.push(`id: ${note.id}`);
+  lines.push(`title: ${note.title}`);
+  lines.push(`updatedAt: ${note.updatedAt}`);
+  lines.push("");
+  lines.push(note.body);
   return lines.join("\n");
 }

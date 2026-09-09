@@ -14,6 +14,9 @@ function fakeRepository(initial: Note[] = []): NotesRepository {
         .filter((n) => n.repoKey === repoKey)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     },
+    async listAll() {
+      return [...rows.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
     async save(note) {
       rows.set(note.id, note);
     },

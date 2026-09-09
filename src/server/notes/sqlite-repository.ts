@@ -33,6 +33,11 @@ export function createSqliteNotesRepository(db: Db): NotesRepository {
       return rows.map(rowToNote);
     },
 
+    async listAll() {
+      const rows = await db.select().from(notes).orderBy(asc(notes.createdAt));
+      return rows.map(rowToNote);
+    },
+
     async save(note) {
       await db.insert(notes).values(note).onConflictDoUpdate({ target: notes.id, set: note });
     },
