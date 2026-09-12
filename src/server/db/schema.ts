@@ -114,6 +114,12 @@ export const workspaceWorktreeSelections = sqliteTable(
   (t) => [primaryKey({ columns: [t.workspaceId, t.repoKey] })],
 );
 
+export const workspaceToolTabs = sqliteTable("workspace_tool_tabs", {
+  workspaceId: text("workspace_id").primaryKey(),
+  tab: text("tab").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const decisions = sqliteTable(
   "decisions",
   {

@@ -16,6 +16,7 @@ import type { HerdrGateway } from "./herdr/gateway";
 import { createHerdrSocketClient } from "./herdr/socket-client";
 import { createSqliteSelectionRepository } from "./herdr/selection";
 import { createHerdrState } from "./herdr/state";
+import { createSqliteToolTabRepository } from "./herdr/tool-tab";
 import type { WorktreeResolver } from "./herdr/tree";
 
 export type RuntimeDeps = {
@@ -54,6 +55,7 @@ export function createRuntime(deps: RuntimeDeps) {
     gateway,
     logger,
     deps.db ? createSqliteSelectionRepository(deps.db) : undefined,
+    deps.db ? createSqliteToolTabRepository(deps.db) : undefined,
   );
   const focus = createFocusTracker({
     state,

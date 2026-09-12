@@ -72,6 +72,7 @@ function focusMessage(overrides: Partial<FocusMessage> = {}): FocusMessage {
     agentSession: null,
     subRepo: null,
     selectionIsDefault: true,
+    toolTab: null,
     ...overrides,
   };
 }
@@ -276,6 +277,9 @@ const setSelectionMock = vi.fn(async (..._args: unknown[]) => ({
     updatedAt: new Date().toISOString(),
   },
 }));
+const setToolTabMock = vi.fn(async (..._args: unknown[]) => ({
+  toolTab: { workspaceId: "w1", tab: "diff", updatedAt: new Date().toISOString() },
+}));
 
 const { SendTargetError } = vi.hoisted(() => {
   class SendTargetErrorImpl extends Error {
@@ -315,6 +319,7 @@ vi.mock("@/lib/api", () => ({
   herdrApi: {
     panePreview: (...args: [string]) => panePreviewMock(...args),
     setSelection: (...args: unknown[]) => setSelectionMock(...args),
+    setToolTab: (...args: unknown[]) => setToolTabMock(...args),
   },
   SendTargetError,
 }));
@@ -813,5 +818,51 @@ describe("ToolPane", () => {
         ),
       );
     });
+  });
+});
+
+describe("ToolPane: per-workspace tool tab persistence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    diffPanelMountCount = 0;
+  });
+
+  // 無いと壊れる: タブを切り替えても次回そのワークスペースに戻ったとき前回の
+  // タブが復元されない（サーバーに何も保存されない）。
+  test("clicking a tab saves it via PUT /workspace/:id/tool-tab", async () => {
+    await renderFocused({ worktreeRoot: "/Users/dev/project" });
+    await selectTab("Notes");
+    await waitFor(() => expect(setToolTabMock).toHaveBeenCalledWith("w1", { tab: "notes" }));
+  });
+
+  // 無いと壊れる: ワークスペースを切り替えても常に URL 上の（前のワークスペース
+  // の）タブのままになり、保存済みタブへ戻れない。
+  test("switching to a different workspace restores its saved tab", async () => {
+    const { store, router } = await renderFocused({
+      worktreeRoot: "/Users/dev/project-a",
+      focusOverrides: { workspace: "w1" },
+    });
+    expect(router.state.location.pathname).toBe("/focus/diff");
+
+    store.setState({
+      focus: focusMessage({
+        workspace: "w2",
+        worktreeRoot: "/Users/dev/project-b",
+        toolTab: "notes",
+      }),
+    });
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/focus/notes"));
+  });
+
+  // 無いと壊れる: 初回ロード/リロード直後（前回値が null）でも保存済みタブへ
+  // 飛ばされ、直接開いた/リロードした URL のタブを勝手に上書きしてしまう。
+  test("does not redirect on the initial load even when a tool tab is already saved", async () => {
+    const { router } = await renderFocused({
+      worktreeRoot: "/Users/dev/project-a",
+      focusOverrides: { workspace: "w1", toolTab: "notes" },
+    });
+
+    expect(router.state.location.pathname).toBe("/focus/diff");
   });
 });

@@ -485,3 +485,51 @@ describe("/api/herdr/workspace/:id/selection", () => {
     expect(await json(getRes)).toEqual({ selection: null }); // reverted: nothing was saved before
   });
 });
+
+describe("PUT /api/herdr/workspace/:id/tool-tab", () => {
+  test("saves the tab; the workspace's state reports it back", async () => {
+    const repo = await makeRepo();
+    const { app, fake, state } = createTestApp({ allowedRoots: [repo] });
+    const workspace = await fake.workspaceCreate({ cwd: repo, focus: true });
+    await settle();
+
+    const res = await app.request(`/api/herdr/workspace/${workspace.workspace_id}/tool-tab`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tab: "notes" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({
+      toolTab: { workspaceId: workspace.workspace_id, tab: "notes" },
+    });
+    expect(state.getToolTab(workspace.workspace_id)?.tab).toBe("notes");
+  });
+
+  // 無いと壊れる: 旧 "docker" タブ値や任意の文字列がそのまま保存され、後から
+  // 読み戻したときに ToolTab として扱えない値が URL に反映されてしまう。
+  test("400s with an invalid tab value", async () => {
+    const repo = await makeRepo();
+    const { app, fake } = createTestApp({ allowedRoots: [repo] });
+    const workspace = await fake.workspaceCreate({ cwd: repo, focus: true });
+    await settle();
+
+    const res = await app.request(`/api/herdr/workspace/${workspace.workspace_id}/tool-tab`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tab: "docker" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("400s with unknown_workspace when the workspace doesn't exist", async () => {
+    const { app } = createTestApp({});
+
+    const res = await app.request("/api/herdr/workspace/no-such-ws/tool-tab", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tab: "notes" }),
+    });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "unknown_workspace" });
+  });
+});

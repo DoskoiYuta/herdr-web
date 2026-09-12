@@ -1,7 +1,7 @@
 import { useRouterState } from "@tanstack/react-router";
 import { getRouteApi } from "@tanstack/react-router";
 import { Check, Copy } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiffPanel, type DiffInitialLocation } from "@/components/diff/DiffPanel";
 import { ComposePanel } from "@/components/docker/ComposePanel";
 import { FilesPanel } from "@/components/files/FilesPanel";
@@ -23,6 +23,7 @@ import { AgentStatusDot } from "@/components/ui/status/AgentStatusDot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useHerdrState, useAskEvents, useReviewEvents } from "@/lib/HerdrStoreContext";
 import { useHerdrStoreActions } from "@/lib/HerdrStoreContext";
+import { herdrApi } from "@/lib/api";
 import { useOpenWorktreeLocation } from "@/lib/openWorktreeLocation";
 import { askEventMatchesRepo } from "@/lib/askEvent";
 import { reviewEventMatchesRepo } from "@/lib/reviewEvent";
@@ -120,6 +121,8 @@ export function ToolPane() {
   const worktreeRoot = state.focus?.worktreeRoot ?? null;
   const repoKey = state.focus?.repoKey ?? null;
   const subRepo = state.focus?.subRepo ?? null;
+  const focusedWorkspaceId = state.focus?.workspace ?? null;
+  const savedToolTab = state.focus?.toolTab ?? null;
   // §10.3: タブが実際に見る root/repoKey はサブリポジトリ選択中はそのサブ
   // リポジトリのもの。pane の送信先（agentPanesAt 系）や worktree セレクタは
   // 常にトップの worktreeRoot/repoKey を使う — pane はサブリポジトリとは
@@ -240,9 +243,39 @@ export function ToolPane() {
           id: undefined,
         }),
       });
+      if (focusedWorkspaceId) {
+        herdrApi.setToolTab(focusedWorkspaceId, { tab: nextTab as ToolTab }).catch((err) => {
+          console.warn("failed to save tool tab", err);
+        });
+      }
     },
-    [navigate],
+    [navigate, focusedWorkspaceId],
   );
+
+  // ワークスペース切り替え時に、そのワークスペースで最後に使っていたタブへ
+  // 戻す（ワークスペースごとにサーバーへ永続化: PUT /workspace/:id/tool-tab）。
+  // 前回値が null（初回ロード・リロード直後）では復元しない — その場合は URL
+  // 自体が正であり、直接開いた/リロードした URL のタブを上書きしてはならない。
+  const prevWorkspaceIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevWorkspaceId = prevWorkspaceIdRef.current;
+    prevWorkspaceIdRef.current = focusedWorkspaceId;
+    if (prevWorkspaceId === null || focusedWorkspaceId === null) return;
+    if (prevWorkspaceId === focusedWorkspaceId) return;
+    if (savedToolTab === null || savedToolTab === params.tab) return;
+    void navigate({
+      replace: true,
+      params: (prev) => ({ ...prev, tab: savedToolTab }),
+      search: (prev) => ({
+        ...prev,
+        path: undefined,
+        line: undefined,
+        side: undefined,
+        root: undefined,
+        id: undefined,
+      }),
+    });
+  }, [focusedWorkspaceId, savedToolTab, params.tab, navigate]);
 
   const handleSelectCommit = useCallback(
     (range: CommitRange) => {

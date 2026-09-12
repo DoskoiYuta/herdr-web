@@ -78,4 +78,12 @@ export const embeddedMigrations: MigrationMeta[] = [
     hash: "88ceb45ab5c0757a75142b7a2c8e2be0767c0e8906040164d6578c7ed98adcc4",
     bps: true,
   },
+  {
+    sql: [
+      "CREATE TABLE `workspace_tool_tabs` (\n\t`workspace_id` text PRIMARY KEY NOT NULL,\n\t`tab` text NOT NULL,\n\t`updated_at` text NOT NULL\n);\n",
+    ],
+    folderMillis: 1789208393258,
+    hash: "d3a305964b51ef164bb6948b56e6a43d084d3cc5c0fe89939cdc39ea7eb81527",
+    bps: true,
+  },
 ];
