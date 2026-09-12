@@ -54,6 +54,25 @@ describe("parseConfig", () => {
     const { problem } = parseConfig({ ask: { agents: [] } });
     expect(problem).toContain("ask.agents");
   });
+
+  // 無いと壊れる: 不正な keybind をそのまま配信すると、ブラウザ側の
+  // parseKeybind が黙って無視するだけで起動時に何も気づけない。また
+  // modifier 無しの 1 文字（例 "a"）を通すと通常入力を潰してしまう。
+  test("drops unparsable keybind keys, empty values, and unmodified single-char keys", () => {
+    const { config, problem } = parseConfig({
+      terminal: {
+        keybinds: {
+          "shift+left": "\x1bb",
+          "shfit+left": "\x1bx",
+          "shift+right": "",
+          a: "x",
+          escape: "\x1b",
+        },
+      },
+    });
+    expect(config.terminal.keybinds).toEqual({ "shift+left": "\x1bb", escape: "\x1b" });
+    expect(problem).not.toBeNull();
+  });
 });
 
 describe("loadConfig", () => {

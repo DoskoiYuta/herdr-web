@@ -3,9 +3,11 @@
 // 差し替えるのと同じ発想）。ResizeObserver も jsdom に無いのでスタブする。
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { sendInput } from "@/lib/termSocket";
 import type { TermSocketHandlers } from "@/lib/termSocket";
 
 let capturedHandlers: TermSocketHandlers | null = null;
+let capturedKeyHandler: ((e: unknown) => boolean) | null = null;
 const closeMock = vi.fn();
 const connectTermSocketMock = vi.fn(
   (
@@ -35,7 +37,9 @@ vi.mock("@xterm/xterm", () => ({
       cols: 80,
       rows: 24,
       loadAddon: vi.fn(),
-      attachCustomKeyEventHandler: vi.fn(),
+      attachCustomKeyEventHandler: vi.fn((handler: (e: unknown) => boolean) => {
+        capturedKeyHandler = handler;
+      }),
       open: vi.fn(),
       write: vi.fn(),
       dispose: vi.fn(),
@@ -61,8 +65,10 @@ vi.mock("@xterm/addon-webgl", () => ({
 
 beforeEach(() => {
   capturedHandlers = null;
+  capturedKeyHandler = null;
   connectTermSocketMock.mockClear();
   closeMock.mockClear();
+  vi.mocked(sendInput).mockClear();
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -109,4 +115,38 @@ test("a close with no prior exit frame shows the reconnect overlay without an ex
 
   expect(screen.getByRole("button", { name: "再接続" })).toBeInTheDocument();
   expect(screen.queryByText(/終了しました/)).not.toBeInTheDocument();
+});
+
+const shiftLeft = {
+  type: "keydown",
+  key: "ArrowLeft",
+  shiftKey: true,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  preventDefault: vi.fn(),
+};
+
+test.each([
+  [
+    "config の keybinds に一致するキーは herdr へ送られ xterm には渡らない",
+    { "shift+left": "\x1bx" },
+    shiftLeft,
+    "\x1bx",
+  ],
+  [
+    "keybinds で shift+enter を上書きすると CSI u ではなくその文字列が送られる",
+    { "shift+enter": "\x1by" },
+    { ...shiftLeft, key: "Enter" },
+    "\x1by",
+  ],
+] as const)("%s", (_label, keybinds, event, expected) => {
+  render(<Terminal keybinds={keybinds} />);
+  let passedToXterm: boolean | undefined;
+  act(() => {
+    passedToXterm = capturedKeyHandler?.(event);
+  });
+
+  expect(sendInput).toHaveBeenCalledWith(expect.anything(), expected);
+  expect(passedToXterm).toBe(false);
 });

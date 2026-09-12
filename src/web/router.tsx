@@ -303,6 +303,7 @@ function RootLayout() {
               fontFamily={clientConfig?.terminal.fontFamily}
               fontSize={clientConfig?.terminal.fontSize}
               lineHeight={clientConfig?.terminal.lineHeight}
+              keybinds={clientConfig?.terminal.keybinds}
               onToggleMaximize={toggleLastMaximized}
               onToggleInbox={toggleInbox}
             />

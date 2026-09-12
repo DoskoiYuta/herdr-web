@@ -2,28 +2,51 @@
 // この拡張を実装していないため Shift+Enter も Enter も "\r" になり、Claude Code では
 // 改行ではなく送信になる。修飾キー付き Enter だけを CSI u 形式で送る。
 
+import { type Keybind, parseKeybind } from "../../contract/keybind";
+
+/** config.json の `terminal.keybinds` を照合用にコンパイルしたもの。 */
+export type CompiledKeybinds = { spec: Keybind; value: string }[];
+
+/** 毎キー入力での再パースを避けるため、config 変更時に 1 度だけ呼ぶ。 */
+export function compileKeybinds(binds: Record<string, string>): CompiledKeybinds {
+  const compiled: CompiledKeybinds = [];
+  for (const [spec, value] of Object.entries(binds)) {
+    const parsed = parseKeybind(spec);
+    if (parsed) compiled.push({ spec: parsed, value });
+  }
+  return compiled;
+}
+
 /**
- * Shift+←→ を readline の単語移動（`ESC b` / `ESC f`）に変換する。対象外なら null。
- * Ghostty の以下のキーバインドをブラウザ側で再現したもの:
- *   keybind = shift+left=text:\x1bb
- *   keybind = shift+right=text:\x1bf
- * Alt+←→ が送る `ESC [ 1 ; 3 D/C` ではなく `ESC b` / `ESC f` を選ぶのは、
- * readline の既定バインド（backward-word / forward-word）がこれで、
- * Alt 付き矢印キーの解釈はアプリによって揺れるため。
+ * config.json の `terminal.keybinds`（README「設定」参照）と一致するキー入力
+ * があれば送信する文字列を返す。既定は Ghostty 風に Shift+←→ を readline の
+ * 単語移動（`ESC b` / `ESC f`）へ変換する設定になっている（サーバー側の既定値）。
  */
-export function encodeShiftArrowWord(e: {
-  type: string;
-  key: string;
-  shiftKey: boolean;
-  altKey: boolean;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  isComposing?: boolean;
-}): string | null {
+export function matchKeybind(
+  binds: CompiledKeybinds,
+  e: {
+    type: string;
+    key: string;
+    shiftKey: boolean;
+    altKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    isComposing?: boolean;
+  },
+): string | null {
   if (e.type !== "keydown" || e.isComposing) return null;
-  if (!e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return null;
-  if (e.key === "ArrowLeft") return "\x1bb";
-  if (e.key === "ArrowRight") return "\x1bf";
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  for (const { spec, value } of binds) {
+    if (
+      spec.key === key &&
+      spec.mods.shift === e.shiftKey &&
+      spec.mods.alt === e.altKey &&
+      spec.mods.ctrl === e.ctrlKey &&
+      spec.mods.meta === e.metaKey
+    ) {
+      return value;
+    }
+  }
   return null;
 }
 

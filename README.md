@@ -5,7 +5,7 @@
 ## 構成
 
 - **サイドバー**: herdr の pane を `repository > workspace` に組み替えて表示。クリックでフォーカス切り替え。リポジトリ見出しの「+」ボタンからそのリポジトリの main worktree root を cwd にワークスペースを作成でき、ワークスペース行を右クリックすると「名前を変更」「削除」の操作ができる（削除は pane / agent がすべて終了する旨を確認してから実行）。
-- **ターミナル**: herdr の TUI を PTY 経由で xterm.js に描画。Shift+← / Shift+→ は `ESC b` / `ESC f`（単語移動）を送る（Ghostty の設定を写したもの）。
+- **ターミナル**: herdr の TUI を PTY 経由で xterm.js に描画。既定の keybinds（後述）で Shift+← / Shift+→ に `ESC b` / `ESC f`（単語移動）を割り当てている。
 - **ツール領域**: フォーカス pane のリポジトリ・ワークスペースまで追従し、その worktree（サブリポジトリを含む）は人間が選ぶ（[docs/ui-redesign.md §10](docs/ui-redesign.md)）。選択は `(workspace, repository)` ごとにサーバーへ保存され、複数ブラウザ・`hw` CLI から一致する。タブの選択もワークスペースごとにサーバーへ保存され、ワークスペースを切り替えると前回のタブに戻る。diff / graph / review / Docker / Process を表示。git graph は読み取り専用だが、`fetch` ボタン（キー `f`）から `git fetch --prune` だけは実行できる（リモート追跡ブランチの更新のみ、worktree は変更しない）。Process タブは他ユーザーが所有するプロセスの cwd を読めないため、それらは一覧に出ない。Files タブは `.md` と同様 `.html`/`.htm` もプレビュー/ソースを切り替えられる。プレビューは `srcdoc` の iframe のため相対パスの画像・CSS は解決されない。スクリプトは既定で無効（サンドボックス）で、ファイルごとに「スクリプトを許可」で明示的に有効化できる。
 - **`hw` CLI**: pane 内のエージェントがレビューを読み・返答する。
 
@@ -65,6 +65,9 @@ bun run build      # dist/web と dist/herdr-web, dist/hw を生成
   "ask": {
     "agents": ["claude", "codex", "gemini"],
     "defaultAgent": "claude"
+  },
+  "terminal": {
+    "keybinds": { "shift+left": "b", "shift+right": "f" }
   }
 }
 ```
@@ -73,6 +76,11 @@ bun run build      # dist/web と dist/herdr-web, dist/hw を生成
 - `allowedRoots`: `$HOME` 配下以外のリポジトリを開きたいときに追加する。
 - 環境変数 `PORT` / `HOST` が設定を上書きする。
 - `ask.agents`: 質問の新規セッションで選べるエージェント種別。herdr の `agent.start` は `kind` に自由文字列を取り対応一覧を持たないため（`herdr agent start --help` にしか出ない）、ここで持つ。`ask.defaultAgent` が `agents` に無ければ起動時に警告して先頭に丸める。
+- `terminal.keybinds`: ブラウザのターミナルで送信するキー割り当て。キーは Ghostty 風の `[mod+]...key` 書式（`mod` は `shift` / `alt`（`opt`, `option` も可）/ `ctrl` / `meta`（`cmd`, `super` も可）、大文字小文字は区別しない）、`key` は `left right up down home end pageup pagedown tab enter escape backspace delete insert space` と `f1`〜`f12`、または英数字・記号 1 文字。値は実際に送信する文字列（JSON なので ESC は ``）。
+  - 既定値は Ghostty の単語移動相当（`shift+left`/`shift+right` → `ESC b`/`ESC f`）。
+  - `"terminal": { "keybinds": {} }` にすると全部無効になる。
+  - modifier の無い英数字・記号 1 文字（例 `"a"`）は通常入力を潰すため不正扱いになる（矢印などの特殊キーは modifier 無しでも可）。
+  - パースできないキーや空文字の値は起動時に警告を出して無視され、残りの設定は使われる。
 
 ## 出先からのアクセス
 

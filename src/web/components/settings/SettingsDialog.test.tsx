@@ -36,7 +36,7 @@ beforeEach(() => {
     herdr: { connected: true, protocol: 20 },
   });
   configMock.mockResolvedValue({
-    terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1 },
+    terminal: { fontFamily: "monospace", fontSize: 13, lineHeight: 1, keybinds: {} },
     graphInitialCommits: 200,
     ask: { agents: ["claude"], defaultAgent: "claude", maxSessions: 5 },
     paths: {
