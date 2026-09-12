@@ -93,13 +93,22 @@ function CodeFileViewInner<T = undefined>(
   // layout effect but before paint — so it lands on the new file's height
   // instead of the previous file's.
   const restoredPathRef = useRef<string | null>(null);
+  // Set on unmount so a scroll report the underlying library fires while
+  // tearing down (observed when `EditProvider` mounting/unmounting forces a
+  // remount of the wrapped `CodeView`) can't overwrite the saved position
+  // for this path/mode after this instance is gone.
+  const torndownRef = useRef(false);
   useLayoutEffect(() => {
+    torndownRef.current = false;
     codeViewRef.current?.scrollTo({
       type: "position",
       position: scrollTop ?? 0,
       behavior: "instant",
     });
     restoredPathRef.current = path;
+    return () => {
+      torndownRef.current = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
@@ -174,9 +183,15 @@ function CodeFileViewInner<T = undefined>(
       selectedLines={selectedLines}
       onSelectedLinesChange={onSelectedLinesChange}
       renderAnnotation={renderAnnotation}
+      // `onItemEditComplete` also fires when `EditProvider` unmounts (turning
+      // editing off), with the pre-edit-session content — wiring both to the
+      // same callback is safe only because the caller sets `onEditChange` to
+      // `undefined` whenever it isn't in edit mode, so that late call is a
+      // no-op rather than reporting stale content as a fresh edit.
       onItemEditChange={(_item, file: FileContents) => onEditChange?.(file.contents)}
       onItemEditComplete={(_item, file: FileContents) => onEditChange?.(file.contents)}
       onScroll={(top) => {
+        if (torndownRef.current) return;
         // Swapping `items` for a new path can fire onScroll with the old
         // file's (clamped) position before the restoring effect above has
         // run for the new path — drop reports until this path is restored.

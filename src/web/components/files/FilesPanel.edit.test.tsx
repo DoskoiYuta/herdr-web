@@ -10,6 +10,7 @@ import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
 import { makeFakeStore } from "@/testing/renderWithRouter";
 import type { FileResponse, LsResponse, StatResponse } from "@contract/fs";
+import { resetFileEditsForTests } from "@/lib/fileDrafts";
 
 const lsMock = vi.fn<(params: { root: string; dir: string }) => Promise<LsResponse>>();
 const statusMock = vi.fn().mockResolvedValue({ status: [] });
@@ -115,6 +116,12 @@ vi.mock("./HtmlFileView", () => ({
 }));
 
 vi.mock("./CodeFileView", () => ({
+  // Mimics the real `@pierre/diffs` editor (see M1): the textarea's buffer
+  // is seeded from `contents` only at mount and otherwise ignores prop
+  // changes — a naive controlled stub that always re-renders `contents`
+  // into the textarea would hide the exact bug this is meant to catch
+  // (the caller must force a remount, via `key`, whenever the editor's
+  // underlying document needs to be rebuilt from a new base/draft).
   CodeFileView: ({
     path,
     contents,
@@ -125,17 +132,23 @@ vi.mock("./CodeFileView", () => ({
     contents: string;
     editable?: boolean;
     onEditChange?: (contents: string) => void;
-  }) => (
-    <div data-testid="code-file-view-stub" data-editable={editable ? "true" : "false"}>
-      {path}:{contents}
-      <textarea
-        aria-label="code-editor"
-        value={contents}
-        readOnly={!editable}
-        onChange={(e) => onEditChange?.(e.target.value)}
-      />
-    </div>
-  ),
+  }) => {
+    const [buffer, setBuffer] = useState(contents);
+    return (
+      <div data-testid="code-file-view-stub" data-editable={editable ? "true" : "false"}>
+        {path}:{contents}
+        <textarea
+          aria-label="code-editor"
+          value={buffer}
+          readOnly={!editable}
+          onChange={(e) => {
+            setBuffer(e.target.value);
+            onEditChange?.(e.target.value);
+          }}
+        />
+      </div>
+    );
+  },
 }));
 
 const { default: FilesPanel } = await import("./FilesPanel");
@@ -195,6 +208,7 @@ function textFile(overrides: Partial<Extract<FileResponse, { kind: "text" }>> = 
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  resetFileEditsForTests();
   statusMock.mockResolvedValue({ status: [] });
   statMock.mockResolvedValue({});
   askForFileMock.mockResolvedValue([]);
@@ -207,11 +221,16 @@ afterEach(() => {
 
 async function openFile(path = "a.ts") {
   const tree = await screen.findByTestId("path-tree-stub");
-  within(tree).getByText(path).click();
+  fireEvent.click(within(tree).getByText(path));
 }
 
+// S5: the toggle stays disabled until the for-file lookup (used to count
+// unresolved questions) settles, so enabling it here mirrors what a user
+// waits through in the real UI.
 async function editToggle() {
-  return screen.findByRole("button", { name: /^編集/ });
+  const button = await screen.findByRole("button", { name: /^編集/ });
+  await waitFor(() => expect(button).not.toBeDisabled());
+  return button;
 }
 
 test("editable: false のファイルは編集トグルが無効", async () => {
@@ -235,14 +254,14 @@ test("保存は base の hash で writeFile を呼び、成功後は下書きが
   writeFileMock.mockResolvedValue({ hash: "h2", size: 20 });
   render(renderPanel().element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
 
   const editor = await screen.findByLabelText("code-editor");
   fireEvent.change(editor, { target: { value: "const x = 2;" } });
 
   const saveButton = await screen.findByRole("button", { name: "保存" });
   await waitFor(() => expect(saveButton).not.toBeDisabled());
-  saveButton.click();
+  fireEvent.click(saveButton);
 
   await waitFor(() =>
     expect(writeFileMock).toHaveBeenCalledWith({
@@ -262,14 +281,14 @@ test("409 の衝突は上書き保存でディスク側 hash を使って再送�
     .mockResolvedValueOnce({ hash: "diskHash2", size: 20 });
   render(renderPanel().element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
   fireEvent.change(await screen.findByLabelText("code-editor"), {
     target: { value: "const x = 2;" },
   });
-  (await screen.findByRole("button", { name: "保存" })).click();
+  fireEvent.click(await screen.findByRole("button", { name: "保存" }));
 
   const overwriteButton = await screen.findByRole("button", { name: "上書き保存" });
-  overwriteButton.click();
+  fireEvent.click(overwriteButton);
 
   await waitFor(() =>
     expect(writeFileMock).toHaveBeenLastCalledWith({
@@ -286,15 +305,15 @@ test("破棄して再読込は下書きを捨ててディスク内容を取り�
   writeFileMock.mockRejectedValue(new WriteConflictError("diskHash"));
   render(renderPanel().element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
   fireEvent.change(await screen.findByLabelText("code-editor"), {
     target: { value: "const x = 2;" },
   });
-  (await screen.findByRole("button", { name: "保存" })).click();
+  fireEvent.click(await screen.findByRole("button", { name: "保存" }));
   await screen.findByRole("button", { name: "上書き保存" });
 
   fileMock.mockResolvedValue(textFile({ hash: "h3", contents: "const x = 3;" }));
-  screen.getByRole("button", { name: "破棄して再読込" }).click();
+  fireEvent.click(screen.getByRole("button", { name: "破棄して再読込" }));
 
   await waitFor(() =>
     expect(screen.getByTestId("code-file-view-stub")).toHaveTextContent("const x = 3;"),
@@ -306,7 +325,7 @@ test("dirty 中の外部変更（hash 変化）はバナーを出し、エディ
   const { element } = renderPanel({ repoChangedTick: 0 });
   const { rerender } = render(element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
   fireEvent.change(await screen.findByLabelText("code-editor"), {
     target: { value: "const x = 2;" },
   });
@@ -322,7 +341,7 @@ test("dirty でないときの外部変更（hash 変化）は追従する", asy
   fileMock.mockResolvedValue(textFile());
   const { rerender } = render(renderPanel({ repoChangedTick: 0 }).element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
 
   fileMock.mockResolvedValue(textFile({ hash: "h-external", contents: "const x = 99;" }));
   rerender(renderPanel({ repoChangedTick: 1 }).element);
@@ -337,12 +356,12 @@ test("dirty なタブを閉じようとすると確認ダイアログが出る",
   fileMock.mockResolvedValue(textFile());
   render(renderPanel().element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
   fireEvent.change(await screen.findByLabelText("code-editor"), {
     target: { value: "const x = 2;" },
   });
 
-  screen.getByRole("button", { name: "a.ts を閉じる" }).click();
+  fireEvent.click(screen.getByRole("button", { name: "a.ts を閉じる" }));
   expect(await screen.findAllByText("保存していない変更があります")).not.toHaveLength(0);
 });
 
@@ -358,7 +377,7 @@ test("編集モードのままタブを切り替えて戻ると下書きが保�
   );
   render(renderPanel().element);
   await openFile("a.ts");
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
   fireEvent.change(await screen.findByLabelText("code-editor"), {
     target: { value: "const a = 2;" },
   });
@@ -366,7 +385,7 @@ test("編集モードのままタブを切り替えて戻ると下書きが保�
   await openFile("b.ts");
   await screen.findByText(/b\.ts:const b = 1;/);
 
-  (await screen.findByRole("tab", { name: /^a\.ts/ })).click();
+  fireEvent.click(await screen.findByRole("tab", { name: /^a\.ts/ }));
   await waitFor(() =>
     expect(screen.getByTestId("code-file-view-stub")).toHaveTextContent("const a = 2;"),
   );
@@ -377,11 +396,11 @@ test("CRLF ファイルは保存時も CRLF のまま送られる", async () => 
   writeFileMock.mockResolvedValue({ hash: "h2", size: 30 });
   render(renderPanel().element);
   await openFile();
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
   fireEvent.change(await screen.findByLabelText("code-editor"), {
     target: { value: "const x = 1;\nconst y = 3;\n" },
   });
-  (await screen.findByRole("button", { name: "保存" })).click();
+  fireEvent.click(await screen.findByRole("button", { name: "保存" }));
 
   await waitFor(() =>
     expect(writeFileMock).toHaveBeenCalledWith(
@@ -398,12 +417,12 @@ test("未解決の質問があるファイルの編集開始は確認ダイア�
   render(renderPanel().element);
   await openFile();
   await waitFor(() => expect(askForFileMock).toHaveBeenCalled());
-  (await editToggle()).click();
+  fireEvent.click(await editToggle());
 
   expect(await screen.findByText("未解決の質問があります")).toBeInTheDocument();
   expect(screen.queryByLabelText("code-editor")).toHaveAttribute("readonly");
 
-  screen.getByRole("button", { name: "続行" }).click();
+  fireEvent.click(screen.getByRole("button", { name: "続行" }));
   await waitFor(() => expect(screen.getByLabelText("code-editor")).not.toHaveAttribute("readonly"));
 });
 
@@ -415,3 +434,137 @@ test("Cmd+S は編集モードでなければ何もしない", async () => {
   fireEvent.keyDown(root, { key: "s", metaKey: true });
   expect(writeFileMock).not.toHaveBeenCalled();
 });
+
+// M1: pierre の Editor は `contents` prop の差し替えだけでは内部の
+// TextDocument を作り直さない。表示は新内容でも編集用の文書が旧 draft の
+// ままだと、次の入力が「旧文書 + その1文字」を返し、新しい baseHash と
+// 組み合わさって楽観ロックを素通りしたまま外部の変更を上書き保存する。
+test("破棄して再読込の直後の入力は、捨てたはずの下書きを復活させない", async () => {
+  fileMock.mockResolvedValue(textFile({ contents: "alpha\n" }));
+  writeFileMock
+    .mockRejectedValueOnce(new WriteConflictError("diskHash"))
+    .mockResolvedValueOnce({ hash: "h3", size: 20 });
+  render(renderPanel().element);
+  await openFile();
+  fireEvent.click(await editToggle());
+  const editor = () => screen.getByLabelText("code-editor") as HTMLTextAreaElement;
+  fireEvent.change(editor(), { target: { value: "alpha X\n" } });
+  fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+  await screen.findByRole("button", { name: "上書き保存" });
+
+  fileMock.mockResolvedValue(textFile({ hash: "h-ext", contents: "alpha\neps\n" }));
+  fireEvent.click(screen.getByRole("button", { name: "破棄して再読込" }));
+  await waitFor(() => expect(editor().value).toBe("alpha\neps\n"));
+
+  fireEvent.change(editor(), { target: { value: "alpha\neps\n W" } });
+  fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+
+  await waitFor(() =>
+    expect(writeFileMock).toHaveBeenLastCalledWith({
+      root: "/repo",
+      path: "a.ts",
+      contents: "alpha\neps\n W",
+      baseHash: "h-ext",
+    }),
+  );
+});
+
+// M2: `FilesPanel` はツールタブの切替（Files→Diff→Files 等）や worktree
+// 切替のたびに unmount/remount される。下書きがこのコンポーネントの state
+// にあると、そのどちらでも確認なしに消えてしまう。
+test("FilesPanel を unmount しても下書きと編集 ON が保たれる", async () => {
+  fileMock.mockResolvedValue(textFile());
+  const { unmount } = render(renderPanel().element);
+  await openFile();
+  fireEvent.click(await editToggle());
+  fireEvent.change(await screen.findByLabelText("code-editor"), {
+    target: { value: "const x = 2;" },
+  });
+  unmount();
+
+  render(renderPanel().element);
+  await openFile();
+  await waitFor(() =>
+    expect(screen.getByTestId("code-file-view-stub")).toHaveAttribute("data-editable", "true"),
+  );
+  expect(screen.getByLabelText("code-editor")).toHaveValue("const x = 2;");
+});
+
+// M3: `useFile` は `placeholderData: keepPreviousData` を使うため、path
+// 切替直後の `fileQuery.data` は前のファイルのもの。外部変更検出の effect
+// がそれを見ないと、戻ってきたファイルに無関係な hash の偽バナーが出る。
+test("タブ切替中の外部変更 tick は、戻った側のファイルに誤って波及しない", async () => {
+  lsMock.mockResolvedValue(
+    ls([
+      { name: "a.ts", kind: "file" },
+      { name: "b.ts", kind: "file" },
+    ]),
+  );
+  fileMock.mockImplementation(async ({ path }) =>
+    textFile({
+      path,
+      contents: path === "a.ts" ? "const a = 1;" : "const b = 1;",
+      hash: path === "a.ts" ? "ha" : "hb",
+    }),
+  );
+  const client = new QueryClient();
+  const tree = (tick: number) => (
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <HerdrStoreProvider store={makeFakeStore()}>
+          <TestFilesPanel repoChangedTick={tick} />
+        </HerdrStoreProvider>
+      </ToastProvider>
+    </QueryClientProvider>
+  );
+  const { rerender } = render(tree(0));
+  await openFile("b.ts");
+  fireEvent.click(await editToggle());
+  fireEvent.change(await screen.findByLabelText("code-editor"), {
+    target: { value: "const b = 2;" },
+  });
+
+  await openFile("a.ts");
+  await screen.findByText(/a\.ts:const a = 1;/);
+
+  // b.ts を編集中に見ていなかった間に tick を上げる — 戻ったときの
+  // fileQuery.data は一瞬 a.ts の placeholder のままになる。
+  rerender(tree(1));
+  await waitFor(() => expect(fileMock).toHaveBeenCalledWith({ root: "/repo", path: "a.ts" }));
+
+  fireEvent.click(await screen.findByRole("tab", { name: /^b\.ts/ }));
+  await screen.findByText(/b\.ts:const b = 2;/);
+  expect(screen.queryByText("ディスク上で変更されました")).not.toBeInTheDocument();
+});
+
+// M4: closeAll/closeOthers も dirty ならタブ単体の close と同じ確認が要る
+// ——さもないと保存していない編集が確認なしに画面から消える。
+test("dirty なタブがあるとき「すべて閉じる」は確認を出し、破棄で下書きが消える", async () => {
+  lsMock.mockResolvedValue(
+    ls([
+      { name: "a.ts", kind: "file" },
+      { name: "b.ts", kind: "file" },
+    ]),
+  );
+  fileMock.mockImplementation(async ({ path }) => textFile({ path, contents: path }));
+  render(renderPanel().element);
+  await openFile("a.ts");
+  fireEvent.click(await editToggle());
+  fireEvent.change(await screen.findByLabelText("code-editor"), {
+    target: { value: "dirty a" },
+  });
+  await openFile("b.ts");
+
+  const tab = await screen.findByRole("tab", { name: /^b\.ts/ });
+  fireEvent.contextMenu(tab);
+  fireEvent.click(screen.getByText("すべて閉じる"));
+
+  expect(await screen.findByText(/保存していないタブが 1 件あります/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "破棄" }));
+
+  await waitFor(() => expect(screen.queryByRole("tab")).not.toBeInTheDocument());
+  await openFile("a.ts");
+  await waitFor(() =>
+    expect(screen.getByTestId("code-file-view-stub")).toHaveAttribute("data-editable", "false"),
+  );
+}, 20000);
