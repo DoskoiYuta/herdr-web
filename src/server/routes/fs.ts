@@ -1,5 +1,6 @@
 import { vValidator } from "@hono/valibot-validator";
 import { Hono } from "hono";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import {
   FileQuerySchema,
@@ -8,13 +9,16 @@ import {
   StatQuerySchema,
   TrashQuerySchema,
   UploadQuerySchema,
+  WriteFileRequestSchema,
 } from "../../contract/fs";
+import { isGitInternalPath } from "../fs/gitPath";
 import { listDir } from "../fs/ls";
-import { readWorktreeFile, resolveWorktreeFile } from "../fs/readFile";
+import { MAX_FILE_BYTES, readWorktreeFile, resolveWorktreeFile } from "../fs/readFile";
 import { resolveRawFile } from "../fs/rawFile";
 import { resolveInsideRoot } from "../fs/resolveInsideRoot";
 import { createTrasher, type Trasher } from "../fs/trash";
 import { importFiles, MAX_UPLOAD_BYTES } from "../fs/upload";
+import { writeWorktreeFile } from "../fs/writeFile";
 import { isAllowedRoot, pathExists } from "./allowed-roots";
 
 export interface FsRoutesDeps {
@@ -22,6 +26,11 @@ export interface FsRoutesDeps {
   allowedRoots?: string[];
   /** POST /api/fs/trash's OS-trash backend; injected in tests. */
   trasher?: Trasher;
+  /** Called after a successful `PUT /api/fs/file` write, so callers can
+   * broadcast a `repo-changed` the same way a git-status poll tick would —
+   * editing an already-`modified` file leaves `git status --porcelain`
+   * unchanged, so nothing else would notice the write happened. */
+  onFileWritten?: (info: { root: string; path: string }) => void;
 }
 
 const isAllowed = isAllowedRoot;
@@ -31,13 +40,6 @@ function isInvalidTrashPath(path: string): boolean {
   if (path === "" || path.includes("\0")) return true;
   if (path.startsWith("/")) return true;
   return path.split("/").includes("..");
-}
-
-/** `.git` itself, or anything under it, is refused — trashing a repo's own
- * git directory (even to the recoverable OS trash) isn't a "file viewer"
- * operation and would desync the worktree from git's bookkeeping. */
-function isGitPath(path: string): boolean {
-  return path.split("/")[0] === ".git";
 }
 
 export function fsRoutes(deps: FsRoutesDeps = {}) {
@@ -67,6 +69,43 @@ export function fsRoutes(deps: FsRoutesDeps = {}) {
       const result = await readWorktreeFile(root, path);
       return c.json(result.body, result.status);
     })
+    .put(
+      "/file",
+      async (c, next) => {
+        // Reject an oversized body before valibot buffers it into JSON, same
+        // as /upload's content-length guard. The JSON envelope (escaping,
+        // root/path/baseHash) can roughly double `contents`' raw byte size,
+        // so this only needs to catch requests that are *way* past the cap —
+        // the exact cap is re-checked precisely against `contents` itself in
+        // writeWorktreeFile.
+        const contentLength = c.req.header("content-length");
+        if (contentLength !== undefined && Number(contentLength) > MAX_FILE_BYTES * 4) {
+          return c.json({ error: "too-large" as const }, 413);
+        }
+        await next();
+      },
+      vValidator("json", WriteFileRequestSchema),
+      async (c) => {
+        const { root, path, contents, baseHash } = c.req.valid("json");
+
+        if (!(await isAllowed(root, allowedRoots))) {
+          if (!(await exists(root))) return c.json({ error: "not-found" as const }, 404);
+          return c.json({ error: "forbidden" as const }, 403);
+        }
+
+        const result = await writeWorktreeFile(root, path, contents, baseHash);
+        if (result.status === 200) {
+          // The write already succeeded on disk — a throwing hook must not
+          // turn that into a 500 for the client.
+          try {
+            deps.onFileWritten?.({ root, path });
+          } catch (err) {
+            console.error("onFileWritten hook threw", err);
+          }
+        }
+        return c.json(result.body, result.status);
+      },
+    )
     .get("/stat", vValidator("query", StatQuerySchema), async (c) => {
       const { root } = c.req.valid("query");
 
@@ -141,14 +180,19 @@ export function fsRoutes(deps: FsRoutesDeps = {}) {
       if (isInvalidTrashPath(path)) {
         return c.json({ error: "invalid-path" as const }, 400);
       }
-      if (isGitPath(path)) {
-        return c.json({ error: "forbidden-path" as const }, 400);
-      }
 
       const abs = join(root, path);
       const inside = await resolveInsideRoot(root, abs);
       if (!inside.ok) {
         return c.json({ error: inside.error }, inside.error === "not-found" ? 404 : 400);
+      }
+
+      // Checked against the resolved real path, not the raw `path`, so a
+      // `.git`-into-symlink or a differently-cased `.GIT` can't slip past
+      // (see gitPath.ts).
+      const realRoot = await realpath(root).catch(() => root);
+      if (isGitInternalPath(realRoot, inside.real)) {
+        return c.json({ error: "forbidden-path" as const }, 400);
       }
 
       const result = await trasher.moveToTrash(inside.real);

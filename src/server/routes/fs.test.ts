@@ -1,10 +1,11 @@
 import { realpath as realpathAsync } from "node:fs/promises";
-import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, test } from "bun:test";
 import { fsRoutes, type FsRoutesDeps } from "./fs";
+import { gitBlobHash } from "../git/blobHash";
 import type { Trasher } from "../fs/trash";
 
 const dirs: string[] = [];
@@ -80,7 +81,14 @@ describe("GET /api/fs/file", () => {
     const res = await app.request(`/api/fs/file?root=${encodeURIComponent(dir)}&path=a.txt`);
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body).toEqual({ kind: "text", path: "a.txt", contents: "hello\n", size: 6 });
+    expect(body).toMatchObject({
+      kind: "text",
+      path: "a.txt",
+      contents: "hello\n",
+      size: 6,
+      editable: true,
+    });
+    expect(typeof body.hash).toBe("string");
   });
 
   test("root outside allowed roots -> 403", async () => {
@@ -90,6 +98,123 @@ describe("GET /api/fs/file", () => {
 
     const res = await app.request(`/api/fs/file?root=${encodeURIComponent(dir)}&path=a.txt`);
     expect(res.status).toBe(403);
+  });
+});
+
+describe("PUT /api/fs/file", () => {
+  function put(app: Hono, body: unknown) {
+    return app.request("/api/fs/file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test("saves an edit and returns the new hash/size", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a.txt"), "hello\n");
+    const app = makeApp({ allowedRoots: [dir] });
+
+    const res = await put(app, {
+      root: dir,
+      path: "a.txt",
+      contents: "hello world\n",
+      baseHash: gitBlobHash(Buffer.from("hello\n")),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({
+      hash: gitBlobHash(Buffer.from("hello world\n")),
+      size: Buffer.byteLength("hello world\n"),
+    });
+    expect(await readFile(join(dir, "a.txt"), "utf8")).toBe("hello world\n");
+  });
+
+  // writeWorktreeFile's own conflict/read-only/not-found decisions are
+  // covered by writeFile.test.ts; this route only needs to confirm it wires
+  // that result straight through (status + body) without altering it.
+  test("a rejected write's status/body pass through unchanged", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a.txt"), "hello\n");
+    const app = makeApp({ allowedRoots: [dir] });
+
+    const res = await put(app, {
+      root: dir,
+      path: "a.txt",
+      contents: "new\n",
+      baseHash: gitBlobHash(Buffer.from("stale")),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await json(res)).toEqual({
+      error: "conflict",
+      hash: gitBlobHash(Buffer.from("hello\n")),
+    });
+  });
+
+  test("root outside allowed roots -> 403", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a.txt"), "hello\n");
+    const app = makeApp({ allowedRoots: [] });
+
+    const res = await put(app, {
+      root: dir,
+      path: "a.txt",
+      contents: "new\n",
+      baseHash: gitBlobHash(Buffer.from("hello\n")),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // Without this, a request whose declared Content-Length is far past the
+  // save cap would still be buffered into JSON before being rejected.
+  test("content-length far over the cap -> 413 without touching the file", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a.txt"), "hello\n");
+    const app = makeApp({ allowedRoots: [dir] });
+
+    const res = await app.request("/api/fs/file", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(20 * 1024 * 1024),
+      },
+      body: JSON.stringify({
+        root: dir,
+        path: "a.txt",
+        contents: "new\n",
+        baseHash: gitBlobHash(Buffer.from("hello\n")),
+      }),
+    });
+
+    expect(res.status).toBe(413);
+    expect(await readFile(join(dir, "a.txt"), "utf8")).toBe("hello\n");
+  });
+
+  // Without this, an editor that reads modified-but-unpolled state (a save
+  // that doesn't change `git status --porcelain`) would never learn about
+  // its own write and other clients would keep showing stale content.
+  test("a successful save calls onFileWritten; a rejected one does not", async () => {
+    const dir = await makeDir();
+    await writeFile(join(dir, "a.txt"), "hello\n");
+    const written: { root: string; path: string }[] = [];
+    const app = makeApp({ allowedRoots: [dir], onFileWritten: (info) => written.push(info) });
+
+    await put(app, {
+      root: dir,
+      path: "a.txt",
+      contents: "new\n",
+      baseHash: "stale-hash",
+    });
+    expect(written).toEqual([]);
+
+    await put(app, {
+      root: dir,
+      path: "a.txt",
+      contents: "new\n",
+      baseHash: gitBlobHash(Buffer.from("hello\n")),
+    });
+    expect(written).toEqual([{ root: dir, path: "a.txt" }]);
   });
 });
 
@@ -342,6 +467,27 @@ describe("POST /api/fs/trash", () => {
       expect(calls).toEqual([]);
     },
   );
+
+  // Without this, a symlinked directory pointing at .git (e.g. `lnk -> .git`)
+  // would pass a literal `path.split("/")[0] === ".git"` check while still
+  // resolving into the real .git directory, letting the trash route delete
+  // repo bookkeeping it's meant to refuse.
+  test("refuses to trash a symlink that resolves into .git -> 400 forbidden-path", async () => {
+    const dir = await makeDir();
+    await mkdir(join(dir, ".git"), { recursive: true });
+    await writeFile(join(dir, ".git", "config"), "x\n");
+    await symlink(join(dir, ".git"), join(dir, "lnk"));
+    const { trasher, calls } = fakeTrasher({ ok: true });
+    const app = makeApp({ allowedRoots: [dir], trasher });
+
+    const res = await app.request(
+      `/api/fs/trash?root=${encodeURIComponent(dir)}&path=${encodeURIComponent("lnk/config")}`,
+      { method: "POST" },
+    );
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "forbidden-path" });
+    expect(calls).toEqual([]);
+  });
 
   test("a path outside the root -> 400 outside-repo", async () => {
     const dir = await makeDir();

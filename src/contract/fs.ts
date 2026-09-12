@@ -47,6 +47,10 @@ export const FileQuerySchema = v.object({
 });
 export type FileQuery = v.InferOutput<typeof FileQuerySchema>;
 
+/** Why a `text` file can't be saved back via `PUT /api/fs/file`. */
+export const ReadOnlyReasonSchema = v.picklist(["not-utf8", "symlink", "git-internal"]);
+export type ReadOnlyReason = v.InferOutput<typeof ReadOnlyReasonSchema>;
+
 export const FileResponseSchema = v.variant("kind", [
   v.object({
     kind: v.literal("text"),
@@ -54,6 +58,11 @@ export const FileResponseSchema = v.variant("kind", [
     contents: v.string(),
     /** bytes on disk */
     size: v.number(),
+    /** `gitBlobHash` of the bytes on disk; pass back as `baseHash` to `PUT`. */
+    hash: v.string(),
+    editable: v.boolean(),
+    /** Present only when `editable` is `false`. */
+    readOnlyReason: v.optional(ReadOnlyReasonSchema),
   }),
   v.object({ kind: v.literal("binary"), path: v.string(), size: v.number() }),
   v.object({ kind: v.literal("too-large"), path: v.string(), size: v.number() }),
@@ -67,6 +76,41 @@ export const FileErrorCodeSchema = v.picklist([
   "not-a-file",
 ]);
 export type FileErrorCode = v.InferOutput<typeof FileErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
+// /api/fs/file  (file viewer: save an edit back to one worktree file)
+// ---------------------------------------------------------------------------
+
+export const WriteFileRequestSchema = v.object({
+  root: v.pipe(v.string(), v.minLength(1)),
+  path: v.pipe(v.string(), v.minLength(1)),
+  contents: v.string(),
+  /** `hash` from the `GET` this edit started from; a mismatch at write time
+   * means the file changed on disk since, and the write is refused. */
+  baseHash: v.pipe(v.string(), v.minLength(1)),
+});
+export type WriteFileRequest = v.InferOutput<typeof WriteFileRequestSchema>;
+
+export const WriteFileResponseSchema = v.object({
+  /** `gitBlobHash` of the bytes now on disk. */
+  hash: v.string(),
+  size: v.number(),
+});
+export type WriteFileResponse = v.InferOutput<typeof WriteFileResponseSchema>;
+
+/** v1 only overwrites an existing file — a missing file is `not-found`, never created. */
+export const WriteFileErrorCodeSchema = v.picklist([
+  "invalid-path",
+  "outside-repo",
+  "not-found",
+  "not-a-file",
+  "too-large",
+  /** 409: `baseHash` no longer matches the bytes on disk; response also carries `hash`. */
+  "conflict",
+  /** 422: matches `FileResponse`'s `readOnlyReason`; response also carries `reason`. */
+  "read-only",
+]);
+export type WriteFileErrorCode = v.InferOutput<typeof WriteFileErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
 // /api/fs/stat  (file viewer: bulk existence check for open tabs, without

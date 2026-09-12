@@ -83,29 +83,36 @@ export function createRuntime(deps: RuntimeDeps) {
   // means the worktree root itself is gone — distinct from every other poller
   // error, which is just logged.
   const worktreeMissingListeners = new Set<(root: string) => void>();
+
+  // Shared by the poller's own onChanged tick AND by a direct fs write
+  // (PUT /api/fs/file): editing an already-`modified` file leaves `git
+  // status --porcelain` unchanged, so the poller itself would never notice
+  // it and something has to fire the same "repo-changed" fan-out by hand.
+  function notifyChanged(info: ChangedInfo): void {
+    hub.broadcast({
+      type: "repo-changed",
+      worktreeRoot: info.root,
+      reason: info.reason,
+      head: info.head,
+    });
+    if (info.reason !== "status") {
+      // branch / HEAD が変わったので cwd → worktree の解決結果を捨てて tree とフォーカスを再計算する
+      invalidateAll();
+      focus.refresh();
+      wired.refreshTree();
+    }
+    for (const cb of repoChangedListeners) {
+      try {
+        cb(info);
+      } catch (err) {
+        logger.error("repo-changed listener threw", err);
+      }
+    }
+  }
+
   const pollers = createPollerRegistry({
     intervalMs: config.pollIntervalMs,
-    onChanged(info) {
-      hub.broadcast({
-        type: "repo-changed",
-        worktreeRoot: info.root,
-        reason: info.reason,
-        head: info.head,
-      });
-      if (info.reason !== "status") {
-        // branch / HEAD が変わったので cwd → worktree の解決結果を捨てて tree とフォーカスを再計算する
-        invalidateAll();
-        focus.refresh();
-        wired.refreshTree();
-      }
-      for (const cb of repoChangedListeners) {
-        try {
-          cb(info);
-        } catch (err) {
-          logger.error("repo-changed listener threw", err);
-        }
-      }
-    },
+    onChanged: notifyChanged,
     onStatus({ root, error, kind }) {
       if (error) logger.warn(`poller ${root}: ${error}`);
       if (kind === "missing") {
@@ -191,6 +198,8 @@ export function createRuntime(deps: RuntimeDeps) {
     pollers,
     eventsWss,
     resolver,
+    /** See `notifyChanged` above: fires the same repo-changed fan-out a poller tick would. */
+    notifyChanged,
     onRepoChanged(cb: (info: ChangedInfo) => void): () => void {
       repoChangedListeners.add(cb);
       return () => repoChangedListeners.delete(cb);
