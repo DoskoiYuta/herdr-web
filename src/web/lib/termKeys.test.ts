@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { encodeModifiedEnter, isInboxToggleKey, isMaximizeToggleKey } from "./termKeys";
+import {
+  encodeModifiedEnter,
+  encodeShiftArrowWord,
+  isInboxToggleKey,
+  isMaximizeToggleKey,
+} from "./termKeys";
 
 const base = {
   type: "keydown",
@@ -24,6 +29,31 @@ describe("encodeModifiedEnter", () => {
   test("keyup and IME composition are ignored", () => {
     expect(encodeModifiedEnter({ ...base, type: "keyup", shiftKey: true })).toBeNull();
     expect(encodeModifiedEnter({ ...base, shiftKey: true, isComposing: true })).toBeNull();
+  });
+});
+
+describe("encodeShiftArrowWord", () => {
+  const key = {
+    type: "keydown",
+    key: "ArrowLeft",
+    shiftKey: true,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+  };
+
+  test.each([
+    ["Shift+ArrowLeft", key, "\x1bb"],
+    ["Shift+ArrowRight", { ...key, key: "ArrowRight" }, "\x1bf"],
+    ["Alt も混ざると対象外", { ...key, altKey: true }, null],
+    ["Ctrl も混ざると対象外", { ...key, ctrlKey: true }, null],
+    ["Cmd も混ざると対象外", { ...key, metaKey: true }, null],
+    ["Shift 無しは対象外", { ...key, shiftKey: false }, null],
+    ["IME 変換中は対象外", { ...key, isComposing: true }, null],
+    ["ArrowUp は対象外", { ...key, key: "ArrowUp" }, null],
+    ["keyup は対象外", { ...key, type: "keyup" }, null],
+  ] as const)("%s -> %s", (_label, event, expected) => {
+    expect(encodeShiftArrowWord(event)).toBe(expected);
   });
 });
 

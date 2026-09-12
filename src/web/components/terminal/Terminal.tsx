@@ -9,7 +9,12 @@ import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { Unplug } from "lucide-react";
 import { PanelState } from "@/components/ui/status/PanelState";
-import { encodeModifiedEnter, isInboxToggleKey, isMaximizeToggleKey } from "@/lib/termKeys";
+import {
+  encodeModifiedEnter,
+  encodeShiftArrowWord,
+  isInboxToggleKey,
+  isMaximizeToggleKey,
+} from "@/lib/termKeys";
 import { connectTermSocket, sendInput, sendResize } from "@/lib/termSocket";
 import { cn } from "@/lib/utils";
 
@@ -154,6 +159,12 @@ function TerminalSession({
       if (seq !== null) {
         event.preventDefault();
         if (ws.readyState === WebSocket.OPEN) sendInput(ws, seq);
+        return false;
+      }
+      const wordSeq = encodeShiftArrowWord(event);
+      if (wordSeq !== null) {
+        event.preventDefault();
+        if (ws.readyState === WebSocket.OPEN) sendInput(ws, wordSeq);
         return false;
       }
       return shouldPassToXterm(event);

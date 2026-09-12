@@ -2,6 +2,31 @@
 // この拡張を実装していないため Shift+Enter も Enter も "\r" になり、Claude Code では
 // 改行ではなく送信になる。修飾キー付き Enter だけを CSI u 形式で送る。
 
+/**
+ * Shift+←→ を readline の単語移動（`ESC b` / `ESC f`）に変換する。対象外なら null。
+ * Ghostty の以下のキーバインドをブラウザ側で再現したもの:
+ *   keybind = shift+left=text:\x1bb
+ *   keybind = shift+right=text:\x1bf
+ * Alt+←→ が送る `ESC [ 1 ; 3 D/C` ではなく `ESC b` / `ESC f` を選ぶのは、
+ * readline の既定バインド（backward-word / forward-word）がこれで、
+ * Alt 付き矢印キーの解釈はアプリによって揺れるため。
+ */
+export function encodeShiftArrowWord(e: {
+  type: string;
+  key: string;
+  shiftKey: boolean;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  isComposing?: boolean;
+}): string | null {
+  if (e.type !== "keydown" || e.isComposing) return null;
+  if (!e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return null;
+  if (e.key === "ArrowLeft") return "\x1bb";
+  if (e.key === "ArrowRight") return "\x1bf";
+  return null;
+}
+
 /** kitty keyboard protocol の修飾子ビット + 1 */
 function kittyModifier(e: {
   shiftKey: boolean;
