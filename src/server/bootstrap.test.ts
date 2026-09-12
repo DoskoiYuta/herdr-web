@@ -222,6 +222,43 @@ describe("attachWorktreeMissingToReview", () => {
   });
 });
 
+describe("runtime.notifyChanged", () => {
+  // Without this, a caller that fires notifyChanged directly (PUT
+  // /api/fs/file's onFileWritten, since editing an already-`modified` file
+  // never changes `git status --porcelain` for the poller to notice) would
+  // have no coverage that it actually reaches either fan-out the poller's
+  // own tick uses.
+  test("reaches both hub.broadcast and onRepoChanged listeners", () => {
+    const config = v.parse(ConfigSchema, {});
+    const { runtime } = createRuntimeWithFakeHerdr(config, {
+      version: "1",
+      protocol: 20,
+      workspaces: [],
+      tabs: [],
+      panes: [],
+      agents: [],
+    });
+
+    const broadcast: unknown[] = [];
+    runtime.hub.attach({ send: (m) => broadcast.push(m) });
+    const changed: ChangedInfo[] = [];
+    const unsubscribe = runtime.onRepoChanged((info) => changed.push(info));
+
+    runtime.notifyChanged({ root: "/repo", reason: "status", head: "abc" });
+
+    expect(broadcast).toContainEqual({
+      type: "repo-changed",
+      worktreeRoot: "/repo",
+      reason: "status",
+      head: "abc",
+    });
+    expect(changed).toEqual([{ root: "/repo", reason: "status", head: "abc" }]);
+
+    unsubscribe();
+    runtime.stop();
+  });
+});
+
 const ANCHOR: Anchor = { side: "new", lines: ["x"], before: [], after: [], lineHint: 1, hash: "h" };
 
 describe("createRuntime: worktree_removed gateway event", () => {

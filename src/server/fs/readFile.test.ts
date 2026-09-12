@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -168,5 +168,30 @@ describe("readWorktreeFile", () => {
     expect(res.status).toBe(200);
     expect(asOk(res.body).editable).toBe(false);
     expect(asOk(res.body).readOnlyReason).toBe("git-internal");
+  });
+
+  // Without this, a check scoped to "segments under root" would miss a
+  // `root` pointed INSIDE `.git` (e.g. `root=<repo>/.git`) — the whole path
+  // relative to `root` never contains `.git` from that vantage point, even
+  // though the file is git's own bookkeeping.
+  test("root pointed inside .git -> not editable, reason git-internal", async () => {
+    const dir = await makeRepo();
+    const res = await readWorktreeFile(join(dir, ".git"), "config");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("git-internal");
+  });
+
+  // Without this, rename (used to save) would silently overwrite a file
+  // whose own permission bits say it shouldn't be — rename only consults the
+  // containing directory's permissions, not the target's.
+  test("file without the write bit -> not editable, reason not-writable", async () => {
+    const dir = await makeRepo();
+    await writeFile(join(dir, "r.txt"), "hello\n");
+    await chmod(join(dir, "r.txt"), 0o444);
+    const res = await readWorktreeFile(dir, "r.txt");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("not-writable");
   });
 });

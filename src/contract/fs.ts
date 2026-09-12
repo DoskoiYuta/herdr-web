@@ -48,7 +48,12 @@ export const FileQuerySchema = v.object({
 export type FileQuery = v.InferOutput<typeof FileQuerySchema>;
 
 /** Why a `text` file can't be saved back via `PUT /api/fs/file`. */
-export const ReadOnlyReasonSchema = v.picklist(["not-utf8", "symlink", "git-internal"]);
+export const ReadOnlyReasonSchema = v.picklist([
+  "not-utf8",
+  "symlink",
+  "git-internal",
+  "not-writable",
+]);
 export type ReadOnlyReason = v.InferOutput<typeof ReadOnlyReasonSchema>;
 
 export const FileResponseSchema = v.variant("kind", [
@@ -109,6 +114,13 @@ export const WriteFileErrorCodeSchema = v.picklist([
   "conflict",
   /** 422: matches `FileResponse`'s `readOnlyReason`; response also carries `reason`. */
   "read-only",
+  /** 400: `contents` contains an unpaired UTF-16 surrogate — it isn't
+   * well-formed text, so writing it would silently corrupt it. */
+  "invalid-contents",
+  /** 403: the write hit EACCES/EPERM/EROFS on disk. */
+  "permission-denied",
+  /** 500: an I/O error other than the ones above (e.g. ENOSPC). */
+  "write-failed",
 ]);
 export type WriteFileErrorCode = v.InferOutput<typeof WriteFileErrorCodeSchema>;
 

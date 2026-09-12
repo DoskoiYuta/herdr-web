@@ -489,12 +489,32 @@ describe("POST /api/fs/trash", () => {
     expect(calls).toEqual([]);
   });
 
+  // Without this, `root` pointed INSIDE `.git` (e.g. `root=<repo>/.git`)
+  // would bypass a check scoped to "segments under root" — `allowedRoots`
+  // gates by directory, not by "is this a repo root", so a client can send
+  // this and reach `.git`'s own bookkeeping (e.g. `HEAD`) via a `path` that
+  // never itself contains a `.git` segment.
+  test("root pointed inside .git -> 400 forbidden-path", async () => {
+    const dir = await makeDir();
+    await mkdir(join(dir, ".git"), { recursive: true });
+    await writeFile(join(dir, ".git", "HEAD"), "ref: refs/heads/main\n");
+    const { trasher, calls } = fakeTrasher({ ok: true });
+    const app = makeApp({ allowedRoots: [dir], trasher });
+
+    const res = await app.request(
+      `/api/fs/trash?root=${encodeURIComponent(join(dir, ".git"))}&path=${encodeURIComponent("HEAD")}`,
+      { method: "POST" },
+    );
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "forbidden-path" });
+    expect(calls).toEqual([]);
+  });
+
   test("a path outside the root -> 400 outside-repo", async () => {
     const dir = await makeDir();
     const outsideDir = await mkdtemp(join(tmpdir(), "herdr-web-fs-trash-outside-"));
     dirs.push(outsideDir);
     await writeFile(join(outsideDir, "secret.txt"), "x\n");
-    const { symlink } = await import("node:fs/promises");
     await symlink(join(outsideDir, "secret.txt"), join(dir, "link.txt"));
     const { trasher, calls } = fakeTrasher({ ok: true });
     const app = makeApp({ allowedRoots: [dir], trasher });

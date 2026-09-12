@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 import {
   chmod,
+  mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
@@ -114,6 +116,29 @@ describe("writeWorktreeFile", () => {
     expect(await readFile(join(dir, ".git", "config"), "utf8")).toBe(before);
   });
 
+  // Without this, pointing `root` itself INSIDE `.git` (e.g. `root=<repo>/.git`,
+  // `path=hooks/pre-commit`) would bypass a check scoped to "segments under
+  // root" — the whole relative path stays outside `.git` from `root`'s own
+  // point of view, even though the absolute real path is git's bookkeeping.
+  // `allowedRoots`/$HOME gates `root` by directory, not by "is this a repo
+  // root", so a client can send this.
+  test("root pointed inside .git -> 422 read-only, file unchanged", async () => {
+    const dir = await makeRepo();
+    await writeFixture(join(dir, ".git", "hooks", "pre-commit"), "#!/bin/sh\n");
+    await chmod(join(dir, ".git", "hooks", "pre-commit"), 0o755);
+
+    const res = await writeWorktreeFile(
+      join(dir, ".git"),
+      "hooks/pre-commit",
+      "#!/bin/sh\necho pwned\n",
+      gitBlobHash(Buffer.from("#!/bin/sh\n")),
+    );
+
+    expect(res.status).toBe(422);
+    expect(asError(res.body)).toEqual({ error: "read-only", reason: "git-internal" });
+    expect(await readFile(join(dir, ".git", "hooks", "pre-commit"), "utf8")).toBe("#!/bin/sh\n");
+  });
+
   test("symlink -> 422 read-only, link itself unchanged", async () => {
     const dir = await makeRepo();
     await writeFixture(join(dir, "real.txt"), "hello\n");
@@ -181,6 +206,61 @@ describe("writeWorktreeFile", () => {
     expect(mode).toBe(0o755);
   });
 
+  // Without this, a file with its write bit cleared (chmod 444) would report
+  // `editable` and accept a save that overwrites it via rename — rename
+  // doesn't consult the target's own permission bits, only the containing
+  // directory's, so the file's own read-only-ness would be silently ignored.
+  test("file without the write bit -> 422 read-only (not-writable), file unchanged", async () => {
+    const dir = await makeRepo();
+    await writeFixture(join(dir, "r.txt"), "hello\n");
+    await chmod(join(dir, "r.txt"), 0o444);
+    const hash = gitBlobHash(Buffer.from("hello\n"));
+
+    const res = await writeWorktreeFile(dir, "r.txt", "new\n", hash);
+
+    expect(res.status).toBe(422);
+    expect(asError(res.body)).toEqual({ error: "read-only", reason: "not-writable" });
+    expect(await readFile(join(dir, "r.txt"), "utf8")).toBe("hello\n");
+  });
+
+  // Without this, a lone UTF-16 surrogate in `contents` (never producible by
+  // reading a real file — GET always returns well-formed text) would be
+  // silently replaced by U+FFFD on write, corrupting content the caller
+  // didn't ask to change.
+  test("contents with a lone surrogate -> 400 invalid-contents, file unchanged", async () => {
+    const dir = await makeRepo();
+    await writeFixture(join(dir, "s.txt"), "x\n");
+    const hash = gitBlobHash(Buffer.from("x\n"));
+
+    const res = await writeWorktreeFile(dir, "s.txt", "a\ud800b\n", hash);
+
+    expect(res.status).toBe(400);
+    expect(asError(res.body).error).toBe("invalid-contents");
+    expect(await readFile(join(dir, "s.txt"), "utf8")).toBe("x\n");
+  });
+
+  // Without this, a save into a directory the process can't write to (e.g.
+  // 0555) would surface as an uncaught exception / bare 500 text response
+  // instead of a JSON error the client can recognize, and could leave a temp
+  // file behind if the failure happened after the temp write.
+  test("directory without write permission -> 403 permission-denied, no leftover temp file", async () => {
+    const dir = await makeRepo();
+    await mkdir(join(dir, "ro"));
+    await writeFixture(join(dir, "ro", "a.txt"), "hi\n");
+    await chmod(join(dir, "ro"), 0o555);
+    const hash = gitBlobHash(Buffer.from("hi\n"));
+
+    try {
+      const res = await writeWorktreeFile(dir, "ro/a.txt", "new\n", hash);
+      expect(res.status).toBe(403);
+      expect(asError(res.body).error).toBe("permission-denied");
+    } finally {
+      await chmod(join(dir, "ro"), 0o755);
+    }
+    expect(await readFile(join(dir, "ro", "a.txt"), "utf8")).toBe("hi\n");
+    expect(await readdir(join(dir, "ro"))).toEqual(["a.txt"]);
+  });
+
   // Without this, two racing saves of the same file could both read the same
   // pre-write content, both pass the baseHash check, and both "succeed" —
   // silently discarding whichever write lost the race, with no 409 to warn
@@ -197,6 +277,11 @@ describe("writeWorktreeFile", () => {
 
     const statuses = [first.status, second.status].sort();
     expect(statuses).toEqual([200, 409]);
+    // Without this, a lock that serializes status codes but not the actual
+    // writes could still let both bodies race onto disk, leaving content
+    // that matches neither request the caller was told about.
+    const winner = first.status === 200 ? "from first\n" : "from second\n";
+    expect(await readFile(join(dir, "a.txt"), "utf8")).toBe(winner);
   });
 
   // Without this, a lock keyed by the raw `root`/`path` strings would let two
@@ -217,5 +302,7 @@ describe("writeWorktreeFile", () => {
 
     const statuses = [first.status, second.status].sort();
     expect(statuses).toEqual([200, 409]);
+    const winner = first.status === 200 ? "from first\n" : "from second\n";
+    expect(await readFile(join(dir, "a.txt"), "utf8")).toBe(winner);
   });
 });

@@ -163,6 +163,16 @@ export class WriteFileTooLargeError extends Error {
   }
 }
 
+/** Thrown by `fsApi.writeFile` on a disk-level permission failure (HTTP 403
+ * `permission-denied` — EACCES/EPERM/EROFS), distinct from the "not in
+ * allowedRoots" 403 (which never reaches this far). */
+export class WritePermissionError extends Error {
+  constructor() {
+    super("権限がないため保存できません");
+    this.name = "WritePermissionError";
+  }
+}
+
 /** Thrown by `askApi.create` when the repo/worktree already has the max
  * number of open ask sessions (HTTP 409 `limit_reached`). */
 export class AskLimitError extends Error {
@@ -368,7 +378,11 @@ export const fsApi = {
   /** Saves an edit back to a worktree file (`baseHash` from the `file` read
    * this edit started from). Throws `WriteConflictError` on HTTP 409,
    * `ReadOnlyFileError` on HTTP 422, `WriteFileTooLargeError` on HTTP 413,
-   * a generic `Error` otherwise. */
+   * `WritePermissionError` on a disk-level HTTP 403 (`allowedRoots`
+   * rejection is a plain `Error`, since the UI shouldn't let that happen),
+   * a generic `Error` otherwise (including HTTP 400 `invalid-contents` and
+   * HTTP 500 `write-failed`, neither of which the UI can offer a specific
+   * recovery for yet). */
   async writeFile(params: { root: string; path: string; contents: string; baseHash: string }) {
     const res = await client.api.fs.file.$put({ json: params });
     if (res.status === 409) {
@@ -380,6 +394,10 @@ export const fsApi = {
       throw new ReadOnlyFileError(body.reason);
     }
     if (res.status === 413) throw new WriteFileTooLargeError();
+    if (res.status === 403) {
+      const body = (await res.json()) as { error: string };
+      if (body.error === "permission-denied") throw new WritePermissionError();
+    }
     if (!res.ok) throw new Error(`PUT /api/fs/file failed: ${res.status}`);
     return v.parse(WriteFileResponseSchema, await res.json());
   },

@@ -1,4 +1,4 @@
-import { lstat, readFile as fsReadFile, realpath, stat } from "node:fs/promises";
+import { access, constants, lstat, readFile as fsReadFile, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { FileErrorCode, FileResponse, ReadOnlyReason } from "../../contract/fs";
 import { gitBlobHash } from "../git/blobHash";
@@ -65,6 +65,15 @@ function isValidUtf8(buf: Buffer): boolean {
   return Buffer.from(decoded, "utf8").equals(buf);
 }
 
+async function isWritable(real: string): Promise<boolean> {
+  try {
+    await access(real, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Why a write back to `path` (`PUT /api/fs/file`) would be refused, if any.
  * `real` is `path`'s already-resolved, symlink-followed absolute path (from
@@ -79,10 +88,10 @@ export async function readOnlyReason(
   real: string,
   buf: Buffer,
 ): Promise<ReadOnlyReason | null> {
-  const realRoot = await realpath(root).catch(() => root);
-  if (isGitInternalPath(realRoot, real)) return "git-internal";
+  if (isGitInternalPath(real)) return "git-internal";
   const st = await lstat(join(root, path));
   if (st.isSymbolicLink()) return "symlink";
+  if (!(await isWritable(real))) return "not-writable";
   if (!isValidUtf8(buf)) return "not-utf8";
   return null;
 }

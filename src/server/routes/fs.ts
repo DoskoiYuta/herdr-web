@@ -1,6 +1,5 @@
 import { vValidator } from "@hono/valibot-validator";
 import { Hono } from "hono";
-import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import {
   FileQuerySchema,
@@ -188,10 +187,9 @@ export function fsRoutes(deps: FsRoutesDeps = {}) {
       }
 
       // Checked against the resolved real path, not the raw `path`, so a
-      // `.git`-into-symlink or a differently-cased `.GIT` can't slip past
-      // (see gitPath.ts).
-      const realRoot = await realpath(root).catch(() => root);
-      if (isGitInternalPath(realRoot, inside.real)) {
+      // `.git`-into-symlink, a differently-cased `.GIT`, or a `root` pointed
+      // inside `.git` itself can't slip past (see gitPath.ts).
+      if (isGitInternalPath(inside.real)) {
         return c.json({ error: "forbidden-path" as const }, 400);
       }
 
