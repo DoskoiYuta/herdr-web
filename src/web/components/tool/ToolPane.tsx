@@ -123,7 +123,9 @@ export function ToolPane() {
   // §10.3: タブが実際に見る root/repoKey はサブリポジトリ選択中はそのサブ
   // リポジトリのもの。pane の送信先（agentPanesAt 系）や worktree セレクタは
   // 常にトップの worktreeRoot/repoKey を使う — pane はサブリポジトリとは
-  // 無関係にトップの worktree で開かれる。
+  // 無関係にトップの worktree で開かれる。Notes はリポジトリ単位の永続化
+  // なので Select（サブリポジトリ選択）に追従せず、常にトップの repoKey
+  // （`repoKey` そのもの、`hw notes list` と同じ）を使う。
   const effectiveRoot = subRepo?.root ?? worktreeRoot;
   const effectiveRepoKey = subRepo?.repoKey ?? repoKey;
   const tab: ToolTab = normalizeTab(params.tab);
@@ -560,8 +562,8 @@ export function ToolPane() {
 
         <TabsContent value="notes" className="min-h-0 flex-1 overflow-hidden">
           <NotesPanel
-            key={resolvedRepoKey ?? "none"}
-            repoKey={resolvedRepoKey}
+            key={repoKey ?? "none"}
+            repoKey={repoKey}
             selectedId={notesSelectedId}
             onSelectId={handleSelectNote}
           />
