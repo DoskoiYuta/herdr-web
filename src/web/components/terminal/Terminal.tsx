@@ -9,6 +9,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Unplug } from "lucide-react";
 import { PanelState } from "@/components/ui/status/PanelState";
+import { DEFAULT_TERMINAL_KEYBINDS } from "../../../contract/config";
 import {
   compileKeybinds,
   encodeModifiedEnter,
@@ -37,7 +38,6 @@ const DEFAULT_FONT_FAMILY =
   '"BitstromWera Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", "FiraCode Nerd Font", "Symbols Nerd Font Mono", Menlo, monospace';
 const DEFAULT_FONT_SIZE = 13;
 const DEFAULT_LINE_HEIGHT = 1.0;
-const DEFAULT_KEYBINDS: Record<string, string> = { "shift+left": "\x1bb", "shift+right": "\x1bf" };
 
 // ブラウザ標準のショートカットと衝突しうるキー。xterm 側へ渡した上で
 // ブラウザの既定動作（新規タブ/ウィンドウを開く等）は止める。
@@ -69,7 +69,7 @@ export function Terminal({
   fontFamily = DEFAULT_FONT_FAMILY,
   fontSize = DEFAULT_FONT_SIZE,
   lineHeight = DEFAULT_LINE_HEIGHT,
-  keybinds = DEFAULT_KEYBINDS,
+  keybinds = DEFAULT_TERMINAL_KEYBINDS,
   onToggleMaximize,
   onToggleInbox,
 }: TerminalProps) {

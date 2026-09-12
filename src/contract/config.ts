@@ -1,5 +1,11 @@
 import * as v from "valibot";
 
+/** Ghostty の単語移動相当を再現する既定の keybinds。 */
+export const DEFAULT_TERMINAL_KEYBINDS: Record<string, string> = {
+  "shift+left": "\x1bb",
+  "shift+right": "\x1bf",
+};
+
 /** ~/.config/herdr-web/config.json の形。欠けたフィールドは既定値で埋める。 */
 export const ConfigSchema = v.object({
   port: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(65535)), 8080),
@@ -26,10 +32,7 @@ export const ConfigSchema = v.object({
       lineHeight: v.optional(v.pipe(v.number(), v.minValue(0.8), v.maxValue(2)), 1.0),
       /** Ghostty 風の `[mod+]...key` 書式（README「設定」参照）。不正なキーや
        * modifier 無しの英数字 1 文字は起動時に警告して落とす（server/config.ts）。 */
-      keybinds: v.optional(v.record(v.string(), v.string()), {
-        "shift+left": "\x1bb",
-        "shift+right": "\x1bf",
-      }),
+      keybinds: v.optional(v.record(v.string(), v.string()), DEFAULT_TERMINAL_KEYBINDS),
     }),
     {},
   ),
