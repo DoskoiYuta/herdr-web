@@ -210,6 +210,12 @@ vi.mock("./MarkdownView", () => ({
   ),
 }));
 
+vi.mock("./HtmlFileView", () => ({
+  HtmlFileView: ({ contents }: { contents: string }) => (
+    <div data-testid="html-file-view-stub">{contents}</div>
+  ),
+}));
+
 vi.mock("./CodeFileView", () => ({
   CodeFileView: ({
     path,
@@ -316,6 +322,15 @@ test("selecting a .md file loads and routes it to MarkdownView", async () => {
   (await screen.findByText("a.md")).click();
   expect(await screen.findByTestId("markdown-view-stub")).toHaveTextContent("# hi");
   expect(fileMock).toHaveBeenCalledWith({ root: "/repo", path: "a.md" });
+});
+
+test("selecting a .html file loads and routes it to HtmlFileView", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.html", kind: "file" }]));
+  fileMock.mockResolvedValue({ kind: "text", path: "a.html", contents: "<h1>hi</h1>", size: 11 });
+  render(renderPanel());
+  (await screen.findByText("a.html")).click();
+  expect(await screen.findByTestId("html-file-view-stub")).toHaveTextContent("<h1>hi</h1>");
+  expect(fileMock).toHaveBeenCalledWith({ root: "/repo", path: "a.html" });
 });
 
 test("switching the markdown viewer to ソース routes it to CodeFileView instead", async () => {
