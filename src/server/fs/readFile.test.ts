@@ -1,13 +1,29 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "bun:test";
 import { readWorktreeFile } from "./readFile";
 
-function asOk(body: unknown): { kind: string; path: string; size?: number; contents?: string } {
-  return body as { kind: string; path: string; size?: number; contents?: string };
+function asOk(body: unknown): {
+  kind: string;
+  path: string;
+  size?: number;
+  contents?: string;
+  hash?: string;
+  editable?: boolean;
+  readOnlyReason?: string;
+} {
+  return body as {
+    kind: string;
+    path: string;
+    size?: number;
+    contents?: string;
+    hash?: string;
+    editable?: boolean;
+    readOnlyReason?: string;
+  };
 }
 function asError(body: unknown): { error: string } {
   return body as { error: string };
@@ -93,5 +109,89 @@ describe("readWorktreeFile", () => {
     const res = await readWorktreeFile(dir, "nope.txt");
     expect(res.status).toBe(404);
     expect(asError(res.body).error).toBe("not-found");
+  });
+
+  // Without this, Files and Diff would compute different hashes for the same
+  // bytes, so a save's baseHash could never match what Diff shows as HEAD.
+  // Compared against `git hash-object` itself (not `gitBlobHash` again) so
+  // this actually checks Files and Diff agree on a hash for the same
+  // content, rather than just re-deriving readWorktreeFile's own formula.
+  test("text file -> hash matches `git hash-object`", async () => {
+    const dir = await makeRepo();
+    await writeFile(join(dir, "a.txt"), "hello world\n");
+    const { stdout } = await execFileP("git", ["hash-object", "a.txt"], { cwd: dir });
+
+    const res = await readWorktreeFile(dir, "a.txt");
+
+    expect(asOk(res.body).hash).toBe(stdout.trim());
+  });
+
+  test("plain text file -> editable, no readOnlyReason", async () => {
+    const dir = await makeRepo();
+    await writeFile(join(dir, "a.txt"), "hello\n");
+    const res = await readWorktreeFile(dir, "a.txt");
+    expect(asOk(res.body).editable).toBe(true);
+    expect(asOk(res.body).readOnlyReason).toBeUndefined();
+  });
+
+  // Without this, saving a symlink target as if it were the link's own
+  // contents would silently replace the symlink with a plain file on write.
+  test("symlink whose target is inside the repo -> not editable, reason symlink", async () => {
+    const dir = await makeRepo();
+    await writeFile(join(dir, "real.txt"), "hello\n");
+    await symlink(join(dir, "real.txt"), join(dir, "link.txt"));
+
+    const res = await readWorktreeFile(dir, "link.txt");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("symlink");
+  });
+
+  // Without this, editing and saving a non-UTF-8 file (already silently
+  // mis-decoded into a JS string) would re-encode and corrupt its bytes.
+  test("non-UTF-8 bytes -> not editable, reason not-utf8", async () => {
+    const dir = await makeRepo();
+    // A lone continuation byte is invalid UTF-8 on its own.
+    await writeFile(join(dir, "latin1.txt"), Buffer.from([0x68, 0x69, 0xe9]));
+    const res = await readWorktreeFile(dir, "latin1.txt");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).kind).toBe("text");
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("not-utf8");
+  });
+
+  // Without this, editing tracked config under .git (e.g. a hook) through
+  // the file viewer could desync the worktree from git's own bookkeeping.
+  test(".git/config -> not editable, reason git-internal", async () => {
+    const dir = await makeRepo();
+    const res = await readWorktreeFile(dir, ".git/config");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("git-internal");
+  });
+
+  // Without this, a check scoped to "segments under root" would miss a
+  // `root` pointed INSIDE `.git` (e.g. `root=<repo>/.git`) — the whole path
+  // relative to `root` never contains `.git` from that vantage point, even
+  // though the file is git's own bookkeeping.
+  test("root pointed inside .git -> not editable, reason git-internal", async () => {
+    const dir = await makeRepo();
+    const res = await readWorktreeFile(join(dir, ".git"), "config");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("git-internal");
+  });
+
+  // Without this, rename (used to save) would silently overwrite a file
+  // whose own permission bits say it shouldn't be — rename only consults the
+  // containing directory's permissions, not the target's.
+  test("file without the write bit -> not editable, reason not-writable", async () => {
+    const dir = await makeRepo();
+    await writeFile(join(dir, "r.txt"), "hello\n");
+    await chmod(join(dir, "r.txt"), 0o444);
+    const res = await readWorktreeFile(dir, "r.txt");
+    expect(res.status).toBe(200);
+    expect(asOk(res.body).editable).toBe(false);
+    expect(asOk(res.body).readOnlyReason).toBe("not-writable");
   });
 });

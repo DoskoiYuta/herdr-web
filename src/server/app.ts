@@ -5,7 +5,7 @@ import type { FetchRunner } from "./git/fetch";
 import { askRoutes, type AskRoutesDeps } from "./routes/ask";
 import { decisionRoutes, type DecisionRoutesDeps } from "./routes/decision";
 import { dockerRoutes, type DockerRoutesDeps } from "./routes/docker";
-import { fsRoutes } from "./routes/fs";
+import { fsRoutes, type FsRoutesDeps } from "./routes/fs";
 import { gitRoutes } from "./routes/git";
 import { herdrRoutes, type HerdrRoutesDeps } from "./routes/herdr";
 import { hwRoutes, type HwRoutesDeps } from "./routes/hw";
@@ -23,6 +23,9 @@ export type AppDeps = {
   version: string;
   herdrStatus: () => { connected: boolean; protocol: number | null };
   git?: { allowedRoots?: string[]; fetchRunner?: FetchRunner };
+  /** Merged with `git`'s `allowedRoots` for `/api/fs` (both are the same
+   * "which worktree roots may this instance touch" gate). */
+  fs?: Pick<FsRoutesDeps, "trasher" | "onFileWritten">;
   clientConfig: () => ClientConfig;
   review: ReviewRoutesDeps;
   repo: RepoRoutesDeps;
@@ -44,7 +47,7 @@ export function createApp(deps: AppDeps) {
     })
     .get("/api/config", (c) => c.json(deps.clientConfig()))
     .route("/api/git", gitRoutes(deps.git))
-    .route("/api/fs", fsRoutes(deps.git))
+    .route("/api/fs", fsRoutes({ allowedRoots: deps.git?.allowedRoots, ...deps.fs }))
     .route("/api/review", reviewRoutes(deps.review))
     .route("/api/repo", repoRoutes(deps.repo))
     .route("/api/hw", hwRoutes(deps.hw))

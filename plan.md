@@ -318,7 +318,7 @@ src/cli                      → contract のみ
 
 ### F9. ファイルビューア
 
-- F9-1. 読み取り専用。書き込み・保存操作は持たない（将来拡張として編集を検討する。§15）。
+- F9-1. UI は読み取り専用（保存 UI は無い。§15）。サーバー側には `PUT /api/fs/file` があり、既存ファイルの上書き保存のみ受け付ける（新規作成はしない）。`baseHash`（`GET /api/fs/file` の `hash`、diff 側と同じ git blob hash）が保存直前のディスク上の内容と一致しない場合は 409、`.git` 配下 / symlink / 非 UTF-8（`GET` の `editable`/`readOnlyReason` と同じ判定）は 422 で拒否する。
 - F9-2. ツリーは git を経由しない素の `readdir`（`GET /api/fs/ls?root=&dir=`）で、ディレクトリが展開されたときにその 1 階層分だけを遅延取得する。ドットファイルや `.git` も含め `ls -a` が見せるものはすべて列挙し、上限は無い。シンボリックリンクは種別 `symlink` として表示するだけで辿らない。ツリー描画は `@pierre/trees`。
 - F9-3. `git status --porcelain` 由来の変更状態（追加・変更・削除・リネーム・未追跡）を `GET /api/git/status?repo=` から取得し、ツリーの行装飾としてのみ表示する（一覧そのものには影響しない）。
 - F9-4. ファイルを選択すると単一ファイルの内容を表示する。`.md` / `.markdown` は `@wysimark/react` でプレビューする（編集機能を持つエディタを選んだのは、将来 F9-1 を解除して保存に対応する計画があるため。v3 に `readOnly` プロパティが無いため、DOM 上で `contenteditable` を無効化して読み取り専用にする）。それ以外は `@pierre/diffs` の `File` でシンタックスハイライト表示する。画像 / PDF は `GET /api/fs/raw` の生バイトを `<img>` / `<iframe>` で直接プレビューする。
@@ -638,6 +638,6 @@ herdr の workspace（メインチェックアウト）で claude を起動
 - サイドバーからの workspace / worktree 操作
 - worktree 横断比較
 - git の書き込み操作
-- ファイル編集（Files タブからの保存）
+- ファイル編集（Files タブからの保存 UI。サーバー API（`PUT /api/fs/file`）は実装済み、F9-1）
 - Docker タブの操作（stop / restart）と、compose / devcontainer ラベルを持たないコンテナの表示（bind mount の source で紐づける。Docker Desktop for Mac は source を `/host_mnt/...` で報告する）
 - Process タブからの kill / シグナル送信、herdr pane との対応付け（`pane.process_info`）

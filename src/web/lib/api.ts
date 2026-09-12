@@ -17,10 +17,12 @@ import {
 import {
   FileResponseSchema,
   LsResponseSchema,
+  type ReadOnlyReason,
   type StatResponse,
   StatResponseSchema,
   TrashResponseSchema,
   UploadResponseSchema,
+  WriteFileResponseSchema,
 } from "../../contract/fs";
 import { DockerContainersResponseSchema } from "../../contract/docker";
 import { InboxResponseSchema } from "../../contract/inbox";
@@ -127,6 +129,47 @@ export class TrashUnavailableError extends Error {
   constructor() {
     super("この環境ではゴミ箱に移動できません");
     this.name = "TrashUnavailableError";
+  }
+}
+
+/** Thrown by `fsApi.writeFile` when the file changed on disk since the
+ * `baseHash` was read (HTTP 409). `hash` is the current on-disk hash, so a
+ * caller can re-fetch and decide whether to retry. */
+export class WriteConflictError extends Error {
+  hash: string;
+  constructor(hash: string) {
+    super("保存に失敗しました（ファイルが外部で変更されています）");
+    this.name = "WriteConflictError";
+    this.hash = hash;
+  }
+}
+
+/** Thrown by `fsApi.writeFile` when the file can't be saved back (HTTP 422) —
+ * matches `FileResponse`'s `readOnlyReason` for the same file. */
+export class ReadOnlyFileError extends Error {
+  reason: ReadOnlyReason;
+  constructor(reason: ReadOnlyReason) {
+    super("このファイルは保存できません");
+    this.name = "ReadOnlyFileError";
+    this.reason = reason;
+  }
+}
+
+/** Thrown by `fsApi.writeFile` when `contents` exceeds the save cap (HTTP 413). */
+export class WriteFileTooLargeError extends Error {
+  constructor() {
+    super("ファイルが大きすぎて保存できません");
+    this.name = "WriteFileTooLargeError";
+  }
+}
+
+/** Thrown by `fsApi.writeFile` on a disk-level permission failure (HTTP 403
+ * `permission-denied` — EACCES/EPERM/EROFS), distinct from the "not in
+ * allowedRoots" 403 (which never reaches this far). */
+export class WritePermissionError extends Error {
+  constructor() {
+    super("権限がないため保存できません");
+    this.name = "WritePermissionError";
   }
 }
 
@@ -330,6 +373,33 @@ export const fsApi = {
     if (res.status === 501) throw new TrashUnavailableError();
     if (!res.ok) throw new Error(`POST /api/fs/trash failed: ${res.status}`);
     return v.parse(TrashResponseSchema, await res.json());
+  },
+
+  /** Saves an edit back to a worktree file (`baseHash` from the `file` read
+   * this edit started from). Throws `WriteConflictError` on HTTP 409,
+   * `ReadOnlyFileError` on HTTP 422, `WriteFileTooLargeError` on HTTP 413,
+   * `WritePermissionError` on a disk-level HTTP 403 (`allowedRoots`
+   * rejection is a plain `Error`, since the UI shouldn't let that happen),
+   * a generic `Error` otherwise (including HTTP 400 `invalid-contents` and
+   * HTTP 500 `write-failed`, neither of which the UI can offer a specific
+   * recovery for yet). */
+  async writeFile(params: { root: string; path: string; contents: string; baseHash: string }) {
+    const res = await client.api.fs.file.$put({ json: params });
+    if (res.status === 409) {
+      const body = (await res.json()) as { hash: string };
+      throw new WriteConflictError(body.hash);
+    }
+    if (res.status === 422) {
+      const body = (await res.json()) as { reason: ReadOnlyReason };
+      throw new ReadOnlyFileError(body.reason);
+    }
+    if (res.status === 413) throw new WriteFileTooLargeError();
+    if (res.status === 403) {
+      const body = (await res.json()) as { error: string };
+      if (body.error === "permission-denied") throw new WritePermissionError();
+    }
+    if (!res.ok) throw new Error(`PUT /api/fs/file failed: ${res.status}`);
+    return v.parse(WriteFileResponseSchema, await res.json());
   },
 };
 

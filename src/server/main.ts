@@ -157,6 +157,14 @@ const api = createApp({
   version: "0.1.0",
   herdrStatus: runtime.herdrStatus,
   git: { allowedRoots: config.allowedRoots, fetchRunner },
+  fs: {
+    onFileWritten: ({ root }) => {
+      void review.gitHistory
+        .headOf(root)
+        .then((head) => runtime.notifyChanged({ root, reason: "status", head }))
+        .catch((err) => console.error("notifyChanged after file write failed", err));
+    },
+  },
   clientConfig: () => ({
     terminal: config.terminal,
     graphInitialCommits: config.graphInitialCommits,
