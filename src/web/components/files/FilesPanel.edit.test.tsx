@@ -435,6 +435,25 @@ test("Cmd+S は編集モードでなければ何もしない", async () => {
   expect(writeFileMock).not.toHaveBeenCalled();
 });
 
+// N1: 確認ダイアログの選択肢と Cmd+S の保存が競合してはいけない。
+test("Cmd+S は確認ダイアログが開いている間は保存しない", async () => {
+  fileMock.mockResolvedValue(textFile());
+  const { container } = render(renderPanel().element);
+  await openFile();
+  fireEvent.click(await editToggle());
+  fireEvent.change(await screen.findByLabelText("code-editor"), {
+    target: { value: "const x = 2;" },
+  });
+
+  const editToggleButton = await screen.findByRole("button", { name: "編集 ON" });
+  fireEvent.click(editToggleButton);
+  await screen.findByText("保存していない変更があります");
+
+  const root = container.querySelector('[class*="flex h-full min-h-0 flex-col"]') ?? container;
+  fireEvent.keyDown(root, { key: "s", metaKey: true });
+  expect(writeFileMock).not.toHaveBeenCalled();
+});
+
 // M1: pierre の Editor は `contents` prop の差し替えだけでは内部の
 // TextDocument を作り直さない。表示は新内容でも編集用の文書が旧 draft の
 // ままだと、次の入力が「旧文書 + その1文字」を返し、新しい baseHash と

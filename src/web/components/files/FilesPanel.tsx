@@ -945,7 +945,19 @@ export function FilesPanel({
       onKeyDown={(e) => {
         if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
         if (!editingNow || !currentKey) return;
+        // N1: 確認ダイアログが開いている間はブラウザの既定動作だけ抑止し、
+        // 保存はしない — ダイアログの選択肢（破棄・上書き保存等）と Cmd+S
+        // の保存が競合しないようにする。
+        const dialogOpen =
+          pendingEditOn !== null ||
+          turnOffConfirmKey !== null ||
+          closeConfirmPath !== null ||
+          closeAllConfirm !== null ||
+          closeOthersConfirm !== null ||
+          conflict !== null ||
+          trashTarget !== null;
         e.preventDefault();
+        if (dialogOpen) return;
         if (isDirty(currentEdit) && textData?.editable) void saveEdit(currentKey);
       }}
     >
