@@ -29,10 +29,14 @@ export function HtmlFileView({ contents }: { contents: string }) {
           スクリプトを許可
         </Button>
       </div>
+      {/* Changing `sandbox` on a live iframe doesn't take effect until the
+          document reloads, so the key forces a remount when the toggle
+          flips. */}
       <iframe
+        key={allowScripts ? "scripts" : "no-scripts"}
         srcDoc={buildSrcDoc(contents)}
         sandbox={allowScripts ? "allow-scripts" : ""}
-        className="h-full w-full bg-white"
+        className="min-h-0 w-full flex-1 bg-white"
         title="HTML preview"
       />
     </div>
