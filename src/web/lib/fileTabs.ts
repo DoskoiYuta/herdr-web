@@ -58,11 +58,23 @@ export const MAX_TABS_PER_REPO = 50;
 /** クリックのたびに 1 タブ増える（プレビュータブ方式は採らない）。既に開いて
  * いれば末尾に足さず、そのままアクティブにする。上限を超えたら、開いた順が
  * 最も古いタブを 1 つ落とす — 新しく開く（=これからアクティブになる）タブは
- * 末尾に追加されるため、この操作で落ちることはない。 */
-export function openTab(state: FileTabsState, path: string): FileTabsState {
+ * 末尾に追加されるため、この操作で落ちることはない。`isDirty` が与えられた
+ * ときは、保存していない下書きを持つタブは（可能な限り）追い出し候補から
+ * 除く — 未保存の編集を画面から見えなくして事実上気付けなくするのを避ける
+ * ため。下書き自体は fileDrafts.ts 側に残るので、全タブが dirty で已む
+ * なく追い出しても内容は失われない。 */
+export function openTab(
+  state: FileTabsState,
+  path: string,
+  isDirty: (path: string) => boolean = () => false,
+): FileTabsState {
   if (state.paths.includes(path)) return { ...state, active: path };
   const paths = [...state.paths, path];
-  if (paths.length > MAX_TABS_PER_REPO) paths.shift();
+  if (paths.length > MAX_TABS_PER_REPO) {
+    const existing = paths.slice(0, -1);
+    const evictIdx = existing.findIndex((p) => !isDirty(p));
+    paths.splice(evictIdx === -1 ? 0 : evictIdx, 1);
+  }
   return { paths, active: path };
 }
 
@@ -108,7 +120,7 @@ export function setActiveTab(state: FileTabsState, path: string): FileTabsState 
 // ---------------------------------------------------------------------------
 
 export interface FileTabsActions {
-  open(path: string): void;
+  open(path: string, isDirty?: (path: string) => boolean): void;
   close(path: string): void;
   closeOthers(path: string): void;
   closeAll(): void;
@@ -132,7 +144,11 @@ export function useFileTabs(repoKey: string | null): [FileTabsState, FileTabsAct
   );
 
   const actions: FileTabsActions = {
-    open: useCallback((path: string) => update((s) => openTab(s, path)), [update]),
+    open: useCallback(
+      (path: string, isDirty?: (path: string) => boolean) =>
+        update((s) => openTab(s, path, isDirty)),
+      [update],
+    ),
     close: useCallback((path: string) => update((s) => closeTab(s, path)), [update]),
     closeOthers: useCallback((path: string) => update((s) => closeOtherTabs(s, path)), [update]),
     closeAll: useCallback(() => update(() => closeAllTabs()), [update]),
