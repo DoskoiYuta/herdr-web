@@ -57,6 +57,13 @@
       "when": 1788919755833,
       "tag": "0007_old_tomorrow_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789208393258,
+      "tag": "0008_fine_gambit",
+      "breakpoints": true
     }
   ]
 }

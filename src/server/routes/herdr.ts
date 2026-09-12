@@ -9,11 +9,14 @@ import {
   WorkspaceSelectionPutBodySchema,
   WorkspaceSelectionQuerySchema,
   WorkspaceRenameBodySchema,
+  WorkspaceToolTabPutBodySchema,
   type PanePreviewResponse,
   type WorkspaceCreateResponse,
   type WorkspaceSelectionError,
   type WorkspaceSelectionGetResponse,
   type WorkspaceSelectionPutResponse,
+  type WorkspaceToolTabError,
+  type WorkspaceToolTabPutResponse,
 } from "../../contract/herdr-ops";
 import type { HerdrGateway } from "../herdr/gateway";
 import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
@@ -273,6 +276,25 @@ export function herdrRoutes(deps: HerdrRoutesDeps) {
         const result = await deps.state.clearSelection(id, repoKey);
         if (!result.ok) return c.json({ error: "persist_failed" as const }, 500);
         return c.json({ ok: true as const }, 200);
+      },
+    )
+    .put(
+      "/workspace/:id/tool-tab",
+      vValidator("param", WorkspaceIdParamSchema),
+      vValidator("json", WorkspaceToolTabPutBodySchema),
+      async (c) => {
+        const { id: workspaceId } = c.req.valid("param");
+        const { tab } = c.req.valid("json");
+
+        if (!deps.state.get().workspaces.has(workspaceId)) {
+          const body: WorkspaceToolTabError = { error: "unknown_workspace" };
+          return c.json(body, 400);
+        }
+
+        const result = await deps.state.setToolTab(workspaceId, tab);
+        if (!result.ok) return c.json({ error: "persist_failed" as const }, 500);
+        const body: WorkspaceToolTabPutResponse = { toolTab: result.toolTab };
+        return c.json(body, 200);
       },
     );
 

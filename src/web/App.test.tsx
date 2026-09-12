@@ -77,6 +77,11 @@ vi.mock("@/lib/api", () => ({
   askApi: {
     counts: vi.fn(async () => ({ unresolved: 0, byPath: {}, replied: 0 })),
   },
+  herdrApi: {
+    setToolTab: vi.fn(async (workspaceId: string, body: { tab: string }) => ({
+      toolTab: { workspaceId, tab: body.tab, updatedAt: new Date().toISOString() },
+    })),
+  },
   inboxApi: {
     get: (params: { worktree?: string }) => inboxGetMock(params),
   },
@@ -173,6 +178,7 @@ function focusMessage(overrides: Partial<Record<string, unknown>> = {}) {
     agentSession: { source: "herdr:claude", agent: "claude", kind: "id", value: "sess-1" },
     subRepo: null,
     selectionIsDefault: true,
+    toolTab: null,
     ...overrides,
   } as ServerEventMessage;
 }

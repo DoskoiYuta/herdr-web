@@ -8,6 +8,7 @@ import { AskEventSchema } from "./ask";
 import { DecisionEventSchema } from "./decision";
 import { AgentSessionInfoSchema, AgentStatusSchema } from "./herdr";
 import { ReviewSchema } from "./review";
+import { ToolTabSchema } from "./tool-tab";
 
 // ---------------------------------------------------------------------------
 // Sidebar tree row types (plan.md §6.6 / §9.2 Repo[])
@@ -130,6 +131,8 @@ export const FocusMessageSchema = v.object({
   subRepo: v.nullable(FocusSubRepoSchema),
   /** True when no selection is saved for (workspace, repoKey) and `worktreeRoot` is the cwd's worktree. */
   selectionIsDefault: v.boolean(),
+  /** Saved ツール領域タブ for the focused workspace, or null if nothing is saved. */
+  toolTab: v.nullable(ToolTabSchema),
   agent: v.nullable(v.string()),
   agentStatus: v.nullable(AgentStatusSchema),
   agentSession: v.nullable(AgentSessionInfoSchema),

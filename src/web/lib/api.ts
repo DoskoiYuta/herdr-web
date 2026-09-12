@@ -42,6 +42,8 @@ import {
   type WorkspaceSelectionPutBody,
   WorkspaceSelectionGetResponseSchema,
   WorkspaceSelectionPutResponseSchema,
+  type WorkspaceToolTabPutBody,
+  WorkspaceToolTabPutResponseSchema,
 } from "../../contract/herdr-ops";
 import {
   type AskReplyRequest,
@@ -594,6 +596,16 @@ export const herdrApi = {
     });
     if (!res.ok) throw new Error(`DELETE /api/herdr/workspace/:id/selection failed: ${res.status}`);
     return (await res.json()) as { ok: true };
+  },
+
+  /** Throws on a non-2xx response (400 = unknown workspace / invalid tab, 500 = persist_failed). */
+  async setToolTab(workspaceId: string, body: WorkspaceToolTabPutBody) {
+    const res = await client.api.herdr.workspace[":id"]["tool-tab"].$put({
+      param: { id: workspaceId },
+      json: body,
+    });
+    if (!res.ok) throw new Error(`PUT /api/herdr/workspace/:id/tool-tab failed: ${res.status}`);
+    return v.parse(WorkspaceToolTabPutResponseSchema, await res.json());
   },
 };
 

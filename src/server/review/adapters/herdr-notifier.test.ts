@@ -120,6 +120,7 @@ describe("createHerdrNotifier", () => {
         focusedWorkspaceId: null,
         focusedTabId: null,
         selections: new Map(),
+        toolTabs: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
@@ -133,6 +134,11 @@ describe("createHerdrNotifier", () => {
         subWorktreeRoot: string | null;
       }) => ({ ok: true as const, selection: { ...sel, updatedAt: "t" } }),
       clearSelection: async () => ({ ok: true as const }),
+      getToolTab: () => null,
+      setToolTab: async () => ({
+        ok: true as const,
+        toolTab: { workspaceId: "", tab: "diff" as const, updatedAt: "" },
+      }),
     };
     // "/repo" (the review's worktreeRoot) and "/repo-feature" (the pane's cwd)
     // are different worktrees of the same repository (same commonDir).
@@ -198,6 +204,7 @@ describe("createHerdrNotifier", () => {
         focusedWorkspaceId: null,
         focusedTabId: null,
         selections: new Map(),
+        toolTabs: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
@@ -211,6 +218,11 @@ describe("createHerdrNotifier", () => {
         subWorktreeRoot: string | null;
       }) => ({ ok: true as const, selection: { ...sel, updatedAt: "t" } }),
       clearSelection: async () => ({ ok: true as const }),
+      getToolTab: () => null,
+      setToolTab: async () => ({
+        ok: true as const,
+        toolTab: { workspaceId: "", tab: "diff" as const, updatedAt: "" },
+      }),
     };
     const notifier = createHerdrNotifier({
       state,
@@ -338,6 +350,7 @@ describe("createHerdrNotifier", () => {
         focusedWorkspaceId: null,
         focusedTabId: null,
         selections: new Map(),
+        toolTabs: new Map(),
       }),
       onChange: () => () => {},
       patchPane: () => {},
@@ -351,6 +364,11 @@ describe("createHerdrNotifier", () => {
         subWorktreeRoot: string | null;
       }) => ({ ok: true as const, selection: { ...sel, updatedAt: "t" } }),
       clearSelection: async () => ({ ok: true as const }),
+      getToolTab: () => null,
+      setToolTab: async () => ({
+        ok: true as const,
+        toolTab: { workspaceId: "", tab: "diff" as const, updatedAt: "" },
+      }),
     };
     const gateway = {
       agentPrompt: async () => {

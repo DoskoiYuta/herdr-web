@@ -3,6 +3,7 @@
  * 検証は 1 つの緩いスキーマで行う — 使わないタブでは該当フィールドを無視する
  * だけでよい。不正な値はフィールドごとに欠落扱い（既定値）へ丸める。 */
 import * as v from "valibot";
+export { TOOL_TABS, normalizeTab, type ToolTab } from "@contract/tool-tab";
 
 const ToolSearchSchema = v.object({
   from: v.optional(v.pipe(v.string(), v.minLength(1))),
@@ -65,21 +66,4 @@ export function parseToolSearch(raw: Record<string, unknown>): ToolSearch {
     }
   }
   return out as ToolSearch;
-}
-
-export const TOOL_TABS = [
-  "files",
-  "graph",
-  "diff",
-  "notes",
-  "decisions",
-  "process",
-  "compose",
-] as const;
-export type ToolTab = (typeof TOOL_TABS)[number];
-
-/** 旧 `"docker"` タブ値（改名前の URL）は `"compose"` に丸める。 */
-export function normalizeTab(raw: string | undefined): ToolTab {
-  if (raw === "docker") return "compose";
-  return (TOOL_TABS as readonly string[]).includes(raw ?? "") ? (raw as ToolTab) : "diff";
 }

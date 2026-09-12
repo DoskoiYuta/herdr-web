@@ -9,7 +9,9 @@ import {
   selectionKey,
   stateFromSnapshot,
   type SelectionRepository,
+  type ToolTabRepository,
   type WorkspaceSelection,
+  type WorkspaceToolTab,
 } from "./state";
 import { createFakeHerdr, type FakeHerdr } from "./fake";
 import { createHerdrState } from "./state";
@@ -35,6 +37,22 @@ function inMemorySelectionRepo(): SelectionRepository & {
       for (const [key, sel] of rows) {
         if (sel.workspaceId === workspaceId) rows.delete(key);
       }
+    },
+  };
+}
+
+function inMemoryToolTabRepo(): ToolTabRepository & { rows: Map<string, WorkspaceToolTab> } {
+  const rows = new Map<string, WorkspaceToolTab>();
+  return {
+    rows,
+    async list() {
+      return [...rows.values()];
+    },
+    async set(toolTab) {
+      rows.set(toolTab.workspaceId, toolTab);
+    },
+    async deleteByWorkspace(workspaceId) {
+      rows.delete(workspaceId);
     },
   };
 }
@@ -379,6 +397,28 @@ describe("applyEvent", () => {
     expect(next.selections.has(selectionKey(wsA, selA.repoKey))).toBe(false);
     expect(next.selections.has(selectionKey("other-ws", selOther.repoKey))).toBe(true);
   });
+
+  // 無いと壊れる: workspace を閉じても保存済みタブが残ると、同じ workspace_id
+  // が別のワークスペースに再利用されたときに無関係なタブが復元されてしまう。
+  test("workspace_closed drops that workspace's tool-tab but not another workspace's", () => {
+    const base = stateFromSnapshot(snapshot);
+    const wsA = snapshot.workspaces[0]!.workspace_id;
+    const withToolTabs = {
+      ...base,
+      toolTabs: new Map<string, WorkspaceToolTab>([
+        [wsA, { workspaceId: wsA, tab: "notes", updatedAt: "t0" }],
+        ["other-ws", { workspaceId: "other-ws", tab: "graph", updatedAt: "t0" }],
+      ]),
+    };
+
+    const next = applyEvent(withToolTabs, {
+      event: "workspace_closed",
+      data: { type: "workspace_closed", workspace_id: wsA, workspace: null },
+    });
+
+    expect(next.toolTabs.has(wsA)).toBe(false);
+    expect(next.toolTabs.has("other-ws")).toBe(true);
+  });
 });
 
 describe("describeChange", () => {
@@ -648,6 +688,32 @@ describe("createHerdrState: worktree selections", () => {
     await settle();
 
     expect(store.getSelection("gone-ws", "/repo/.git")).toBeNull();
+    expect(repo.rows.size).toBe(0);
+  });
+});
+
+describe("createHerdrState: tool-tab selection", () => {
+  test("setToolTab makes getToolTab report it", async () => {
+    const gw = createFakeHerdr(snapshot);
+    const repo = inMemoryToolTabRepo();
+    const store = createHerdrState(gw, undefined, undefined, repo);
+    await settle();
+    const workspaceId = snapshot.workspaces[0]!.workspace_id;
+
+    store.setToolTab(workspaceId, "notes");
+    expect(store.getToolTab(workspaceId)?.tab).toBe("notes");
+  });
+
+  // 無いと壊れる: サーバーが落ちている間に workspace が閉じられたケースを見逃し、
+  // 存在しない workspace 宛のタブが DB にゴーストとして残り続ける。
+  test("drops a persisted tool-tab whose workspace no longer exists in the fresh snapshot", async () => {
+    const repo = inMemoryToolTabRepo();
+    await repo.set({ workspaceId: "gone-ws", tab: "notes", updatedAt: "t0" });
+
+    const store = createHerdrState(createFakeHerdr(snapshot), undefined, undefined, repo);
+    await settle();
+
+    expect(store.getToolTab("gone-ws")).toBeNull();
     expect(repo.rows.size).toBe(0);
   });
 });

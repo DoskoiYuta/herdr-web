@@ -5,6 +5,7 @@
  */
 import * as v from "valibot";
 import { AgentStatusSchema } from "./herdr";
+import { ToolTabSchema } from "./tool-tab";
 
 export const WorkspaceCreateBodySchema = v.object({
   cwd: v.pipe(v.string(), v.minLength(1)),
@@ -89,6 +90,34 @@ export const WorkspaceSelectionErrorSchema = v.object({
   ]),
 });
 export type WorkspaceSelectionError = v.InferOutput<typeof WorkspaceSelectionErrorSchema>;
+
+/* ------------------------------------------------------------------ */
+/* PUT /api/herdr/workspace/:id/tool-tab — ツール領域タブの選択を永続化   */
+/* ------------------------------------------------------------------ */
+
+export const WorkspaceToolTabPutBodySchema = v.object({
+  tab: ToolTabSchema,
+});
+export type WorkspaceToolTabPutBody = v.InferOutput<typeof WorkspaceToolTabPutBodySchema>;
+
+export const WorkspaceToolTabSchema = v.object({
+  workspaceId: v.string(),
+  tab: ToolTabSchema,
+  updatedAt: v.string(),
+});
+export type WorkspaceToolTab = v.InferOutput<typeof WorkspaceToolTabSchema>;
+
+export const WorkspaceToolTabPutResponseSchema = v.object({
+  toolTab: WorkspaceToolTabSchema,
+});
+export type WorkspaceToolTabPutResponse = v.InferOutput<typeof WorkspaceToolTabPutResponseSchema>;
+
+/** 400（未知の workspace）か 500（永続化失敗）のどちらか。selection と異なり
+ * バリデーション対象は tab の picklist だけなので、それ以外の 400 種類はない。 */
+export const WorkspaceToolTabErrorSchema = v.object({
+  error: v.picklist(["unknown_workspace", "persist_failed"]),
+});
+export type WorkspaceToolTabError = v.InferOutput<typeof WorkspaceToolTabErrorSchema>;
 
 /* ------------------------------------------------------------------ */
 /* GET /api/herdr/pane-preview — 送信先 pane 選択のための可視化情報       */

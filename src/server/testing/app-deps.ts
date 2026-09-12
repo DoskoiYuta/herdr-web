@@ -13,7 +13,8 @@ import type { FetchRunner } from "../git/fetch";
 import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
 import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
 import { createSqliteSelectionRepository } from "../herdr/selection";
-import { createHerdrState, type SelectionRepository } from "../herdr/state";
+import { createHerdrState, type SelectionRepository, type ToolTabRepository } from "../herdr/state";
+import { createSqliteToolTabRepository } from "../herdr/tool-tab";
 import type { WorktreeResolver } from "../herdr/tree";
 import { listSubRepos } from "../git/subrepos";
 import { listWorktrees } from "../git/worktrees";
@@ -33,6 +34,8 @@ export type TestAppOptions = {
   listSubRepos?: (root: string) => Promise<SubRepoLike[]>;
   /** Override the selection persistence port (e.g. to simulate a SQLite write failure). */
   selectionRepository?: SelectionRepository;
+  /** Override the tool-tab persistence port (e.g. to simulate a SQLite write failure). */
+  toolTabRepository?: ToolTabRepository;
   events?: ReviewEvent[];
   fetchRunner?: FetchRunner;
   askLauncher?: AskSessionLauncher;
@@ -63,6 +66,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
     fake,
     { error() {}, warn() {} },
     opts.selectionRepository ?? createSqliteSelectionRepository(db),
+    opts.toolTabRepository ?? createSqliteToolTabRepository(db),
   );
   const resolver = opts.resolver ?? gitWorktreeResolver;
   const listWorktreesFn = opts.listWorktrees ?? listWorktrees;
