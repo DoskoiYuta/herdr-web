@@ -62,6 +62,7 @@ import {
 import type { AskAnnotationMeta } from "@/components/ask/askAnnotations";
 import { CodeFileView, type CodeFileViewHandle } from "./CodeFileView";
 import { FileTabBar } from "./FileTabBar";
+import { HtmlFileView } from "./HtmlFileView";
 import { useFile } from "./hooks/useFile";
 import { useLs } from "./hooks/useLs";
 import { useStatus } from "./hooks/useStatus";
@@ -72,6 +73,16 @@ const FOR_FILE_DEBOUNCE_MS = 200;
 
 function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
+}
+
+function isHtmlPath(path: string): boolean {
+  return /\.(html|htm)$/i.test(path);
+}
+
+/** Paths that get the プレビュー/ソース toggle instead of always showing the
+ * code viewer. */
+function hasPreviewToggle(path: string): boolean {
+  return isMarkdownPath(path) || isHtmlPath(path);
 }
 
 /** F10 の質問セッション行「対象ファイルを開く」からのジャンプ先。一度消費したら
@@ -170,7 +181,7 @@ export function FilesPanel({
   const [tabs, tabActions] = useFileTabs(repoKey);
   const fileScroll = useFileScroll(repoKey);
   const scrollMode =
-    mdMode === "preview" && isMarkdownPath(selectedPath ?? "") ? "preview" : "source";
+    mdMode === "preview" && hasPreviewToggle(selectedPath ?? "") ? "preview" : "source";
   // Split into two effects so that closing a tab (which updates `tabs.active`
   // via the store) can never re-trigger `open` before the resulting navigate
   // has landed on `selectedPath` — `path` comes from the URL, so a close can
@@ -418,7 +429,7 @@ export function FilesPanel({
   // markdown プレビュー, image/pdf preview, or while the mouse is still
   // dragging the selection.
   const canAsk =
-    previewKind === null && (!isMarkdownPath(selectedPath ?? "") || mdMode === "source");
+    previewKind === null && (!hasPreviewToggle(selectedPath ?? "") || mdMode === "source");
   const composerLine = useMemo(() => {
     if (!selection || selecting || !canAsk) return null;
     return Math.max(selection.range.start, selection.range.end);
@@ -808,7 +819,7 @@ export function FilesPanel({
                     質問 {matches.length}
                   </Badge>
                 )}
-                {previewKind === null && isMarkdownPath(selectedPath) && (
+                {previewKind === null && hasPreviewToggle(selectedPath) && (
                   <Tabs value={mdMode} onValueChange={(v) => onMdModeChange(v as typeof mdMode)}>
                     <TabsList>
                       <TabsTrigger value="preview">プレビュー</TabsTrigger>
@@ -1030,6 +1041,10 @@ function FileViewerBody({
         </p>
       </div>
     );
+  }
+
+  if (isHtmlPath(data.path) && mdMode === "preview") {
+    return <HtmlFileView key={data.path} contents={data.contents} />;
   }
 
   const annotations = buildAskAnnotations(matches, composerLine);
