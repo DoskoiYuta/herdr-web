@@ -114,7 +114,7 @@ hw review list [--all] [--commit <rev>] [--since <rev>] [--uncommitted] [--unrea
 hw review show <id> [--json]   # <id> は `hw review list` が出す短縮 id（末尾一致）でよい
 hw review reply <id> <text>
 hw notes list [--worktree <path>] [--json]
-hw notes show <id> [--json]   # <id> は `hw notes list` が出す短縮 id（末尾一致）でよい
+hw notes show <id> [--json] [--no-metadata]   # <id> は `hw notes list` が出す短縮 id（末尾一致）でよい
 hw status
 hw repo move <old-path> <new-path>
 ```

@@ -30,7 +30,7 @@ Usage:
   hw decision cancel <id>
   hw decision schema
   hw notes list [--worktree <path>] [--json]
-  hw notes show <id> [--json]   (<id> may be the short id printed by 'hw notes list')
+  hw notes show <id> [--json] [--no-metadata]   (<id> may be the short id printed by 'hw notes list')
   hw status [--worktree <path>] [--json]
   hw repo move <old-path> <new-path>
   hw --help
@@ -72,7 +72,7 @@ const NOTES_HELP_TEXT = `hw notes — read the repository's Notes pages (written
 
 Usage:
   hw notes list [--worktree <path>] [--json]
-  hw notes show <id> [--json]   (<id> may be the short id printed by 'hw notes list')
+  hw notes show <id> [--json] [--no-metadata]   (<id> may be the short id printed by 'hw notes list')
 `;
 
 function helpResult(text: string): CommandResult {
