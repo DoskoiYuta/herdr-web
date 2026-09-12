@@ -30,6 +30,9 @@ export interface FileTabBarProps {
   exists: Record<string, boolean>;
   /** ツリー行と同じ git status 装飾（gitStatusDecoration.ts）。 */
   decorations?: Map<string, FileTabDecoration>;
+  /** `path -> 保存していない編集があるか`（下書き ≠ ディスク内容）。未指定の
+   * path は dirty ではない扱い。 */
+  dirty?: Record<string, boolean>;
   onSelect(path: string): void;
   onClose(path: string): void;
   onCloseOthers(path: string): void;
@@ -59,6 +62,7 @@ interface TabProps {
   path: string;
   isActive: boolean;
   isMissing: boolean;
+  isDirty: boolean;
   label: string;
   parentHint: string | null;
   dec?: FileTabDecoration;
@@ -74,6 +78,7 @@ function FileTab({
   path,
   isActive,
   isMissing,
+  isDirty,
   label,
   parentHint,
   dec,
@@ -127,6 +132,13 @@ function FileTab({
           <span className={cn("truncate", isMissing && "text-destructive line-through")}>
             {label}
           </span>
+          {isDirty && (
+            <span
+              aria-label="保存していない変更があります"
+              title="保存していない変更があります"
+              className="size-1.5 shrink-0 rounded-full bg-foreground"
+            />
+          )}
           {parentHint !== null && (
             <span className="truncate text-[10px] text-muted-foreground">{parentHint}</span>
           )}
@@ -163,6 +175,7 @@ export function FileTabBar({
   activePath,
   exists,
   decorations,
+  dirty,
   onSelect,
   onClose,
   onCloseOthers,
@@ -214,6 +227,7 @@ export function FileTabBar({
                 path={path}
                 isActive={isActive}
                 isMissing={isMissing}
+                isDirty={dirty?.[path] === true}
                 label={label}
                 parentHint={hasParentHint ? parentDir(path) : null}
                 dec={decorations?.get(path)}

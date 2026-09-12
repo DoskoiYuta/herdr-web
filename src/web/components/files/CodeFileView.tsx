@@ -5,8 +5,9 @@
 // mechanism, mirroring diff/reviewAnnotations.ts) only exist on CodeView;
 // `File` has no selection or annotation slot at all (see
 // node_modules/@pierre/diffs/dist/components/File.d.ts).
-import { CodeView } from "@pierre/diffs/react";
-import type { CodeViewLineSelection, LineAnnotation } from "@pierre/diffs";
+import { CodeView, EditProvider } from "@pierre/diffs/react";
+import type { CodeViewLineSelection, FileContents, LineAnnotation } from "@pierre/diffs";
+import { Editor } from "@pierre/diffs/edit";
 import type {
   CodeViewFileItem,
   CodeViewHandle,
@@ -36,6 +37,15 @@ export interface CodeFileViewProps<T = undefined> {
    * per `path` change, not on every value change — see the effect below. */
   scrollTop?: number;
   onScrollTopChange?: (top: number) => void;
+  /** Turns on `@pierre/diffs`' built-in editor for this item (mounts
+   * `EditProvider`, which rebuilds the underlying `CodeView` — scroll
+   * position and selection are lost across a toggle). Undefined/false
+   * behaves exactly like before this prop existed. */
+  editable?: boolean;
+  /** Fires on every keystroke and when the editor commits a pending edit;
+   * both are treated the same by callers (draft tracking only cares about
+   * current text, not which event produced it). */
+  onEditChange?: (contents: string) => void;
 }
 
 /** F10 (質問セッションの「対象ファイルを開く」): imperative scroll-to-line, mirroring
@@ -60,6 +70,8 @@ function CodeFileViewInner<T = undefined>(
     renderAnnotation,
     scrollTop,
     onScrollTopChange,
+    editable = false,
+    onEditChange,
   }: CodeFileViewProps<T>,
   ref: Ref<CodeFileViewHandle>,
 ) {
@@ -100,8 +112,9 @@ function CodeFileViewInner<T = undefined>(
   // to bump this, so track a signature of both.
   const contentRev = useRef(0);
   const lastContent = useRef<string | null>(null);
-  if (lastContent.current !== `${path}\n${contents}`) {
-    lastContent.current = `${path}\n${contents}`;
+  const contentSig = `${path}\n${contents}\n${editable}`;
+  if (lastContent.current !== contentSig) {
+    lastContent.current = contentSig;
     contentRev.current += 1;
   }
   const annotationSig = useMemo(
@@ -115,9 +128,16 @@ function CodeFileViewInner<T = undefined>(
   const version = contentRev.current * 1_000_000 + (annotationRev.current.rev % 1_000_000);
 
   const item: CodeViewFileItem<T> = useMemo(
-    () => ({ id: ITEM_ID, type: "file", file: { name: path, contents }, annotations, version }),
+    () => ({
+      id: ITEM_ID,
+      type: "file",
+      file: { name: path, contents },
+      annotations,
+      version,
+      edit: editable,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [path, contents, annotationSig, version],
+    [path, contents, annotationSig, version, editable],
   );
 
   const style: CSSProperties = {
@@ -144,7 +164,7 @@ function CodeFileViewInner<T = undefined>(
     ],
   );
 
-  return (
+  const codeView = (
     <CodeView
       ref={codeViewRef}
       className="h-full min-h-0 flex-1 overflow-y-auto"
@@ -154,6 +174,8 @@ function CodeFileViewInner<T = undefined>(
       selectedLines={selectedLines}
       onSelectedLinesChange={onSelectedLinesChange}
       renderAnnotation={renderAnnotation}
+      onItemEditChange={(_item, file: FileContents) => onEditChange?.(file.contents)}
+      onItemEditComplete={(_item, file: FileContents) => onEditChange?.(file.contents)}
       onScroll={(top) => {
         // Swapping `items` for a new path can fire onScroll with the old
         // file's (clamped) position before the restoring effect above has
@@ -163,6 +185,12 @@ function CodeFileViewInner<T = undefined>(
       }}
     />
   );
+
+  // `EditProvider` is only mounted while this item is editable, so the
+  // (much more common) read-only path never pays for it, and mounting/
+  // unmounting it rebuilds `CodeView` — expected to reset scroll/selection.
+  if (!editable) return codeView;
+  return <EditProvider createEditor={(opts) => new Editor(opts)}>{codeView}</EditProvider>;
 }
 
 // forwardRef erases the function's own generic parameter, so this re-casts

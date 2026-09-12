@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { CodeViewLineSelection } from "@pierre/diffs";
 import type { Anchor } from "@contract/review";
 import type { Repo } from "@contract/events";
+import type { FileResponse, ReadOnlyReason } from "@contract/fs";
 import { ResizeHandle } from "@/components/terminal/ResizeHandle";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast/ToastProvider";
@@ -36,6 +37,7 @@ import {
   fsApi,
   gitApi,
   UploadConflictError,
+  WriteConflictError,
   type ForFileMatch,
 } from "@/lib/api";
 import { buildAnchor } from "@/lib/anchor";
@@ -83,6 +85,52 @@ function isHtmlPath(path: string): boolean {
  * code viewer. */
 function hasPreviewToggle(path: string): boolean {
   return isMarkdownPath(path) || isHtmlPath(path);
+}
+
+const READONLY_REASON_LABEL: Record<ReadOnlyReason, string> = {
+  "not-utf8": "UTF-8 ではないため",
+  symlink: "シンボリックリンクのため",
+  "git-internal": "git の内部ファイルのため",
+  "not-writable": "書き込み権限が無いため",
+};
+
+/** 下書きマップのキー。タブ列はリポジトリ単位で worktree を跨ぐが、下書きは
+ * worktree（`root`）ごとに別に持つ必要があるため、path だけでは足りない。 */
+function draftKey(root: string, path: string): string {
+  return `${root}\0${path}`;
+}
+
+interface FileEditEntry {
+  editing: boolean;
+  baseHash: string;
+  baseContents: string;
+  draft: string;
+  saving: boolean;
+  banner: { kind: "conflict" | "external"; diskHash: string } | null;
+}
+
+function isDirty(entry: FileEditEntry | undefined): boolean {
+  return entry !== undefined && entry.editing && entry.draft !== entry.baseContents;
+}
+
+/** すでにエントリのあるキーだけを更新する（無ければ no-op）。存在チェック後の
+ * `prev[key]` のスプレッドをこの一箇所にまとめ、`noUncheckedIndexedAccess`
+ * で全プロパティが `| undefined` になるのを避ける。 */
+function patchEntry(
+  prev: Record<string, FileEditEntry>,
+  key: string,
+  patch: Partial<FileEditEntry>,
+): Record<string, FileEditEntry> {
+  const entry = prev[key];
+  if (!entry) return prev;
+  return { ...prev, [key]: { ...entry, ...patch } };
+}
+
+/** 保存前に、ディスク側の改行コードへ揃える。エディタは内部で LF 化するため、
+ * 元が CRLF だった場合はそのままだと改行コードが変わってしまう。 */
+function matchEol(baseContents: string, draft: string): string {
+  if (!baseContents.includes("\r\n") || draft.includes("\r\n")) return draft;
+  return draft.replace(/\n/g, "\r\n");
 }
 
 /** F10 の質問セッション行「対象ファイルを開く」からのジャンプ先。一度消費したら
@@ -205,7 +253,7 @@ export function FilesPanel({
   // に使うと自分がまだ見ている・選んでいるファイルのタブが他ウィンドウの操作で
   // 動いたり消えたりして見える。ストアの `active` はリロード時の復元用にだけ
   // 使う（上の effect）。
-  const handleTabClose = useCallback(
+  const closeTabNow = useCallback(
     (path: string) => {
       const wasActive = selectedPath === path;
       const next = closeTab({ paths: tabs.paths, active: selectedPath }, path);
@@ -619,8 +667,252 @@ export function FilesPanel({
     [repo, copyToClipboard],
   );
 
+  // -------------------------------------------------------------------
+  // 編集モード + 下書き（PUT /api/fs/file）。エントリは編集トグルを一度でも
+  // ON にしたファイルにだけ存在する — 触っていないファイルは下書き追跡が
+  // 要らない。key は draftKey(root, path) で worktree ごとに別。
+  // -------------------------------------------------------------------
+  const [edits, setEdits] = useState<Record<string, FileEditEntry>>({});
+  const currentKey = selectedPath !== null ? draftKey(repo, selectedPath) : null;
+  const currentEdit = currentKey !== null ? edits[currentKey] : undefined;
+  const editingNow = currentEdit?.editing === true;
+  const textData = fileQuery.data?.kind === "text" ? fileQuery.data : null;
+  const isPreviewShown = hasPreviewToggle(selectedPath ?? "") && mdMode === "preview";
+  const editToggleDisabled = !textData || (!editingNow && (isPreviewShown || !textData.editable));
+  const editToggleTitle =
+    textData && !editingNow
+      ? isPreviewShown
+        ? "ソース表示に切り替えると編集できます"
+        : !textData.editable && textData.readOnlyReason
+          ? READONLY_REASON_LABEL[textData.readOnlyReason]
+          : undefined
+      : undefined;
+
+  const beginEditing = useCallback((key: string, data: Extract<FileResponse, { kind: "text" }>) => {
+    setEdits((prev) => {
+      const existing = prev[key];
+      if (existing) return { ...prev, [key]: { ...existing, editing: true } };
+      return {
+        ...prev,
+        [key]: {
+          editing: true,
+          baseHash: data.hash,
+          baseContents: data.contents,
+          draft: data.contents,
+          saving: false,
+          banner: null,
+        },
+      };
+    });
+  }, []);
+
+  const updateDraft = useCallback((key: string, contents: string) => {
+    setEdits((prev) => patchEntry(prev, key, { draft: contents }));
+  }, []);
+
+  const [pendingEditOn, setPendingEditOn] = useState<{
+    key: string;
+    data: Extract<FileResponse, { kind: "text" }>;
+    unresolvedCount: number;
+  } | null>(null);
+  const [turnOffConfirmKey, setTurnOffConfirmKey] = useState<string | null>(null);
+  const [closeConfirmPath, setCloseConfirmPath] = useState<string | null>(null);
+
+  const handleEditToggleClick = useCallback(() => {
+    if (!currentKey || !textData) return;
+    if (editingNow) {
+      if (isDirty(currentEdit)) {
+        setTurnOffConfirmKey(currentKey);
+      } else {
+        setEdits((prev) => patchEntry(prev, currentKey, { editing: false }));
+      }
+      return;
+    }
+    const unresolvedCount = matches.filter(
+      (m) => m.ask.status === "open" || m.ask.status === "replied",
+    ).length;
+    if (unresolvedCount > 0) {
+      setPendingEditOn({ key: currentKey, data: textData, unresolvedCount });
+    } else {
+      beginEditing(currentKey, textData);
+    }
+  }, [currentKey, textData, editingNow, currentEdit, matches, beginEditing]);
+
+  const saveEdit = useCallback(
+    async (key: string, baseHashOverride?: string): Promise<boolean> => {
+      const entry = edits[key];
+      if (!entry || entry.saving) return false;
+      const [root, path] = key.split("\0") as [string, string];
+      const baseHash = baseHashOverride ?? entry.baseHash;
+      const contents = matchEol(entry.baseContents, entry.draft);
+      setEdits((prev) => patchEntry(prev, key, { saving: true }));
+      try {
+        const res = await fsApi.writeFile({ root, path, contents, baseHash });
+        setEdits((prev) =>
+          patchEntry(prev, key, {
+            saving: false,
+            baseHash: res.hash,
+            baseContents: contents,
+            draft: contents,
+            banner: null,
+          }),
+        );
+        queryClient.setQueriesData(
+          { queryKey: ["file", root, path] },
+          (old: FileResponse | undefined) =>
+            old && old.kind === "text" ? { ...old, contents, hash: res.hash, size: res.size } : old,
+        );
+        toast({ kind: "success", message: "保存しました" });
+        return true;
+      } catch (err) {
+        setEdits((prev) => patchEntry(prev, key, { saving: false }));
+        if (err instanceof WriteConflictError) {
+          setEdits((prev) =>
+            patchEntry(prev, key, { banner: { kind: "conflict", diskHash: err.hash } }),
+          );
+        } else {
+          toast({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+        }
+        return false;
+      }
+    },
+    [edits, queryClient, toast],
+  );
+
+  const discardDraftAndTurnOff = useCallback((key: string) => {
+    setEdits((prev) => {
+      const entry = prev[key];
+      if (!entry) return prev;
+      return patchEntry(prev, key, { draft: entry.baseContents, editing: false, banner: null });
+    });
+  }, []);
+
+  const saveAndTurnOff = useCallback(
+    async (key: string) => {
+      const ok = await saveEdit(key);
+      if (ok) setEdits((prev) => patchEntry(prev, key, { editing: false }));
+    },
+    [saveEdit],
+  );
+
+  /** 409 の衝突・ディスク上の変更どちらも、実ファイルを読み直して下書きを
+   * 捨てる操作は同じ（表示中のキャッシュより新しい内容を取りに行く必要が
+   * あるため、`fileQuery` の再フェッチではなく直接 `fsApi.file` を叩く）。 */
+  const discardAndReload = useCallback(
+    async (key: string) => {
+      const [root, path] = key.split("\0") as [string, string];
+      try {
+        const data = await fsApi.file({ root, path });
+        if (data.kind !== "text") {
+          setEdits((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          return;
+        }
+        setEdits((prev) =>
+          patchEntry(prev, key, {
+            baseHash: data.hash,
+            baseContents: data.contents,
+            draft: data.contents,
+            banner: null,
+          }),
+        );
+        queryClient.setQueriesData({ queryKey: ["file", root, path] }, () => data);
+      } catch {
+        toast({ kind: "error", message: "再読込に失敗しました" });
+      }
+    },
+    [queryClient, toast],
+  );
+
+  const overwriteFromBanner = useCallback(
+    (key: string) => {
+      const entry = edits[key];
+      if (entry?.banner) void saveEdit(key, entry.banner.diskHash);
+    },
+    [edits, saveEdit],
+  );
+
+  // ディスク上の変更検出（ポーラー/repoChangedTick による再取得）。追跡中
+  // （edits に entry がある）ファイルだけが対象 — 触っていないファイルは
+  // 単に fileQuery の最新内容がそのまま表示されるので何もしなくてよい。
+  useEffect(() => {
+    const data = fileQuery.data;
+    if (!data || data.kind !== "text" || selectedPath === null) return;
+    const key = draftKey(repo, selectedPath);
+    setEdits((prev) => {
+      const entry = prev[key];
+      if (!entry || data.hash === entry.baseHash) return prev;
+      if (!isDirty(entry)) {
+        return patchEntry(prev, key, {
+          baseHash: data.hash,
+          baseContents: data.contents,
+          draft: data.contents,
+          banner: null,
+        });
+      }
+      return patchEntry(prev, key, { banner: { kind: "external", diskHash: data.hash } });
+    });
+  }, [fileQuery.data, selectedPath, repo]);
+
+  // 1 つでも下書きが残っていればページ離脱を確認する。
+  useEffect(() => {
+    const anyDirty = Object.values(edits).some((e) => isDirty(e));
+    if (!anyDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [edits]);
+
+  const dirtyTabs = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const path of tabs.paths) {
+      if (isDirty(edits[draftKey(repo, path)])) map[path] = true;
+    }
+    return map;
+  }, [tabs.paths, edits, repo]);
+
+  const forgetDraft = useCallback(
+    (path: string) => {
+      const key = draftKey(repo, path);
+      setEdits((prev) => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [repo],
+  );
+
+  const handleTabClose = useCallback(
+    (path: string) => {
+      if (isDirty(edits[draftKey(repo, path)])) {
+        setCloseConfirmPath(path);
+        return;
+      }
+      closeTabNow(path);
+      forgetDraft(path);
+    },
+    [edits, repo, closeTabNow, forgetDraft],
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onKeyDown={(e) => {
+        if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
+        if (!editingNow || !currentKey) return;
+        e.preventDefault();
+        if (isDirty(currentEdit) && textData?.editable) void saveEdit(currentKey);
+      }}
+    >
       <div className="flex items-center gap-1 border-b border-border p-1">
         <Button
           id="btn-tree"
@@ -639,6 +931,7 @@ export function FilesPanel({
             activePath={selectedPath}
             exists={tabExists}
             decorations={statusDecorations}
+            dirty={dirtyTabs}
             onSelect={onSelectedPathChange}
             onClose={handleTabClose}
             onCloseOthers={handleTabCloseOthers}
@@ -713,6 +1006,98 @@ export function FilesPanel({
             </Button>
             <Button type="button" onClick={handleOverwriteConfirm}>
               上書き
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={pendingEditOn !== null}
+        onOpenChange={(open) => !open && setPendingEditOn(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>未解決の質問があります</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm">
+            未解決の質問が {pendingEditOn?.unresolvedCount}{" "}
+            件あります。編集すると質問の位置と一致しなくなることがあります。
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingEditOn(null)}>
+              キャンセル
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (pendingEditOn) beginEditing(pendingEditOn.key, pendingEditOn.data);
+                setPendingEditOn(null);
+              }}
+            >
+              続行
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={turnOffConfirmKey !== null}
+        onOpenChange={(open) => !open && setTurnOffConfirmKey(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>保存していない変更があります</DialogTitle>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setTurnOffConfirmKey(null)}>
+              キャンセル
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (turnOffConfirmKey) discardDraftAndTurnOff(turnOffConfirmKey);
+                setTurnOffConfirmKey(null);
+              }}
+            >
+              破棄
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const key = turnOffConfirmKey;
+                setTurnOffConfirmKey(null);
+                if (key) void saveAndTurnOff(key);
+              }}
+            >
+              保存して終了
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={closeConfirmPath !== null}
+        onOpenChange={(open) => !open && setCloseConfirmPath(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>保存していない変更があります</DialogTitle>
+          </DialogHeader>
+          <p className="break-all font-mono text-sm">{closeConfirmPath}</p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCloseConfirmPath(null)}>
+              キャンセル
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const path = closeConfirmPath;
+                setCloseConfirmPath(null);
+                if (path) {
+                  closeTabNow(path);
+                  forgetDraft(path);
+                }
+              }}
+            >
+              破棄
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -832,7 +1217,69 @@ export function FilesPanel({
                     {imageDims.width}×{imageDims.height}
                   </span>
                 )}
+                {textData && (
+                  <>
+                    <Button
+                      id="btn-edit-toggle"
+                      type="button"
+                      variant={editingNow ? "default" : "outline"}
+                      size="sm"
+                      disabled={editToggleDisabled}
+                      title={editToggleTitle}
+                      aria-pressed={editingNow}
+                      onClick={handleEditToggleClick}
+                    >
+                      編集{editingNow ? " ON" : ""}
+                    </Button>
+                    {editingNow && (
+                      <Button
+                        id="btn-save-file"
+                        type="button"
+                        size="sm"
+                        disabled={
+                          !isDirty(currentEdit) ||
+                          currentEdit?.saving === true ||
+                          !textData.editable
+                        }
+                        onClick={() => currentKey && void saveEdit(currentKey)}
+                      >
+                        {currentEdit?.saving ? "保存中…" : "保存"}
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
+            </div>
+          )}
+          {currentEdit?.banner && (
+            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-[color-mix(in_srgb,var(--destructive)_8%,transparent)] px-2 py-1 text-xs">
+              <span>
+                {currentEdit.banner.kind === "conflict"
+                  ? "保存に失敗しました（ファイルが外部で変更されています）"
+                  : "ディスク上で変更されました"}
+              </span>
+              {!textData?.editable && textData?.readOnlyReason && (
+                <span className="text-muted-foreground">
+                  ({READONLY_REASON_LABEL[textData.readOnlyReason]})
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!textData?.editable}
+                onClick={() => currentKey && overwriteFromBanner(currentKey)}
+              >
+                上書き保存
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => currentKey && void discardAndReload(currentKey)}
+              >
+                破棄して再読込
+              </Button>
             </div>
           )}
           <AskMismatchStrip
@@ -876,6 +1323,8 @@ export function FilesPanel({
               onAskResolve={handleAskResolve}
               onAskResend={handleAskResend}
               onAskFocus={handleAskFocus}
+              editingDraft={editingNow ? (currentEdit?.draft ?? null) : null}
+              onEditChange={(contents) => currentKey && updateDraft(currentKey, contents)}
             />
           </div>
         </div>
@@ -913,6 +1362,8 @@ function FileViewerBody({
   onAskResolve,
   onAskResend,
   onAskFocus,
+  editingDraft,
+  onEditChange,
 }: {
   codeFileViewRef: Ref<CodeFileViewHandle>;
   selectedPath: string | null;
@@ -942,6 +1393,10 @@ function FileViewerBody({
   onAskResolve: (id: string) => void | Promise<void>;
   onAskResend: (id: string) => void | Promise<void>;
   onAskFocus: (id: string) => void | Promise<void>;
+  /** null: 表示中のファイルは編集モードではない。非 null: エディタに出す
+   * 下書きの内容（ディスク内容ではなく、この文字列を表示する）。 */
+  editingDraft: string | null;
+  onEditChange: (contents: string) => void;
 }) {
   if (selectedPath === null) {
     return <PanelState icon={FolderTree} title="ファイルを選択してください" />;
@@ -1047,7 +1502,8 @@ function FileViewerBody({
     return <HtmlFileView key={data.path} contents={data.contents} />;
   }
 
-  const annotations = buildAskAnnotations(matches, composerLine);
+  const isEditing = editingDraft !== null;
+  const annotations = isEditing ? [] : buildAskAnnotations(matches, composerLine);
   const renderAnnotation = (annotation: { metadata?: AskAnnotationMeta }) => {
     const meta = annotation.metadata;
     if (!meta) return null;
@@ -1088,16 +1544,18 @@ function FileViewerBody({
     <CodeFileView
       ref={codeFileViewRef}
       path={data.path}
-      contents={data.contents}
+      contents={isEditing ? editingDraft : data.contents}
       fontSize={fontSize}
       scrollTop={scrollTop}
       onScrollTopChange={onScrollTopChange}
-      selectedLines={selection}
-      onSelectedLinesChange={onSelectedLinesChange}
-      onLineSelectionStart={onLineSelectionStart}
-      onLineSelectionEnd={onLineSelectionEnd}
+      selectedLines={isEditing ? null : selection}
+      onSelectedLinesChange={isEditing ? undefined : onSelectedLinesChange}
+      onLineSelectionStart={isEditing ? undefined : onLineSelectionStart}
+      onLineSelectionEnd={isEditing ? undefined : onLineSelectionEnd}
       annotations={annotations}
-      renderAnnotation={renderAnnotation}
+      renderAnnotation={isEditing ? undefined : renderAnnotation}
+      editable={isEditing}
+      onEditChange={isEditing ? onEditChange : undefined}
     />
   );
 }
