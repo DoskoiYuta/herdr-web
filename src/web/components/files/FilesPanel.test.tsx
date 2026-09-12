@@ -286,7 +286,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   statusMock.mockResolvedValue({ status: [] });
-  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.md",
+    contents: "# hi",
+    size: 4,
+    hash: "h",
+    editable: true,
+  });
   statMock.mockResolvedValue({});
   writeTextMock.mockResolvedValue(undefined);
   Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
@@ -317,7 +324,14 @@ test("hides the repository's .git directory from the tree", async () => {
 
 test("selecting a .md file loads and routes it to MarkdownView", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.md",
+    contents: "# hi",
+    size: 4,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
   (await screen.findByText("a.md")).click();
   expect(await screen.findByTestId("markdown-view-stub")).toHaveTextContent("# hi");
@@ -326,7 +340,14 @@ test("selecting a .md file loads and routes it to MarkdownView", async () => {
 
 test("selecting a .html file loads and routes it to HtmlFileView", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.html", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.html", contents: "<h1>hi</h1>", size: 11 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.html",
+    contents: "<h1>hi</h1>",
+    size: 11,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
   (await screen.findByText("a.html")).click();
   expect(await screen.findByTestId("html-file-view-stub")).toHaveTextContent("<h1>hi</h1>");
@@ -335,7 +356,14 @@ test("selecting a .html file loads and routes it to HtmlFileView", async () => {
 
 test("switching the markdown viewer to ソース routes it to CodeFileView instead", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.md",
+    contents: "# hi",
+    size: 4,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
   (await screen.findByText("a.md")).click();
   await screen.findByTestId("markdown-view-stub");
@@ -348,7 +376,14 @@ test("switching the markdown viewer to ソース routes it to CodeFileView inste
 
 test("selecting a non-markdown file routes it to CodeFileView", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "const x = 1;", size: 12 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "const x = 1;",
+    size: 12,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
   const view = await screen.findByTestId("code-file-view-stub");
@@ -357,7 +392,14 @@ test("selecting a non-markdown file routes it to CodeFileView", async () => {
 
 test("an initialLocation prop selects the path without a click, and calls onInitialLocationConsumed once the file has loaded", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "const x = 1;", size: 12 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "const x = 1;",
+    size: 12,
+    hash: "h",
+    editable: true,
+  });
   const onInitialLocationConsumed = vi.fn();
   render(
     renderPanel({
@@ -477,7 +519,14 @@ test("shows the root listing's error message", async () => {
 
 test("shows the selected path in the header", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "x", size: 1 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "x",
+    size: 1,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
   (await screen.findByText("a.ts")).click();
   await waitFor(() => expect(screen.getByTestId("code-file-view-stub")).toBeInTheDocument());
@@ -616,7 +665,14 @@ test("a 409 conflict opens a dialog listing the paths, and 上書き retries wit
 // 規則がすぐ元の a.md に戻すため、プレースホルダーには留まらない。
 test("ゴミ箱に移動 confirms and trashes the file; its tab stays open (not closed)", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.md",
+    contents: "# hi",
+    size: 4,
+    hash: "h",
+    editable: true,
+  });
   trashMock.mockResolvedValue({ trashed: "a.md" });
   render(renderPanel());
 
@@ -649,7 +705,14 @@ test("ゴミ箱に移動 on a directory notes that its contents move too", async
 // as a generic error message instead of telling the user why it can't work.
 test("a 501 from fsApi.trash shows the unavailable message", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.md",
+    contents: "# hi",
+    size: 4,
+    hash: "h",
+    editable: true,
+  });
   trashMock.mockRejectedValue(new TrashUnavailableError());
   render(renderPanel());
 
@@ -673,7 +736,7 @@ test("clicking tree entries opens tabs in click order; reclicking an open tab do
     ]),
   );
   fileMock.mockImplementation(({ path }) =>
-    Promise.resolve({ kind: "text", path, contents: path, size: 1 }),
+    Promise.resolve({ kind: "text", path, contents: path, size: 1, hash: "h", editable: true }),
   );
   render(renderPanel());
 
@@ -698,7 +761,7 @@ test("closing the active tab selects its right neighbor; closing an inactive tab
     ]),
   );
   fileMock.mockImplementation(({ path }) =>
-    Promise.resolve({ kind: "text", path, contents: path, size: 1 }),
+    Promise.resolve({ kind: "text", path, contents: path, size: 1, hash: "h", editable: true }),
   );
   render(renderPanel());
 
@@ -723,7 +786,14 @@ test("closing the active tab selects its right neighbor; closing an inactive tab
 
 test("closing the only open tab clears the selection back to the placeholder", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "a",
+    size: 1,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
 
   (await screen.findByText("a.ts")).click();
@@ -763,7 +833,14 @@ function DeferredTestFilesPanel(props: FilesPanelTestProps) {
 
 test("closing the only open tab still removes it when the URL update lands a tick later", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "a",
+    size: 1,
+    hash: "h",
+    editable: true,
+  });
   const client = new QueryClient();
   render(
     <QueryClientProvider client={client}>
@@ -806,7 +883,14 @@ test("mounting with no selectedPath restores the repo's persisted active tab", a
     JSON.stringify({ "/repo": { paths: ["a.ts"], active: "a.ts" } }),
   );
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "a",
+    size: 1,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
 
   await waitFor(() =>
@@ -821,7 +905,14 @@ test("restoreSuppressed defers restoring the active tab until it clears", async 
     JSON.stringify({ "/repo": { paths: ["a.ts"], active: "a.ts" } }),
   );
   lsMock.mockResolvedValue(ls([{ name: "a.ts", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.ts", contents: "a", size: 1 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.ts",
+    contents: "a",
+    size: 1,
+    hash: "h",
+    editable: true,
+  });
   const { rerender } = render(renderPanel({ restoreSuppressed: true }));
 
   // Suppressed: the tab list persists (still shown) but nothing gets
@@ -923,7 +1014,14 @@ test("a file's reported scroll position survives switching to another file and b
     ]),
   );
   fileMock.mockImplementation(({ path }) =>
-    Promise.resolve({ kind: "text", path, contents: path, size: path.length }),
+    Promise.resolve({
+      kind: "text",
+      path,
+      contents: path,
+      size: path.length,
+      hash: "h",
+      editable: true,
+    }),
   );
   render(renderPanel());
 
@@ -946,7 +1044,14 @@ test("a file's reported scroll position survives switching to another file and b
 
 test("markdown source and preview modes keep separate scroll positions for the same file", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
-  fileMock.mockResolvedValue({ kind: "text", path: "a.md", contents: "# hi", size: 4 });
+  fileMock.mockResolvedValue({
+    kind: "text",
+    path: "a.md",
+    contents: "# hi",
+    size: 4,
+    hash: "h",
+    editable: true,
+  });
   render(renderPanel());
 
   (await screen.findByText("a.md")).click();

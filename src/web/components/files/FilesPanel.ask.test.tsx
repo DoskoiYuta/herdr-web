@@ -208,6 +208,8 @@ beforeEach(() => {
     path: "a.ts",
     contents: "line1\nline2\nline3\nline4\nline5",
     size: 30,
+    hash: "h",
+    editable: true,
   });
   gitRootMock.mockResolvedValue({
     root: "/repo",
@@ -458,6 +460,8 @@ test("selecting a different file clears the composer", async () => {
     path: "a.ts",
     contents: "line1\nline2\nline3",
     size: 20,
+    hash: "h",
+    editable: true,
   }));
   render(renderPanel());
   await selectFileAndDragLines23();
