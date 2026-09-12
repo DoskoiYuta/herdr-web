@@ -9,15 +9,18 @@ import {
   usageError,
 } from "./types";
 
-/** `hw notes show <id> [--json]` */
+/** `hw notes show <id> [--json] [--no-metadata]` */
 export async function notesShowCommand(argv: string[], deps: CommandDeps): Promise<CommandResult> {
-  const parsed = parseArgs(argv, { boolean: ["json"] });
+  const parsed = parseArgs(argv, { boolean: ["json", "no-metadata"] });
   if (!parsed.ok) return usageError(parsed.error);
   const { flags, positionals } = parsed.value;
 
   const id = positionals[0];
   if (!id || positionals.length > 1) {
-    return usageError("usage: hw notes show <id> [--json]");
+    return usageError("usage: hw notes show <id> [--json] [--no-metadata]");
+  }
+  if (flagBool(flags, "no-metadata") && flagBool(flags, "json")) {
+    return usageError("--no-metadata cannot be combined with --json");
   }
 
   const result = await deps.client.getNote(id);
@@ -31,8 +34,13 @@ export async function notesShowCommand(argv: string[], deps: CommandDeps): Promi
     return clientErrorResult(result.error);
   }
 
-  const stdout = flagBool(flags, "json")
-    ? `${JSON.stringify(result.value, null, 2)}\n`
-    : `${formatNoteShow(result.value)}\n`;
+  let stdout: string;
+  if (flagBool(flags, "no-metadata")) {
+    stdout = `${result.value.body}\n`;
+  } else if (flagBool(flags, "json")) {
+    stdout = `${JSON.stringify(result.value, null, 2)}\n`;
+  } else {
+    stdout = `${formatNoteShow(result.value)}\n`;
+  }
   return { exitCode: EXIT_OK, stdout };
 }
