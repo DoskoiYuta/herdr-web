@@ -6,7 +6,7 @@
 
 - **サイドバー**: herdr の pane を `repository > workspace` に組み替えて表示。クリックでフォーカス切り替え。リポジトリ見出しの「+」ボタンからそのリポジトリの main worktree root を cwd にワークスペースを作成でき、ワークスペース行を右クリックすると「名前を変更」「削除」の操作ができる（削除は pane / agent がすべて終了する旨を確認してから実行）。
 - **ターミナル**: herdr の TUI を PTY 経由で xterm.js に描画。既定の keybinds（後述）で Shift+← / Shift+→ に `ESC b` / `ESC f`（単語移動）を割り当てている。
-- **ツール領域**: フォーカス pane のリポジトリ・ワークスペースまで追従し、その worktree（サブリポジトリを含む）は人間が選ぶ（[docs/ui-redesign.md §10](docs/ui-redesign.md)）。選択は `(workspace, repository)` ごとにサーバーへ保存され、複数ブラウザ・`hw` CLI から一致する。タブの選択もワークスペースごとにサーバーへ保存され、ワークスペースを切り替えると前回のタブに戻る。diff / graph / review / Docker / Process を表示。git graph は読み取り専用だが、`fetch` ボタン（キー `f`）から `git fetch --prune` だけは実行できる（リモート追跡ブランチの更新のみ、worktree は変更しない）。Process タブは他ユーザーが所有するプロセスの cwd を読めないため、それらは一覧に出ない。Files タブは `.md` と同様 `.html`/`.htm` もプレビュー/ソースを切り替えられる。プレビューは `srcdoc` の iframe のため相対パスの画像・CSS は解決されない。スクリプトは既定で無効（サンドボックス）で、ファイルごとに「スクリプトを許可」で明示的に有効化できる。
+- **ツール領域**: フォーカス pane のリポジトリ・ワークスペースまで追従し、その worktree（サブリポジトリを含む）は人間が選ぶ（[docs/ui-redesign.md §10](docs/ui-redesign.md)）。選択は `(workspace, repository)` ごとにサーバーへ保存され、複数ブラウザ・`hw` CLI から一致する。タブの選択もワークスペースごとにサーバーへ保存され、ワークスペースを切り替えると前回のタブに戻る。diff / graph / review / Docker / Process を表示。git graph は読み取り専用だが、`fetch` ボタン（キー `f`）から `git fetch --prune` だけは実行できる（リモート追跡ブランチの更新のみ、worktree は変更しない）。Process タブは他ユーザーが所有するプロセスの cwd を読めないため、それらは一覧に出ない。Files タブは `.md` と同様 `.html`/`.htm` もプレビュー/ソースを切り替えられる。プレビューは `srcdoc` の iframe のため相対パスの画像・CSS は解決されない。スクリプトは既定で無効（サンドボックス）で、ファイルごとに「スクリプトを許可」で明示的に有効化できる。Files タブの UI は読み取り専用だが、サーバー側には既存ファイルを上書き保存する `PUT /api/fs/file` があり、読み取り時の hash（git blob hash）と保存直前のディスク上の内容が一致しない場合は 409、`.git` 配下・symlink・非 UTF-8 のファイルは 422 で拒否する。
 - **`hw` CLI**: pane 内のエージェントがレビューを読み・返答する。
 
 ## 必要なもの
