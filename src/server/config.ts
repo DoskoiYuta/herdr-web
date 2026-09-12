@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as v from "valibot";
 import { type Config, ConfigSchema } from "../contract/config";
+import { parseKeybind } from "../contract/keybind";
 
 export type LoadedConfig = {
   config: Config;
@@ -55,13 +56,52 @@ function normalizeAsk(config: Config): { config: Config; problem: string | null 
   };
 }
 
+/** 特殊キー名は modifier 無しでも普段の入力と衝突しないので許すが、英数字・
+ * 記号 1 文字は modifier 必須にする（無いと通常入力を潰してしまう）。 */
+function normalizeKeybinds(binds: Record<string, string>): {
+  keybinds: Record<string, string>;
+  problem: string | null;
+} {
+  const keybinds: Record<string, string> = {};
+  const problems: string[] = [];
+  for (const [spec, value] of Object.entries(binds)) {
+    const parsed = parseKeybind(spec);
+    if (!parsed) {
+      problems.push(`terminal.keybinds: "${spec}" はキーとして解釈できないため無視します`);
+      continue;
+    }
+    const hasMod = parsed.mods.shift || parsed.mods.alt || parsed.mods.ctrl || parsed.mods.meta;
+    if (!hasMod && parsed.key.length === 1) {
+      problems.push(`terminal.keybinds: "${spec}" は modifier の無い 1 文字キーのため無視します`);
+      continue;
+    }
+    if (value.length === 0) {
+      problems.push(`terminal.keybinds: "${spec}" の値が空のため無視します`);
+      continue;
+    }
+    keybinds[spec] = value;
+  }
+  return { keybinds, problem: problems.length > 0 ? problems.join("; ") : null };
+}
+
+function normalizeTerminal(config: Config): { config: Config; problem: string | null } {
+  const { keybinds, problem } = normalizeKeybinds(config.terminal.keybinds);
+  return { config: { ...config, terminal: { ...config.terminal, keybinds } }, problem };
+}
+
 export function parseConfig(raw: unknown): { config: Config; problem: string | null } {
   const r = v.safeParse(ConfigSchema, raw);
   if (!r.success) {
     const msg = r.issues.map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; ");
     return { config: v.parse(ConfigSchema, {}), problem: msg };
   }
-  return normalizeAsk(r.output);
+  const askResult = normalizeAsk(r.output);
+  const terminalResult = normalizeTerminal(askResult.config);
+  const problems = [askResult.problem, terminalResult.problem].filter((p) => p !== null);
+  return {
+    config: terminalResult.config,
+    problem: problems.length > 0 ? problems.join("; ") : null,
+  };
 }
 
 export async function loadConfig(path = defaultConfigPath()): Promise<LoadedConfig> {

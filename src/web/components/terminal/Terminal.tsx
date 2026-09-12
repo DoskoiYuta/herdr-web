@@ -6,14 +6,16 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Unplug } from "lucide-react";
 import { PanelState } from "@/components/ui/status/PanelState";
+import { DEFAULT_TERMINAL_KEYBINDS } from "../../../contract/config";
 import {
+  compileKeybinds,
   encodeModifiedEnter,
-  encodeShiftArrowWord,
   isInboxToggleKey,
   isMaximizeToggleKey,
+  matchKeybind,
 } from "@/lib/termKeys";
 import { connectTermSocket, sendInput, sendResize } from "@/lib/termSocket";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,8 @@ export type TerminalProps = {
   fontFamily?: string;
   fontSize?: number;
   lineHeight?: number;
+  /** config.json の `terminal.keybinds`（README「設定」参照）。 */
+  keybinds?: Record<string, string>;
   /** D7: ⌘⇧M / Ctrl+Shift+M（xterm にフォーカスがあっても効く）。 */
   onToggleMaximize?: () => void;
   /** Inbox ダイアログの開閉（⌘I / Ctrl+I、xterm にフォーカスがあっても効く）。 */
@@ -65,6 +69,7 @@ export function Terminal({
   fontFamily = DEFAULT_FONT_FAMILY,
   fontSize = DEFAULT_FONT_SIZE,
   lineHeight = DEFAULT_LINE_HEIGHT,
+  keybinds = DEFAULT_TERMINAL_KEYBINDS,
   onToggleMaximize,
   onToggleInbox,
 }: TerminalProps) {
@@ -77,6 +82,7 @@ export function Terminal({
       fontFamily={fontFamily}
       fontSize={fontSize}
       lineHeight={lineHeight}
+      keybinds={keybinds}
       onToggleMaximize={onToggleMaximize}
       onToggleInbox={onToggleInbox}
       onReconnect={() => setReconnectNonce((n) => n + 1)}
@@ -85,7 +91,7 @@ export function Terminal({
 }
 
 type TerminalSessionProps = Required<
-  Pick<TerminalProps, "fontFamily" | "fontSize" | "lineHeight">
+  Pick<TerminalProps, "fontFamily" | "fontSize" | "lineHeight" | "keybinds">
 > &
   Pick<TerminalProps, "session" | "className" | "onToggleMaximize" | "onToggleInbox"> & {
     onReconnect: () => void;
@@ -100,6 +106,7 @@ function TerminalSession({
   fontFamily,
   fontSize,
   lineHeight,
+  keybinds,
   onToggleMaximize,
   onToggleInbox,
   onReconnect,
@@ -117,6 +124,13 @@ function TerminalSession({
   useEffect(() => {
     onToggleInboxRef.current = onToggleInbox;
   }, [onToggleInbox]);
+  // keybinds も同じ理由で ref 経由。毎キー入力での再パースを避けるため
+  // config が変わったときだけ compileKeybinds でコンパイルし直す。
+  const compiledKeybinds = useMemo(() => compileKeybinds(keybinds), [keybinds]);
+  const keybindsRef = useRef(compiledKeybinds);
+  useEffect(() => {
+    keybindsRef.current = compiledKeybinds;
+  }, [compiledKeybinds]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -155,16 +169,16 @@ function TerminalSession({
         onToggleInboxRef.current?.();
         return false;
       }
+      const bound = matchKeybind(keybindsRef.current, event);
+      if (bound !== null) {
+        event.preventDefault();
+        if (ws.readyState === WebSocket.OPEN) sendInput(ws, bound);
+        return false;
+      }
       const seq = encodeModifiedEnter(event);
       if (seq !== null) {
         event.preventDefault();
         if (ws.readyState === WebSocket.OPEN) sendInput(ws, seq);
-        return false;
-      }
-      const wordSeq = encodeShiftArrowWord(event);
-      if (wordSeq !== null) {
-        event.preventDefault();
-        if (ws.readyState === WebSocket.OPEN) sendInput(ws, wordSeq);
         return false;
       }
       return shouldPassToXterm(event);

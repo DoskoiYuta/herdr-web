@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
+  compileKeybinds,
   encodeModifiedEnter,
-  encodeShiftArrowWord,
   isInboxToggleKey,
   isMaximizeToggleKey,
+  matchKeybind,
 } from "./termKeys";
 
 const base = {
@@ -32,7 +33,8 @@ describe("encodeModifiedEnter", () => {
   });
 });
 
-describe("encodeShiftArrowWord", () => {
+describe("matchKeybind", () => {
+  const binds = compileKeybinds({ "shift+left": "\x1bb", "shift+right": "\x1bf" });
   const key = {
     type: "keydown",
     key: "ArrowLeft",
@@ -45,15 +47,15 @@ describe("encodeShiftArrowWord", () => {
   test.each([
     ["Shift+ArrowLeft", key, "\x1bb"],
     ["Shift+ArrowRight", { ...key, key: "ArrowRight" }, "\x1bf"],
-    ["Alt も混ざると対象外", { ...key, altKey: true }, null],
-    ["Ctrl も混ざると対象外", { ...key, ctrlKey: true }, null],
-    ["Cmd も混ざると対象外", { ...key, metaKey: true }, null],
-    ["Shift 無しは対象外", { ...key, shiftKey: false }, null],
-    ["IME 変換中は対象外", { ...key, isComposing: true }, null],
-    ["ArrowUp は対象外", { ...key, key: "ArrowUp" }, null],
-    ["keyup は対象外", { ...key, type: "keyup" }, null],
+    ["Alt も混ざると不一致", { ...key, altKey: true }, null],
+    ["Ctrl も混ざると不一致", { ...key, ctrlKey: true }, null],
+    ["Cmd も混ざると不一致", { ...key, metaKey: true }, null],
+    ["Shift 無しは不一致", { ...key, shiftKey: false }, null],
+    ["IME 変換中は不一致", { ...key, isComposing: true }, null],
+    ["ArrowUp は不一致", { ...key, key: "ArrowUp" }, null],
+    ["keyup は不一致", { ...key, type: "keyup" }, null],
   ] as const)("%s -> %s", (_label, event, expected) => {
-    expect(encodeShiftArrowWord(event)).toBe(expected);
+    expect(matchKeybind(binds, event)).toBe(expected);
   });
 });
 
