@@ -439,3 +439,4 @@ git のポーリング対象は選択中のトップ worktree（従来どおり 
 - **`hw review list` / `hw decision request` / `hw status`**: `whoami` が選択後の実効値を返すので CLI 側の変更なし。エージェントは「人間が Web UI で選んでいる worktree」のレビューを見る。
 - **Decisions / Inbox の worktree 絞り込み**: 変更なし（依頼時の `worktreeRoot` が選択に基づくので一貫する）。
 - **サイドバー**: worktree 行が選択を反映する（ワークスペース行のブランチ chip は選択中 worktree のブランチになる）。
+- **Notes**: Select に影響されず、フォーカス pane の cwd が属するトップリポジトリの repoKey を使う（`hw notes list` と同じ）。

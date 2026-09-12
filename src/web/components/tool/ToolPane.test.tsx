@@ -782,6 +782,29 @@ describe("ToolPane", () => {
       await waitFor(() => expect(filesTab).toHaveTextContent("4"));
     });
 
+    // 無いと壊れる: Notes はリポジトリ単位の永続化（src/contract/notes.ts）
+    // なので、サブリポジトリを選んだ途端に別のノート集合（=空）に切り替わって
+    // しまうと、ユーザーから見て「Notes タブが空になった」ように見える。
+    test("Notes tab renders NotesPanel with focus.repoKey (top), not the selected sub-repo's repoKey", async () => {
+      await renderFocused({
+        repoKey: "/Users/dev/project/.git",
+        focusOverrides: {
+          subRepo: {
+            id: "vendor/lib",
+            name: "lib",
+            kind: "submodule",
+            root: "/Users/dev/project/vendor/lib",
+            repoKey: "/Users/dev/project/vendor/lib/.git",
+          },
+        },
+      });
+
+      await selectTab("Notes");
+      expect(await screen.findByTestId("notes-panel-stub")).toHaveTextContent(
+        "notes:/Users/dev/project/.git",
+      );
+    });
+
     // 無いと壊れる: サブリポジトリの選択が変わっても effective root（実際に
     // 見ている root）は変わっているのに、`worktreeRoot` 自体は同じままなので
     // 旧 worktree 切り替え検知だけに頼ると比較範囲・ジャンプ先が持ち越される
