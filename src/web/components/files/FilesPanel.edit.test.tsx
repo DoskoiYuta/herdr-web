@@ -722,7 +722,9 @@ test("front matter があるファイルは body だけがプレビューに渡�
   render(renderPanel().element);
   await openFile("a.md");
 
-  expect(await screen.findByTestId("front-matter-card")).toHaveTextContent("tags: [x]");
+  const card = await screen.findByTestId("front-matter-card");
+  expect(within(card).getByText("tags")).toBeInTheDocument();
+  expect(within(card).getByText("[x]")).toBeInTheDocument();
   expect(screen.getByTestId("markdown-view-stub")).toHaveAttribute(
     "data-contents",
     "# heading\n\nbody",
@@ -737,10 +739,10 @@ test("front matter が無いファイルはカードを出さない", async () =
 
   await screen.findByTestId("markdown-view-stub");
   expect(screen.queryByTestId("front-matter-card")).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("front-matter-editor")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("front-matter-value")).not.toBeInTheDocument();
 });
 
-test("front matter の textarea を編集して保存すると本文が不変で front matter だけ変わる", async () => {
+test("front matter の値の入力欄を編集して保存すると本文が不変で front matter だけ変わる", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
   fileMock.mockResolvedValue(
     textFile({ path: "a.md", contents: "---\ntags: [x]\n---\n# heading\n\nbody" }),
@@ -750,8 +752,8 @@ test("front matter の textarea を編集して保存すると本文が不変で
   await openFile("a.md");
   fireEvent.click(await editToggle());
 
-  const fmEditor = await screen.findByLabelText("front-matter-editor");
-  fireEvent.change(fmEditor, { target: { value: "tags: [x, y]" } });
+  const fmValue = await screen.findByLabelText("front-matter-value");
+  fireEvent.change(fmValue, { target: { value: "[x, y]" } });
 
   const saveButton = await screen.findByRole("button", { name: "保存" });
   await waitFor(() => expect(saveButton).not.toBeDisabled());
