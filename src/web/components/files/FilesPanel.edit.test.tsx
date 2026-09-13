@@ -127,7 +127,7 @@ vi.mock("./MarkdownView", () => ({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return (
-      <div data-testid="markdown-view-stub">
+      <div data-testid="markdown-view-stub" data-contents={contents}>
         <textarea
           aria-label="markdown-editor"
           readOnly={!onChange}
@@ -711,6 +711,89 @@ test("タブ切替中の外部変更 tick は、戻った側のファイルに�
 
 // M4: closeAll/closeOthers も dirty ならタブ単体の close と同じ確認が要る
 // ——さもないと保存していない編集が確認なしに画面から消える。
+// front matter (@/lib/frontMatter.ts) は Tiptap の外で表示・編集する
+// （@tiptap/markdown は front matter を扱えず、触ると壊れる — upstream issue
+// tiptap-editor/tiptap#7152）。
+test("front matter があるファイルは body だけがプレビューに渡り、カードが表示される", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(
+    textFile({ path: "a.md", contents: "---\ntags: [x]\n---\n# heading\n\nbody" }),
+  );
+  render(renderPanel().element);
+  await openFile("a.md");
+
+  expect(await screen.findByTestId("front-matter-card")).toHaveTextContent("tags: [x]");
+  expect(screen.getByTestId("markdown-view-stub")).toHaveAttribute(
+    "data-contents",
+    "# heading\n\nbody",
+  );
+});
+
+test("front matter が無いファイルはカードを出さない", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(textFile({ path: "a.md", contents: "# heading\n\nbody" }));
+  render(renderPanel().element);
+  await openFile("a.md");
+
+  await screen.findByTestId("markdown-view-stub");
+  expect(screen.queryByTestId("front-matter-card")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("front-matter-editor")).not.toBeInTheDocument();
+});
+
+test("front matter の textarea を編集して保存すると本文が不変で front matter だけ変わる", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(
+    textFile({ path: "a.md", contents: "---\ntags: [x]\n---\n# heading\n\nbody" }),
+  );
+  writeFileMock.mockResolvedValue({ hash: "h2", size: 40 });
+  render(renderPanel().element);
+  await openFile("a.md");
+  fireEvent.click(await editToggle());
+
+  const fmEditor = await screen.findByLabelText("front-matter-editor");
+  fireEvent.change(fmEditor, { target: { value: "tags: [x, y]" } });
+
+  const saveButton = await screen.findByRole("button", { name: "保存" });
+  await waitFor(() => expect(saveButton).not.toBeDisabled());
+  fireEvent.click(saveButton);
+
+  await waitFor(() =>
+    expect(writeFileMock).toHaveBeenCalledWith({
+      root: "/repo",
+      path: "a.md",
+      contents: "---\ntags: [x, y]\n---\n# heading\n\nbody",
+      baseHash: "h1",
+    }),
+  );
+});
+
+test("本文を編集して保存すると front matter が不変", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(
+    textFile({ path: "a.md", contents: "---\ntags: [x]\n---\n# heading\n\nbody" }),
+  );
+  writeFileMock.mockResolvedValue({ hash: "h2", size: 40 });
+  render(renderPanel().element);
+  await openFile("a.md");
+  fireEvent.click(await editToggle());
+
+  const editor = await screen.findByLabelText("markdown-editor");
+  fireEvent.change(editor, { target: { value: "# heading\n\nbody changed" } });
+
+  const saveButton = await screen.findByRole("button", { name: "保存" });
+  await waitFor(() => expect(saveButton).not.toBeDisabled());
+  fireEvent.click(saveButton);
+
+  await waitFor(() =>
+    expect(writeFileMock).toHaveBeenCalledWith({
+      root: "/repo",
+      path: "a.md",
+      contents: "---\ntags: [x]\n---\n# heading\n\nbody changed",
+      baseHash: "h1",
+    }),
+  );
+});
+
 test("dirty なタブがあるとき「すべて閉じる」は確認を出し、破棄で下書きが消える", async () => {
   lsMock.mockResolvedValue(
     ls([

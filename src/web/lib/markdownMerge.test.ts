@@ -105,6 +105,31 @@ test("正規化された段落自体を編集すると、その段落だけ正�
 });
 
 test.each([
+  {
+    name: "先頭が空行",
+    original: "\n# Mixed\n\npara\n\n* a\n* b\n",
+    headingBefore: "# Mixed",
+    headingAfter: "# Mixed Edited",
+    expected: "\n# Mixed Edited\n\npara\n\n* a\n* b\n",
+  },
+  {
+    name: "先頭が HTML コメント + 空行",
+    original: "<!-- x -->\n\n# h\n\npara\n\n* a\n* b\n",
+    headingBefore: "# h",
+    headingAfter: "# h Edited",
+    expected: "<!-- x -->\n\n# h Edited\n\npara\n\n* a\n* b\n",
+  },
+])(
+  "$name の本文で最初の見出しを編集しても先頭部分が保たれる",
+  ({ original, headingBefore, headingAfter, expected }) => {
+    const normalized = roundtrip(original);
+    const edited = normalized.replace(headingBefore, headingAfter);
+    const { merged } = mergeMarkdownEdit({ original, normalized, edited });
+    expect(merged).toBe(expected);
+  },
+);
+
+test.each([
   { name: "original が末尾改行あり", original: "para one\n\npara two\n" },
   { name: "original が末尾改行なし", original: "para one\n\npara two" },
 ])("末尾改行の有無は $name に従う", ({ original }) => {

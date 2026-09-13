@@ -59,6 +59,7 @@ import {
 } from "@/lib/fileDrafts";
 import { closeTab, useFileTabs } from "@/lib/fileTabs";
 import { useFileScroll } from "@/lib/fileScroll";
+import { joinFrontMatter, splitFrontMatter } from "@/lib/frontMatter";
 import {
   buildMarkdownCorrespondence,
   mergeMarkdownEdit,
@@ -80,6 +81,7 @@ import {
 import type { AskAnnotationMeta } from "@/components/ask/askAnnotations";
 import { CodeFileView, type CodeFileViewHandle } from "./CodeFileView";
 import { FileTabBar } from "./FileTabBar";
+import { FrontMatterBlock } from "./FrontMatterBlock";
 import { HtmlFileView } from "./HtmlFileView";
 import { useFile } from "./hooks/useFile";
 import { useLs } from "./hooks/useLs";
@@ -698,6 +700,9 @@ export function FilesPanel({
     editingNow && mdMode === "preview" && isMarkdownPath(selectedPath ?? "");
   const previewMergeRef = useRef<{
     key: string;
+    /** body（front matter を除いた部分）だけを Tiptap とやり取りする —
+     * @tiptap/markdown は front matter を扱えず、触ると壊れる
+     * (tiptap-editor/tiptap#7152)。 */
     original: string;
     normalized: string | null;
     /** original↔normalized の対応付け（`buildMarkdownCorrespondence`）。
@@ -706,6 +711,10 @@ export function FilesPanel({
      * 行数の多いファイルで目に見えて遅い（レビュアー計測: 2000 行で
      * 390ms/キー）。 */
     correspondence: MarkdownCorrespondence | null;
+    /** セッション開始時点の front matter（delimiter 込みの生テキスト）。
+     * `null` なら front matter 無し。編集中はここを直接書き換える —
+     * `handleFrontMatterChange` がその都度 draft を組み直す。 */
+    frontMatter: string | null;
   } | null>(null);
   const [previewMergeSession, setPreviewMergeSession] = useState(0);
   const [normalizedRegions, setNormalizedRegions] = useState(0);
@@ -716,11 +725,13 @@ export function FilesPanel({
   if (previewMergeSessionInputKey !== previewMergeSessionRef.current) {
     previewMergeSessionRef.current = previewMergeSessionInputKey;
     if (previewMergeSessionInputKey !== null && currentKey) {
+      const split = splitFrontMatter(currentEdit?.draft ?? "");
       previewMergeRef.current = {
         key: currentKey,
-        original: currentEdit?.draft ?? "",
+        original: split.body,
         normalized: null,
         correspondence: null,
+        frontMatter: split.frontMatter,
       };
       setNormalizedRegions(0);
       setPreviewMergeSession((n) => n + 1);
@@ -747,7 +758,19 @@ export function FilesPanel({
         correspondence: base.correspondence,
       });
       setNormalizedRegions(nr);
-      fileEditsStore.patchEntry(currentKey, { draft: merged });
+      fileEditsStore.patchEntry(currentKey, { draft: joinFrontMatter(base.frontMatter, merged) });
+    },
+    [currentKey],
+  );
+
+  const handleFrontMatterChange = useCallback(
+    (frontMatter: string) => {
+      const base = previewMergeRef.current;
+      if (!currentKey || !base || base.key !== currentKey) return;
+      base.frontMatter = frontMatter;
+      const entry = fileEditsStore.get()[currentKey];
+      const body = entry ? splitFrontMatter(entry.draft).body : base.original;
+      fileEditsStore.patchEntry(currentKey, { draft: joinFrontMatter(frontMatter, body) });
     },
     [currentKey],
   );
@@ -1521,9 +1544,13 @@ export function FilesPanel({
               previewEditOriginal={
                 isMarkdownPreviewEditing ? (previewMergeRef.current?.original ?? "") : null
               }
+              previewFrontMatterOriginal={
+                isMarkdownPreviewEditing ? (previewMergeRef.current?.frontMatter ?? null) : null
+              }
               previewMergeSession={previewMergeSession}
               onPreviewNormalized={handlePreviewNormalized}
               onPreviewEditChange={handlePreviewEditChange}
+              onFrontMatterChange={handleFrontMatterChange}
               previewNormalizedRegions={normalizedRegions}
               dirtyDraftOnError={dirtyDraftOnError}
               onCopyDraft={() => currentKey && copyDraftToClipboard(currentKey)}
@@ -1569,9 +1596,11 @@ function FileViewerBody({
   editSession,
   onEditChange,
   previewEditOriginal,
+  previewFrontMatterOriginal,
   previewMergeSession,
   onPreviewNormalized,
   onPreviewEditChange,
+  onFrontMatterChange,
   previewNormalizedRegions,
   dirtyDraftOnError,
   onCopyDraft,
@@ -1618,11 +1647,15 @@ function FileViewerBody({
    * 変化を反映し直さない（反映すると markdownMerge が確定させた行と
    * Tiptap の内部文書がずれ、入力のたびにカーソル位置が飛ぶ）。 */
   previewEditOriginal: string | null;
+  /** `previewEditOriginal` と同じセッションの front matter（delimiter 込み
+   * の生テキスト）。`null` なら front matter 無し。 */
+  previewFrontMatterOriginal: string | null;
   /** プレビュー編集セッションを開始し直すたびに増える値。MarkdownView を
    * remount させて `previewEditOriginal` を効かせる。 */
   previewMergeSession: number;
   onPreviewNormalized: (markdown: string) => void;
   onPreviewEditChange: (markdown: string) => void;
+  onFrontMatterChange: (frontMatter: string) => void;
   previewNormalizedRegions: number;
   /** 非 null: `fileQuery` がエラー（削除済み等）で、なお保存していない下書き
    * が残っている。エディタの代わりに下書きを取り出す手段を出す。 */
@@ -1736,12 +1769,26 @@ function FileViewerBody({
 
   if (isMarkdownPath(data.path) && mdMode === "preview") {
     const previewEditing = previewEditOriginal !== null;
+    // Front matter never reaches Tiptap (@tiptap/markdown mangles it —
+    // tiptap-editor/tiptap#7152): only `body` goes to MarkdownView, and
+    // `frontMatter` renders as its own block above it.
+    const { frontMatter, body } = previewEditing
+      ? { frontMatter: previewFrontMatterOriginal, body: previewEditOriginal }
+      : splitFrontMatter(previewContents);
     return (
       <div className="flex h-full min-h-0 flex-col">
+        {frontMatter !== null && (
+          <FrontMatterBlock
+            key={previewEditing ? `${data.path}:edit:${previewMergeSession}` : `${data.path}:view`}
+            frontMatter={frontMatter}
+            editable={previewEditing}
+            onChange={previewEditing ? onFrontMatterChange : undefined}
+          />
+        )}
         <div className="min-h-0 flex-1 overflow-auto">
           <MarkdownView
             key={previewEditing ? `${data.path}:edit:${previewMergeSession}` : data.path}
-            contents={previewEditing ? previewEditOriginal : previewContents}
+            contents={body}
             onChange={previewEditing ? onPreviewEditChange : undefined}
             onNormalized={previewEditing ? onPreviewNormalized : undefined}
             scrollTop={scrollTop}
