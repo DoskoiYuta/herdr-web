@@ -59,7 +59,11 @@ import {
 } from "@/lib/fileDrafts";
 import { closeTab, useFileTabs } from "@/lib/fileTabs";
 import { useFileScroll } from "@/lib/fileScroll";
-import { mergeMarkdownEdit } from "@/lib/markdownMerge";
+import {
+  buildMarkdownCorrespondence,
+  mergeMarkdownEdit,
+  type MarkdownCorrespondence,
+} from "@/lib/markdownMerge";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
 import { formatBytes } from "@/lib/formatBytes";
 import { languageLabel } from "@/lib/languageLabel";
@@ -696,6 +700,12 @@ export function FilesPanel({
     key: string;
     original: string;
     normalized: string | null;
+    /** original↔normalized の対応付け（`buildMarkdownCorrespondence`）。
+     * `normalized` が確定した時点で 1 度だけ計算し、以後のキー入力では
+     * 使い回す — 毎キー入力で original↔normalized の diff を取り直すと
+     * 行数の多いファイルで目に見えて遅い（レビュアー計測: 2000 行で
+     * 390ms/キー）。 */
+    correspondence: MarkdownCorrespondence | null;
   } | null>(null);
   const [previewMergeSession, setPreviewMergeSession] = useState(0);
   const [normalizedRegions, setNormalizedRegions] = useState(0);
@@ -710,6 +720,7 @@ export function FilesPanel({
         key: currentKey,
         original: currentEdit?.draft ?? "",
         normalized: null,
+        correspondence: null,
       };
       setNormalizedRegions(0);
       setPreviewMergeSession((n) => n + 1);
@@ -719,17 +730,21 @@ export function FilesPanel({
   }
 
   const handlePreviewNormalized = useCallback((markdown: string) => {
-    if (previewMergeRef.current) previewMergeRef.current.normalized = markdown;
+    const base = previewMergeRef.current;
+    if (!base) return;
+    base.normalized = markdown;
+    base.correspondence = buildMarkdownCorrespondence(base.original, markdown);
   }, []);
 
   const handlePreviewEditChange = useCallback(
     (edited: string) => {
       const base = previewMergeRef.current;
-      if (!currentKey || !base || base.key !== currentKey || base.normalized === null) return;
+      if (!currentKey || !base || base.key !== currentKey || base.correspondence === null) return;
       const { merged, normalizedRegions: nr } = mergeMarkdownEdit({
         original: base.original,
-        normalized: base.normalized,
+        normalized: base.normalized ?? "",
         edited,
+        correspondence: base.correspondence,
       });
       setNormalizedRegions(nr);
       fileEditsStore.patchEntry(currentKey, { draft: merged });

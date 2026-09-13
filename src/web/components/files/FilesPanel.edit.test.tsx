@@ -331,6 +331,77 @@ test("プレビューで編集した下書きはソース表示に切り替え�
   expect(await screen.findByLabelText("code-editor")).toHaveValue("* keep\n\nedit me changed");
 });
 
+test("ソースで編集してからプレビューでさらに編集しても、両方の変更が保存される", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(textFile({ path: "a.md", contents: "* keep\n\nedit me" }));
+  writeFileMock.mockResolvedValue({ hash: "h2", size: 20 });
+  render(renderPanel().element);
+  await openFile("a.md");
+
+  fireEvent.mouseDown(await screen.findByRole("tab", { name: "ソース" }));
+  fireEvent.click(await editToggle());
+  fireEvent.change(await screen.findByLabelText("code-editor"), {
+    target: { value: "* keep\n\nedit me from source" },
+  });
+
+  fireEvent.mouseDown(await screen.findByRole("tab", { name: "プレビュー" }));
+  fireEvent.change(await screen.findByLabelText("markdown-editor"), {
+    target: { value: "- keep\n\nedit me from source and preview" },
+  });
+
+  const saveButton = await screen.findByRole("button", { name: "保存" });
+  await waitFor(() => expect(saveButton).not.toBeDisabled());
+  fireEvent.click(saveButton);
+
+  await waitFor(() =>
+    expect(writeFileMock).toHaveBeenCalledWith({
+      root: "/repo",
+      path: "a.md",
+      contents: "* keep\n\nedit me from source and preview",
+      baseHash: "h1",
+    }),
+  );
+});
+
+test("保存をまたいでプレビュー編集を続けても、次の保存は最新内容を基準にする", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(textFile({ path: "a.md", contents: "* keep\n\nedit me" }));
+  writeFileMock
+    .mockResolvedValueOnce({ hash: "h2", size: 20 })
+    .mockResolvedValueOnce({ hash: "h3", size: 24 });
+  render(renderPanel().element);
+  await openFile("a.md");
+  fireEvent.click(await editToggle());
+
+  fireEvent.change(await screen.findByLabelText("markdown-editor"), {
+    target: { value: "- keep\n\nedit me first" },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+  await waitFor(() => expect(writeFileMock).toHaveBeenCalledTimes(1));
+  // 保存直後は draft === baseContents に揃うので、いったん無効に戻る。
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeDisabled());
+
+  fireEvent.change(await screen.findByLabelText("markdown-editor"), {
+    target: { value: "- keep\n\nedit me first and second" },
+  });
+  const saveButton = await screen.findByRole("button", { name: "保存" });
+  await waitFor(() => expect(saveButton).not.toBeDisabled());
+  fireEvent.click(saveButton);
+
+  // 2 回目の保存は 1 回目が返した hash を base にし、"* keep" は元の記号の
+  // まま — マージの基準（original/normalized）が保存をまたいでも
+  // 最初のセッション開始時点のまま保たれている（セッション途中でリセット
+  // されると "* keep" が正規化された "- keep" のまま保存されてしまう）。
+  await waitFor(() =>
+    expect(writeFileMock).toHaveBeenNthCalledWith(2, {
+      root: "/repo",
+      path: "a.md",
+      contents: "* keep\n\nedit me first and second",
+      baseHash: "h2",
+    }),
+  );
+});
+
 test("保存は base の hash で writeFile を呼び、成功後は下書きが消える", async () => {
   fileMock.mockResolvedValue(textFile());
   writeFileMock.mockResolvedValue({ hash: "h2", size: 20 });
