@@ -10,6 +10,8 @@ function listen(server: ReturnType<typeof createServer>): Promise<number> {
   });
 }
 
+const allowedHosts = new Set(["127.0.0.1"]);
+
 describe("createUpgradeRouter", () => {
   let server: ReturnType<typeof createServer> | undefined;
 
@@ -20,7 +22,7 @@ describe("createUpgradeRouter", () => {
 
   test("dispatches to the wss registered for the matching pathname", async () => {
     server = createServer();
-    const router = createUpgradeRouter(server);
+    const router = createUpgradeRouter(server, allowedHosts);
     const wss = new WebSocketServer({ noServer: true });
     router.add("/ws/echo", wss);
 
@@ -45,7 +47,7 @@ describe("createUpgradeRouter", () => {
 
   test("destroys the socket for unregistered /ws/* paths", async () => {
     server = createServer();
-    createUpgradeRouter(server);
+    createUpgradeRouter(server, allowedHosts);
     const port = await listen(server);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/unknown`);
     const closedOrErrored = new Promise<void>((resolve) => {
@@ -55,9 +57,31 @@ describe("createUpgradeRouter", () => {
     await closedOrErrored;
   });
 
+  test("destroys the socket for a disallowed Host even on a registered pathname", async () => {
+    server = createServer();
+    const router = createUpgradeRouter(server, allowedHosts);
+    const wss = new WebSocketServer({ noServer: true });
+    router.add("/ws/echo", wss);
+    let connected = false;
+    wss.on("connection", () => {
+      connected = true;
+    });
+
+    const port = await listen(server);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/echo`, {
+      headers: { host: "evil.example" },
+    });
+    const closedOrErrored = new Promise<void>((resolve) => {
+      ws.on("close", () => resolve());
+      ws.on("error", () => resolve());
+    });
+    await closedOrErrored;
+    expect(connected).toBe(false);
+  });
+
   test("ignores upgrade requests outside /ws/ so other listeners (e.g. Vite HMR) can handle them", async () => {
     server = createServer();
-    createUpgradeRouter(server);
+    createUpgradeRouter(server, allowedHosts);
 
     let sawOtherUpgrade = false;
     server.on("upgrade", (req, socket) => {

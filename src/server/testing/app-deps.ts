@@ -10,6 +10,7 @@ import type { DecisionNotifier } from "../decision/ports";
 import { openDb } from "../db/client";
 import { applyMigrations } from "../db/migrate";
 import type { FetchRunner } from "../git/fetch";
+import { buildAllowedHosts } from "../hostGuard";
 import { createFakeHerdr, type FakeHerdr } from "../herdr/fake";
 import type { SubRepoLike, WorktreeEntryLike } from "../herdr/pane-worktree";
 import { createSqliteSelectionRepository } from "../herdr/selection";
@@ -28,6 +29,8 @@ import { gitWorktreeResolver } from "../bootstrap";
 
 export type TestAppOptions = {
   allowedRoots?: string[];
+  /** DNS リバインディング対策の許可ホスト名。既定は loopback のみ。 */
+  allowedHosts?: string[];
   fake?: FakeHerdr;
   resolver?: WorktreeResolver;
   listWorktrees?: (repoPath: string) => Promise<WorktreeEntryLike[]>;
@@ -118,6 +121,7 @@ export function createTestApp(opts: TestAppOptions = {}) {
   });
   const deps: AppDeps = {
     version: "test",
+    allowedHosts: buildAllowedHosts({ host: "127.0.0.1", allowedHosts: opts.allowedHosts ?? [] }),
     herdrStatus: () => fake.status(),
     git: { allowedRoots: opts.allowedRoots ?? [], fetchRunner: opts.fetchRunner },
     clientConfig: () => {

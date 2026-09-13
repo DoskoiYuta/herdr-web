@@ -54,6 +54,7 @@ bun run build      # dist/web と dist/herdr-web, dist/hw を生成
   "herdrSocketPath": null,
   "herdrBin": "herdr",
   "dbPath": null,
+  "allowedHosts": [],
   "allowedRoots": [],
   "pollIntervalMs": 1000,
   "focusPollMs": 3000,
@@ -74,6 +75,7 @@ bun run build      # dist/web と dist/herdr-web, dist/hw を生成
 
 - `dbPath` の既定は `~/.config/herdr-web/herdr-web.db`（SQLite, WAL）。
 - `allowedRoots`: `$HOME` 配下以外のリポジトリを開きたいときに追加する。
+- `allowedHosts`: DNS リバインディング対策で `Host` / `Origin` ヘッダを検査する際、`localhost` / `127.0.0.1` / `::1` / `host` に加えて許可するホスト名。LAN や Tailscale のホスト名でアクセスするときに追加する（例: `["my-mac.tailnet.ts.net"]`）。
 - 環境変数 `PORT` / `HOST` が設定を上書きする。
 - `ask.agents`: 質問の新規セッションで選べるエージェント種別。herdr の `agent.start` は `kind` に自由文字列を取り対応一覧を持たないため（`herdr agent start --help` にしか出ない）、ここで持つ。`ask.defaultAgent` が `agents` に無ければ起動時に警告して先頭に丸める。
 - `terminal.keybinds`: ブラウザのターミナルで送信するキー割り当て。キーは Ghostty 風の `[mod+]...key` 書式（`mod` は `shift` / `alt`（`opt`, `option` も可）/ `ctrl` / `meta`（`cmd`, `super` も可）、大文字小文字は区別しない）、`key` は `left right up down home end pageup pagedown tab enter escape backspace delete insert space` と `f1`〜`f12`、または英数字・記号 1 文字。値は実際に送信する文字列（JSON なので ESC は ``）。

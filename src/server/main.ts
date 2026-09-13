@@ -22,6 +22,7 @@ import {
   herdrSocketPath,
 } from "./bootstrap";
 import { applyEnvOverrides, configDir, loadConfig, resolveDbPath } from "./config";
+import { buildAllowedHosts } from "./hostGuard";
 import { createDockerCache } from "./docker/cache";
 import { createDockerLogsWss } from "./docker/logsWs";
 import { spawnDockerLogs } from "./docker/logsSpawn";
@@ -153,8 +154,11 @@ const fetchRunner = createFetchRunner();
 // TTL/single-flight `docker ps` instead of doubling the polling load.
 const dockerCache = createDockerCache({ runner: createDockerRunner() });
 
+const allowedHosts = buildAllowedHosts(config);
+
 const api = createApp({
   version: "0.1.0",
+  allowedHosts,
   herdrStatus: runtime.herdrStatus,
   git: { allowedRoots: config.allowedRoots, fetchRunner },
   fs: {
@@ -229,7 +233,7 @@ if (isProd) {
   });
 }
 
-const upgradeRouter = createUpgradeRouter(server);
+const upgradeRouter = createUpgradeRouter(server, allowedHosts);
 upgradeRouter.add(
   "/ws/term",
   createTermWss({
