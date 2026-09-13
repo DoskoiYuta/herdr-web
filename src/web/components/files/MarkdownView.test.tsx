@@ -39,6 +39,57 @@ test("mounting in edit mode does not report the editor's normalized markdown as 
   expect(onChange).not.toHaveBeenCalled();
 });
 
+test("reports the parsed (normalized) markdown once before any user edit", async () => {
+  const onNormalized = vi.fn();
+  render(<MarkdownView contents={"* item"} onChange={() => {}} onNormalized={onNormalized} />);
+  await screen.findByText("item");
+  await waitFor(() => expect(onNormalized).toHaveBeenCalledTimes(1));
+  expect(onNormalized.mock.calls[0]?.[0]).toContain("- item");
+});
+
+test("suppresses an update that lands before the deferred normalized capture runs", async () => {
+  // `onNormalized` is captured a tick (setTimeout 0) after mount so it can
+  // see ProseMirror's own schema fix-ups (e.g. a trailing table gets an
+  // empty paragraph appended once mounted in a live view — not reproducible
+  // in jsdom, so this exercises the gate itself with fake timers: any
+  // `onUpdate` landing before that setTimeout fires — real fix-up or a
+  // genuine edit — must not reach `onChange`, or a file could be marked
+  // dirty with no edit the user actually asked to keep. A later, real edit
+  // (after the capture) must still come through.
+  vi.useFakeTimers();
+  try {
+    const onChange = vi.fn();
+    const onNormalized = vi.fn();
+    render(<MarkdownView contents={"hello"} onChange={onChange} onNormalized={onNormalized} />);
+    const p = screen.getByText("hello");
+    const textNode = p.firstChild as Text;
+    textNode.textContent = "hello world";
+    p.dispatchEvent(
+      new InputEvent("input", { bubbles: true, inputType: "insertText", data: " world" }),
+    );
+    // ProseMirror's DOM→state sync runs on a microtask, not a fake timer.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onChange).not.toHaveBeenCalled();
+
+    await vi.runAllTimersAsync(); // fires the deferred normalized capture
+    expect(onNormalized).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+
+    const p2 = screen.getByText("hello world");
+    const textNode2 = p2.firstChild as Text;
+    textNode2.textContent = "hello world!";
+    p2.dispatchEvent(
+      new InputEvent("input", { bubbles: true, inputType: "insertText", data: "!" }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onChange).toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("read-only mode does not render the editing toolbar", async () => {
   render(<MarkdownView contents={"body"} />);
   await screen.findByText("body");

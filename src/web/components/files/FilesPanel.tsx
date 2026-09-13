@@ -59,6 +59,11 @@ import {
 } from "@/lib/fileDrafts";
 import { closeTab, useFileTabs } from "@/lib/fileTabs";
 import { useFileScroll } from "@/lib/fileScroll";
+import {
+  buildMarkdownCorrespondence,
+  mergeMarkdownEdit,
+  type MarkdownCorrespondence,
+} from "@/lib/markdownMerge";
 import { MAX_TREE_WIDTH, MIN_TREE_WIDTH, useViewerSettings } from "@/lib/viewerSettings";
 import { formatBytes } from "@/lib/formatBytes";
 import { languageLabel } from "@/lib/languageLabel";
@@ -667,17 +672,85 @@ export function FilesPanel({
   // 宣言済み — S1 のポーリング間隔切り替えがそれを必要とするため。
   // -------------------------------------------------------------------
   const textData = fileQuery.data?.kind === "text" ? fileQuery.data : null;
-  const isPreviewShown = hasPreviewToggle(selectedPath ?? "") && mdMode === "preview";
+  // HTML プレビューには WYSIWYG 編集が無いためソース表示への切替が必須だが、
+  // Markdown プレビューは MarkdownView の編集モードでそのまま編集できる
+  // （下の markdownMerge 経由の下書き反映）。
+  const isHtmlPreviewShown = isHtmlPath(selectedPath ?? "") && mdMode === "preview";
   const editToggleDisabled =
-    !textData || (!editingNow && (isPreviewShown || !textData.editable || !matchesReady));
+    !textData || (!editingNow && (isHtmlPreviewShown || !textData.editable || !matchesReady));
   const editToggleTitle =
     textData && !editingNow
-      ? isPreviewShown
+      ? isHtmlPreviewShown
         ? "ソース表示に切り替えると編集できます"
         : !textData.editable && textData.readOnlyReason
           ? READONLY_REASON_LABEL[textData.readOnlyReason]
           : undefined
       : undefined;
+
+  // Markdown プレビュー編集の 3-way マージ (markdownMerge.ts) が基準にする
+  // (original, normalized) の組。プレビューに入るたび（mdMode がソースから
+  // プレビューへ切り替わる、編集トグルを ON にする、外部変更で再読込する等）
+  // に draft を基準として取り直す — そうしないと、直前の編集セッションの
+  // normalized 行対応を新しい draft に当ててしまい hunk の対応がずれる。
+  // レンダー中に更新する ref（NotesPanel の draftId 同期と同じ、React の
+  // 「変化した prop から state を導出する」パターン）。
+  const isMarkdownPreviewEditing =
+    editingNow && mdMode === "preview" && isMarkdownPath(selectedPath ?? "");
+  const previewMergeRef = useRef<{
+    key: string;
+    original: string;
+    normalized: string | null;
+    /** original↔normalized の対応付け（`buildMarkdownCorrespondence`）。
+     * `normalized` が確定した時点で 1 度だけ計算し、以後のキー入力では
+     * 使い回す — 毎キー入力で original↔normalized の diff を取り直すと
+     * 行数の多いファイルで目に見えて遅い（レビュアー計測: 2000 行で
+     * 390ms/キー）。 */
+    correspondence: MarkdownCorrespondence | null;
+  } | null>(null);
+  const [previewMergeSession, setPreviewMergeSession] = useState(0);
+  const [normalizedRegions, setNormalizedRegions] = useState(0);
+  const previewMergeSessionInputKey = isMarkdownPreviewEditing
+    ? `${currentKey}\0${currentEdit?.session ?? 0}`
+    : null;
+  const previewMergeSessionRef = useRef<string | null>(null);
+  if (previewMergeSessionInputKey !== previewMergeSessionRef.current) {
+    previewMergeSessionRef.current = previewMergeSessionInputKey;
+    if (previewMergeSessionInputKey !== null && currentKey) {
+      previewMergeRef.current = {
+        key: currentKey,
+        original: currentEdit?.draft ?? "",
+        normalized: null,
+        correspondence: null,
+      };
+      setNormalizedRegions(0);
+      setPreviewMergeSession((n) => n + 1);
+    } else {
+      previewMergeRef.current = null;
+    }
+  }
+
+  const handlePreviewNormalized = useCallback((markdown: string) => {
+    const base = previewMergeRef.current;
+    if (!base) return;
+    base.normalized = markdown;
+    base.correspondence = buildMarkdownCorrespondence(base.original, markdown);
+  }, []);
+
+  const handlePreviewEditChange = useCallback(
+    (edited: string) => {
+      const base = previewMergeRef.current;
+      if (!currentKey || !base || base.key !== currentKey || base.correspondence === null) return;
+      const { merged, normalizedRegions: nr } = mergeMarkdownEdit({
+        original: base.original,
+        normalized: base.normalized ?? "",
+        edited,
+        correspondence: base.correspondence,
+      });
+      setNormalizedRegions(nr);
+      fileEditsStore.patchEntry(currentKey, { draft: merged });
+    },
+    [currentKey],
+  );
 
   const beginEditing = useCallback((key: string, data: Extract<FileResponse, { kind: "text" }>) => {
     const existing = fileEditsStore.get()[key];
@@ -1445,6 +1518,13 @@ export function FilesPanel({
               editingDraft={editingNow ? (currentEdit?.draft ?? null) : null}
               editSession={currentEdit?.session ?? 0}
               onEditChange={(contents) => currentKey && updateDraft(currentKey, contents)}
+              previewEditOriginal={
+                isMarkdownPreviewEditing ? (previewMergeRef.current?.original ?? "") : null
+              }
+              previewMergeSession={previewMergeSession}
+              onPreviewNormalized={handlePreviewNormalized}
+              onPreviewEditChange={handlePreviewEditChange}
+              previewNormalizedRegions={normalizedRegions}
               dirtyDraftOnError={dirtyDraftOnError}
               onCopyDraft={() => currentKey && copyDraftToClipboard(currentKey)}
               onDiscardDraftOnError={() => selectedPath && forgetDraft(selectedPath)}
@@ -1488,6 +1568,11 @@ function FileViewerBody({
   editingDraft,
   editSession,
   onEditChange,
+  previewEditOriginal,
+  previewMergeSession,
+  onPreviewNormalized,
+  onPreviewEditChange,
+  previewNormalizedRegions,
   dirtyDraftOnError,
   onCopyDraft,
   onDiscardDraftOnError,
@@ -1528,6 +1613,17 @@ function FileViewerBody({
    * 含めて React ごと作り直させる。 */
   editSession: number;
   onEditChange: (contents: string) => void;
+  /** 非 null: Markdown プレビューを編集中。この値を MarkdownView の
+   * `contents` に固定して渡す — プレビュー編集セッション中は draft の
+   * 変化を反映し直さない（反映すると markdownMerge が確定させた行と
+   * Tiptap の内部文書がずれ、入力のたびにカーソル位置が飛ぶ）。 */
+  previewEditOriginal: string | null;
+  /** プレビュー編集セッションを開始し直すたびに増える値。MarkdownView を
+   * remount させて `previewEditOriginal` を効かせる。 */
+  previewMergeSession: number;
+  onPreviewNormalized: (markdown: string) => void;
+  onPreviewEditChange: (markdown: string) => void;
+  previewNormalizedRegions: number;
   /** 非 null: `fileQuery` がエラー（削除済み等）で、なお保存していない下書き
    * が残っている。エディタの代わりに下書きを取り出す手段を出す。 */
   dirtyDraftOnError: { draft: string } | null;
@@ -1639,19 +1735,30 @@ function FileViewerBody({
   const previewContents = isEditing ? editingDraft : data.contents;
 
   if (isMarkdownPath(data.path) && mdMode === "preview") {
+    const previewEditing = previewEditOriginal !== null;
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           <MarkdownView
-            key={data.path}
-            contents={previewContents}
+            key={previewEditing ? `${data.path}:edit:${previewMergeSession}` : data.path}
+            contents={previewEditing ? previewEditOriginal : previewContents}
+            onChange={previewEditing ? onPreviewEditChange : undefined}
+            onNormalized={previewEditing ? onPreviewNormalized : undefined}
             scrollTop={scrollTop}
             onScrollTopChange={onScrollTopChange}
           />
         </div>
-        <p className="shrink-0 border-t border-border px-2 py-1 text-xs text-muted-foreground">
-          プレビューは読み取り専用。質問を付けるにはソース表示に切り替えて行を選択します。
-        </p>
+        {previewEditing ? (
+          previewNormalizedRegions > 0 && (
+            <p className="shrink-0 border-t border-border px-2 py-1 text-xs text-muted-foreground">
+              書式が正規化される段落があります
+            </p>
+          )
+        ) : (
+          <p className="shrink-0 border-t border-border px-2 py-1 text-xs text-muted-foreground">
+            プレビューは読み取り専用。質問を付けるにはソース表示に切り替えて行を選択します。
+          </p>
+        )}
       </div>
     );
   }
