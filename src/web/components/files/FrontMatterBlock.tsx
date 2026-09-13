@@ -3,8 +3,12 @@
 // lines are shown but not editable — only the content between them is,
 // rendered as a key/value table via @/lib/frontMatterEntries (line-level
 // model, not a YAML parser) so untouched lines stay byte-identical.
+import { Plus } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
   parseFrontMatterEntries,
   serializeFrontMatterEntries,
@@ -96,17 +100,17 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
   }
 
   return (
-    <div className="shrink-0 border-b border-border bg-muted/50 p-2 font-mono text-xs">
-      <div className="text-muted-foreground">---</div>
+    <div className="shrink-0 border-b border-border bg-muted/50 p-2 text-xs">
+      <div className="mb-1 text-muted-foreground">front matter</div>
       <Table>
         <TableBody>
           {entries.map((entry, i) =>
             entry.kind === "raw" && entry.text.trim() === "" ? null : entry.kind === "kv" ? (
               <TableRow key={i} className="hover:bg-transparent">
-                <TableCell className="w-1/3 align-top p-1">
-                  <input
+                <TableCell className="w-40 align-top p-1">
+                  <Input
                     aria-label="front-matter-key"
-                    className="w-full bg-transparent outline-none"
+                    className="h-7 font-mono text-xs"
                     value={entry.key}
                     onChange={(e) => {
                       const next = entries.slice();
@@ -117,9 +121,9 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
                 </TableCell>
                 <TableCell className="p-1">
                   {entry.value.includes("\n") ? (
-                    <textarea
+                    <Textarea
                       aria-label="front-matter-value"
-                      className="w-full resize-none bg-transparent outline-none"
+                      className="min-h-0 resize-none font-mono text-xs"
                       rows={entry.value.split("\n").length}
                       value={entry.value}
                       onChange={(e) => {
@@ -129,9 +133,9 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
                       }}
                     />
                   ) : (
-                    <input
+                    <Input
                       aria-label="front-matter-value"
-                      className="w-full bg-transparent outline-none"
+                      className="h-7 font-mono text-xs"
                       value={entry.value}
                       onChange={(e) => {
                         const next = entries.slice();
@@ -145,7 +149,7 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
                   <button
                     type="button"
                     aria-label="front matter の行を削除"
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100"
                     onClick={() => update(entries.filter((_, j) => j !== i))}
                   >
                     ×
@@ -155,9 +159,9 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
             ) : (
               <TableRow key={i} className="hover:bg-transparent">
                 <TableCell colSpan={2} className="p-1">
-                  <input
+                  <Input
                     aria-label="front-matter-raw"
-                    className="w-full bg-transparent text-muted-foreground outline-none"
+                    className="h-7 font-mono text-xs text-muted-foreground"
                     value={entry.text}
                     onChange={(e) => {
                       const next = entries.slice();
@@ -170,7 +174,7 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
                   <button
                     type="button"
                     aria-label="front matter の行を削除"
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100"
                     onClick={() => update(entries.filter((_, j) => j !== i))}
                   >
                     ×
@@ -181,14 +185,16 @@ export function FrontMatterBlock({ frontMatter, editable, onChange }: FrontMatte
           )}
         </TableBody>
       </Table>
-      <button
+      <Button
         type="button"
-        className="mt-1 text-muted-foreground hover:text-foreground"
+        variant="ghost"
+        size="sm"
+        className="mt-1"
         onClick={() => update(insertBlankRow(entries))}
       >
+        <Plus className="size-3.5" />
         行を追加
-      </button>
-      <div className="text-muted-foreground">{closingDelimiterOf(frontMatter)}</div>
+      </Button>
     </div>
   );
 }
