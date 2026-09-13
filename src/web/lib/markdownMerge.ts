@@ -163,13 +163,25 @@ function mapForward(regions: Region[], fromPos: number): number {
   return fromPos + offset;
 }
 
-/** `mapForward` の逆方向: `toPos` を `from` 空間へ写す。同じ理由で `to` 側
- * 幅ゼロの領域だけ端で特別扱いする。 */
-function mapBackward(regions: Region[], toPos: number): number {
+/** `mapForward` の逆方向: `toPos` を `from` 空間へ写す。
+ *
+ * `treatZeroWidthTouchAsPassed` は `to` 側幅ゼロの領域（正規化で行が丸ごと
+ * 消えた区間、例: front matter や HTML コメント直後の空行）にちょうど端が
+ * 一致したときの扱いを呼び出し側に選ばせる。hunk の開始端は常に true（＝
+ * その消えた行は編集対象に含めない＝領域の後ろに写す）で呼ぶ — false のまま
+ * だと、消えた行が hunk の直前にあるだけでその行ごと置換範囲に呑み込まれる
+ * （見出し直前の空行が、見出しを編集するたびに消える不具合の原因だった）。
+ * hunk の終了端は、置換（幅がある）なら false（領域の手前）、純粋な挿入
+ * （幅ゼロ）なら true（開始端と同じ）で呼ぶ。 */
+function mapBackward(
+  regions: Region[],
+  toPos: number,
+  treatZeroWidthTouchAsPassed: boolean,
+): number {
   let offset = 0;
   for (const r of regions) {
     if (r.toEnd > toPos) break;
-    if (r.toEnd === toPos && r.toStart === r.toEnd) continue;
+    if (r.toEnd === toPos && r.toStart === r.toEnd && !treatZeroWidthTouchAsPassed) continue;
     offset = r.fromEnd - r.toEnd;
   }
   return toPos + offset;
@@ -254,8 +266,8 @@ export function mergeMarkdownEdit({
       curEnd = newEnd;
     }
 
-    const oStart = mapBackward(onRegions, curStart);
-    const oEnd = mapBackward(onRegions, curEnd);
+    const oStart = mapBackward(onRegions, curStart, true);
+    const oEnd = mapBackward(onRegions, curEnd, curStart === curEnd);
     // A boundary that the extension loop never moved away from the hunk's
     // own edge must use that edge's own (already known) edited-space value
     // rather than `mapForward`. This matters only for a pure insertion
