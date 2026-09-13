@@ -39,6 +39,14 @@ test("mounting in edit mode does not report the editor's normalized markdown as 
   expect(onChange).not.toHaveBeenCalled();
 });
 
+test("reports the parsed (normalized) markdown once before any user edit", async () => {
+  const onNormalized = vi.fn();
+  render(<MarkdownView contents={"* item"} onChange={() => {}} onNormalized={onNormalized} />);
+  await screen.findByText("item");
+  expect(onNormalized).toHaveBeenCalledTimes(1);
+  expect(onNormalized.mock.calls[0]?.[0]).toContain("- item");
+});
+
 test("read-only mode does not render the editing toolbar", async () => {
   render(<MarkdownView contents={"body"} />);
   await screen.findByText("body");

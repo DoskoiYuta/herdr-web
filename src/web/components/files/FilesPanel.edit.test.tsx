@@ -4,7 +4,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ToastProvider } from "@/components/ui/toast/ToastProvider";
 import { HerdrStoreProvider } from "@/lib/HerdrStoreContext";
@@ -103,10 +103,43 @@ vi.mock("@/components/tree/PathTree", () => ({
   ),
 }));
 
+// Stands in for Tiptap's markdown normalization (`* ` → `- `, the same
+// list-marker rewrite the real @tiptap/markdown serializer performs) so
+// tests can exercise FilesPanel's real markdownMerge wiring without running
+// Tiptap itself (MarkdownView.test.tsx already covers the real editor).
+function fakeNormalize(markdown: string): string {
+  return markdown.replaceAll("* ", "- ");
+}
+
 vi.mock("./MarkdownView", () => ({
-  MarkdownView: ({ contents }: { contents: string }) => (
-    <div data-testid="markdown-view-stub">{contents}</div>
-  ),
+  MarkdownView: ({
+    contents,
+    onChange,
+    onNormalized,
+  }: {
+    contents: string;
+    onChange?: (markdown: string) => void;
+    onNormalized?: (markdown: string) => void;
+  }) => {
+    const [value, setValue] = useState(fakeNormalize(contents));
+    useEffect(() => {
+      onNormalized?.(fakeNormalize(contents));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return (
+      <div data-testid="markdown-view-stub">
+        <textarea
+          aria-label="markdown-editor"
+          readOnly={!onChange}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            onChange?.(e.target.value);
+          }}
+        />
+      </div>
+    );
+  },
 }));
 
 vi.mock("./HtmlFileView", () => ({
@@ -240,13 +273,62 @@ test("editable: false のファイルは編集トグルが無効", async () => {
   expect(await screen.findByRole("button", { name: "編集" })).toBeDisabled();
 });
 
-test("Markdown をプレビュー表示中は編集トグルが無効", async () => {
+test("Markdown をプレビュー表示中でも編集トグルが有効（WYSIWYG 編集）", async () => {
   lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
   fileMock.mockResolvedValue(textFile({ path: "a.md", contents: "# hi" }));
   render(renderPanel().element);
   await openFile("a.md");
   // TestFilesPanel は mdMode を "preview" で初期化する。
+  expect(await editToggle()).not.toBeDisabled();
+});
+
+test("HTML をプレビュー表示中は編集トグルが無効（WYSIWYG 編集が無い）", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.html", kind: "file" }]));
+  fileMock.mockResolvedValue(textFile({ path: "a.html", contents: "<p>hi</p>" }));
+  render(renderPanel().element);
+  await openFile("a.html");
   expect(await screen.findByRole("button", { name: "編集" })).toBeDisabled();
+});
+
+test("プレビュー編集は触っていない書式（リスト記号）を保ったまま保存する", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(textFile({ path: "a.md", contents: "* keep\n\nedit me" }));
+  writeFileMock.mockResolvedValue({ hash: "h2", size: 20 });
+  render(renderPanel().element);
+  await openFile("a.md");
+  fireEvent.click(await editToggle());
+
+  const editor = await screen.findByLabelText("markdown-editor");
+  fireEvent.change(editor, { target: { value: "- keep\n\nedit me changed" } });
+
+  const saveButton = await screen.findByRole("button", { name: "保存" });
+  await waitFor(() => expect(saveButton).not.toBeDisabled());
+  fireEvent.click(saveButton);
+
+  // "* keep" は触っていないので原文の記号のまま、編集した段落だけが反映される。
+  await waitFor(() =>
+    expect(writeFileMock).toHaveBeenCalledWith({
+      root: "/repo",
+      path: "a.md",
+      contents: "* keep\n\nedit me changed",
+      baseHash: "h1",
+    }),
+  );
+});
+
+test("プレビューで編集した下書きはソース表示に切り替えても保たれる", async () => {
+  lsMock.mockResolvedValue(ls([{ name: "a.md", kind: "file" }]));
+  fileMock.mockResolvedValue(textFile({ path: "a.md", contents: "* keep\n\nedit me" }));
+  render(renderPanel().element);
+  await openFile("a.md");
+  fireEvent.click(await editToggle());
+  fireEvent.change(await screen.findByLabelText("markdown-editor"), {
+    target: { value: "- keep\n\nedit me changed" },
+  });
+
+  fireEvent.mouseDown(await screen.findByRole("tab", { name: "ソース" }));
+
+  expect(await screen.findByLabelText("code-editor")).toHaveValue("* keep\n\nedit me changed");
 });
 
 test("保存は base の hash で writeFile を呼び、成功後は下書きが消える", async () => {

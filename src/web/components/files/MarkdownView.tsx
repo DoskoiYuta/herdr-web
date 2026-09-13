@@ -17,6 +17,11 @@ export interface MarkdownViewProps {
   /** Presence (not value) selects edit vs. read-only mode. Called with the
    * document's markdown serialization on each edit. */
   onChange?: (markdown: string) => void;
+  /** Called once, right after `contents` is parsed, with the editor's own
+   * serialization of it — before any user edit. Callers that need to merge
+   * WYSIWYG edits back into the un-normalized source (markdownMerge.ts) use
+   * this as the merge's `normalized` baseline. */
+  onNormalized?: (markdown: string) => void;
   /** Scroll position to restore on mount (fileScroll.ts). Callers that need
    * per-file restoration must remount this component on file change (e.g.
    * `key={path}`) — there is no other "new file" signal to key a restoring
@@ -29,6 +34,7 @@ export function MarkdownView({
   contents,
   compact = false,
   onChange,
+  onNormalized,
   scrollTop,
   onScrollTopChange,
 }: MarkdownViewProps) {
@@ -47,6 +53,7 @@ export function MarkdownView({
     extensions: [StarterKit, TableKit, TaskList, TaskItem.configure({ nested: false }), Markdown],
     content: contents,
     contentType: "markdown",
+    onCreate: onNormalized ? ({ editor: e }) => onNormalized(e.getMarkdown()) : undefined,
     onUpdate: onChange
       ? ({ editor: e }) => {
           const markdown = e.getMarkdown();
@@ -62,6 +69,8 @@ export function MarkdownView({
     if (!editor || contents === lastMarkdownRef.current) return;
     lastMarkdownRef.current = contents;
     editor.commands.setContent(contents, { contentType: "markdown", emitUpdate: false });
+    onNormalized?.(editor.getMarkdown());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, contents]);
 
   useEffect(() => {
